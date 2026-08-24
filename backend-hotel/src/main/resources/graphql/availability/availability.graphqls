@@ -1,0 +1,59 @@
+extend type Query {
+	availability(input: AvailabilityInput!): [RoomAvailability!]!
+}
+
+extend type Mutation {
+	updateAvailability(hotelId: ID!, rows: [AvailabilityUpdateInput!]!): [AvailabilityRow!]!
+		@deprecated(reason: "Use updateAvailabilityRange — totalInventory now lives on the room type (sparse availability).")
+	updateAvailabilityRange(hotelId: ID!, input: AvailabilityRangeInput!): [AvailabilityRow!]!
+}
+
+input AvailabilityInput {
+	hotelId: ID!
+	checkInDate: LocalDate!
+	checkOutDate: LocalDate!
+	adults: Int!
+	children: Int!
+	rooms: Int!
+}
+
+type RoomAvailability {
+	roomTypeId: ID!
+	available: Boolean!
+	status: AvailabilityStatus!
+	capacityFits: Boolean!
+}
+
+enum AvailabilityStatus {
+	available
+	few
+	soldout
+}
+
+input AvailabilityUpdateInput {
+	roomTypeId: ID!
+	stayDate: LocalDate!
+	totalInventory: Int
+	outOfOrder: Int
+	blocked: Int
+}
+
+input AvailabilityRangeInput {
+	roomTypeId: ID!
+	fromDate: LocalDate!
+	toDate: LocalDate!
+	totalInventory: Int
+	outOfOrder: Int
+	blocked: Int
+}
+
+type AvailabilityRow {
+	id: ID!
+	roomTypeId: ID!
+	stayDate: LocalDate!
+	totalInventory: Int!
+	roomsSold: Int!
+	outOfOrder: Int!
+	blocked: Int!
+	free: Int!
+}

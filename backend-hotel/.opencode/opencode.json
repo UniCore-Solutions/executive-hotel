@@ -1,0 +1,22 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+  "permission": {
+    "bash": {
+      "git *": "allow",
+      "./mvnw *": "allow",
+      "mvn *": "allow",
+      "docker compose *": "allow",
+      "*": "ask"
+    },
+    "external_directory": {
+      "/home/hotel-executive/**": "allow",
+      "/tmp/opencode/**": "allow",
+      "*": "ask"
+    },
+    "edit": "allow",
+    "webfetch": "allow",
+    "websearch": "allow"
+  },
+  "tool_output": { "max_lines": 250 }
+}

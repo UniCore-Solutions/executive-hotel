@@ -1,0 +1,42 @@
+# Development overlay: source bind-mounts + dev servers (hot iteration).
+# Usage: ./scripts/start.sh --dev   (equivalent to:
+#        docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d)
+#
+# * backend  : ./mvnw spring-boot:run inside a Maven/JDK21 container
+#              (restart the container to pick up code changes; attach a debugger on :5005)
+# * frontends: `next dev` with anonymous volumes for node_modules/.next so host
+#              installs never clash with the image's dependencies.
+
+services:
+  backend:
+    build:
+      target: development
+    command: ["./mvnw", "spring-boot:run"]
+    volumes:
+      - ./backend-hotel:/workspace
+      - m2_cache:/root/.m2
+
+  frontend:
+    build:
+      target: development
+    command: ["npm", "run", "dev"]
+    volumes:
+      - ./frontend-hotel:/app
+      - fe_node_modules:/app/node_modules
+      - fe_next_cache:/app/.next
+
+  backoffice:
+    build:
+      target: development
+    command: ["npm", "run", "dev"]
+    volumes:
+      - ./backoffice-hotel:/app
+      - bo_node_modules:/app/node_modules
+      - bo_next_cache:/app/.next
+
+volumes:
+  m2_cache:
+  fe_node_modules:
+  fe_next_cache:
+  bo_node_modules:
+  bo_next_cache:

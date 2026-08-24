@@ -1,0 +1,91 @@
+query AdminReservations(
+  $hotelId: ID!
+  $status: ReservationStatus
+  $page: PageInput
+) {
+  adminReservations(hotelId: $hotelId, status: $status, page: $page) {
+    total
+    page
+    size
+    items {
+      id
+      reference
+      status
+      paymentStatus
+      checkInDate
+      checkOutDate
+      adults
+      children
+      currencyCode
+      totalAmount
+      source
+      createdAt
+      guest {
+        id
+        firstName
+        lastName
+        email
+        phone
+        countryCode
+      }
+      roomLines {
+        id
+        roomTypeId
+        ratePlanId
+        checkInDate
+        checkOutDate
+        nights
+        ratePerNight
+        subtotalAmount
+        status
+      }
+      extras {
+        id
+        name
+        quantity
+        unitPrice
+        totalPrice
+      }
+      charges {
+        id
+        name
+        chargeType
+        amount
+      }
+      cancellation {
+        id
+        reason
+        reasonNote
+        isRefundable
+        penaltyAmount
+        refundAmount
+        cancelledAt
+      }
+    }
+  }
+}
+
+mutation AdminCancelReservation(
+  $reservationId: ID!
+  $reasonCode: String
+  $reasonNote: String
+) {
+  adminCancelReservation(
+    reservationId: $reservationId
+    reasonCode: $reasonCode
+    reasonNote: $reasonNote
+  ) {
+    id
+    reference
+    status
+    cancellation {
+      id
+      reason
+      reasonNote
+      isRefundable
+      penaltyAmount
+      refundAmount
+      cancelledAt
+    }
+  }
+}

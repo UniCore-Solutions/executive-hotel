@@ -1,0 +1,70 @@
+extend type Query {
+	me: Me!
+	adminUsers: [AdminUser!]!
+	adminRoles: [AdminRole!]!
+}
+
+extend type Mutation {
+	login(input: LoginInput!): AuthPayload!
+	register(input: RegisterInput!): AuthPayload!
+	createUser(input: AdminCreateUserInput!): AdminUser!
+	assignRole(userId: ID!, roleName: String!, hotelId: ID): AdminUser!
+	revokeRole(userRoleId: ID!): AdminUser!
+}
+
+type Me {
+	id: ID!
+	email: String!
+	roles: [String!]!
+	hotelIds: [ID!]!
+}
+
+input LoginInput {
+	email: String!
+	password: String!
+}
+
+input RegisterInput {
+	firstName: String!
+	lastName: String!
+	email: String!
+	password: String!
+}
+
+type AuthPayload {
+	token: String!
+	me: Me!
+}
+
+type AdminUser {
+	id: ID!
+	email: String!
+	firstName: String
+	lastName: String
+	phone: String
+	status: String!
+	lastLoginAt: DateTime
+	createdAt: DateTime!
+	roles: [AdminUserRole!]!
+}
+
+type AdminUserRole {
+	id: ID!
+	roleName: String!
+	hotelId: ID
+	hotelName: String
+}
+
+type AdminRole {
+	name: String!
+	hotelScoped: Boolean!
+}
+
+input AdminCreateUserInput {
+	firstName: String
+	lastName: String
+	email: String!
+	password: String!
+	roleName: String!
+	hotelId: ID
+}

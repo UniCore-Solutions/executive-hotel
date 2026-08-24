@@ -1,0 +1,170 @@
+extend type Query {
+	myReservations: [Reservation!]!
+	reservation(input: ReservationLookupInput!): Reservation
+	adminReservations(hotelId: ID!, status: ReservationStatus, page: PageInput): ReservationPage!
+	adminGuests(hotelId: ID!, query: String, page: PageInput): AdminGuestPage!
+}
+
+extend type Mutation {
+	createReservation(input: CreateReservationInput!): ReservationResult!
+	cancelReservation(input: CancelReservationInput!): ReservationResult!
+	adminCancelReservation(reservationId: ID!, reasonCode: String, reasonNote: String): Reservation!
+}
+
+type Reservation {
+	id: ID!
+	reference: String!
+	hotelId: ID!
+	status: ReservationStatus!
+	paymentStatus: PaymentStatus!
+	checkInDate: LocalDate!
+	checkOutDate: LocalDate!
+	adults: Int!
+	children: Int!
+	currencyCode: String!
+	subtotalAmount: Float!
+	discountAmount: Float!
+	taxAmount: Float!
+	feeAmount: Float!
+	totalAmount: Float!
+	source: String!
+	notes: String
+	createdAt: DateTime!
+	guest: ReservationGuestInfo!
+	roomLines: [ReservationRoomLine!]!
+	extras: [ReservationExtraLine!]!
+	charges: [ReservationChargeLine!]!
+	cancellation: ReservationCancellation
+}
+
+enum ReservationStatus {
+	pending
+	confirmed
+	modified
+	cancelled
+	checked_in
+	checked_out
+	no_show
+}
+
+type ReservationGuestInfo {
+	id: ID
+	firstName: String!
+	lastName: String!
+	email: String
+	phone: String
+	countryCode: String
+}
+
+type ReservationRoomLine {
+	id: ID!
+	roomTypeId: ID!
+	ratePlanId: ID!
+	checkInDate: LocalDate!
+	checkOutDate: LocalDate!
+	nights: Int!
+	ratePerNight: Float!
+	subtotalAmount: Float!
+	status: String!
+}
+
+type ReservationExtraLine {
+	id: ID!
+	extraId: ID!
+	name: String!
+	quantity: Int!
+	unitPrice: Float!
+	totalPrice: Float!
+}
+
+type ReservationChargeLine {
+	id: ID!
+	name: String!
+	chargeType: String!
+	amount: Float!
+}
+
+type ReservationCancellation {
+	id: ID!
+	reason: String
+	reasonNote: String
+	isRefundable: Boolean!
+	penaltyAmount: Float!
+	refundAmount: Float!
+	cancelledAt: DateTime!
+}
+
+type ReservationPage {
+	total: Int!
+	page: Int!
+	size: Int!
+	items: [Reservation!]!
+}
+
+input ReservationLookupInput {
+	reference: String!
+	email: String!
+}
+
+input CreateReservationInput {
+	hotelId: ID!
+	checkInDate: LocalDate!
+	checkOutDate: LocalDate!
+	adults: Int!
+	children: Int!
+	currencyCode: String!
+	guest: ReservationGuestInput!
+	rooms: [ReservationRoomInput!]!
+	extras: [ReservationExtraInput!]
+	promoCode: String
+	idempotencyKey: String!
+}
+
+input ReservationGuestInput {
+	firstName: String!
+	lastName: String!
+	email: String!
+	phone: String
+	countryCode: String
+}
+
+input ReservationRoomInput {
+	roomTypeId: ID!
+	ratePlanId: ID!
+}
+
+input ReservationExtraInput {
+	extraId: ID!
+	quantity: Int!
+}
+
+input CancelReservationInput {
+	reference: String!
+	email: String!
+	reasonCode: String
+	reasonNote: String
+}
+
+type ReservationResult {
+	reservation: Reservation!
+	created: Boolean!
+}
+
+type AdminGuestPage {
+	total: Int!
+	page: Int!
+	size: Int!
+	items: [AdminGuest!]!
+}
+
+type AdminGuest {
+	id: ID!
+	firstName: String!
+	lastName: String!
+	email: String
+	phone: String
+	countryCode: String
+	reservationsCount: Int!
+	totalSpent: Float!
+	lastStayDate: LocalDate
+}

@@ -1,0 +1,232 @@
+extend type Query {
+	offers(hotelId: ID): [Offer!]!
+	rates(input: RatesInput!): [RoomRateOption!]!
+	quote(input: QuoteInput!): Quote!
+	adminPromotions(hotelId: ID!): [AdminPromotion!]!
+}
+
+extend type Mutation {
+	createRatePlan(hotelId: ID!, input: AdminRatePlanInput!): RatePlan!
+	updateRatePlan(id: ID!, input: AdminRatePlanInput!): RatePlan!
+	linkRoomTypeRatePlan(roomTypeId: ID!, ratePlanId: ID!): RoomTypeRatePlanInfo!
+	unlinkRoomTypeRatePlan(linkId: ID!): Boolean!
+	setRatePlanPrices(linkId: ID!, prices: [RatePlanPriceInput!]!): [RatePlanPriceInfo!]!
+	createPromotion(hotelId: ID, input: AdminPromotionInput!): AdminPromotion!
+	updatePromotion(id: ID!, input: AdminPromotionInput!): AdminPromotion!
+	setPromotionStatus(id: ID!, status: PromotionStatus!): AdminPromotion!
+}
+
+type Offer {
+	id: ID!
+	code: String!
+	name: String!
+	description: String
+	discountType: String!
+	discountValue: Float!
+	bookingWindowStart: LocalDate
+	bookingWindowEnd: LocalDate
+	stayWindowStart: LocalDate
+	stayWindowEnd: LocalDate
+	minNights: Int
+	stackable: Boolean!
+	appliesToAllRoomTypes: Boolean!
+	appliesToAllRatePlans: Boolean!
+	status: PromotionStatus!
+}
+
+enum PromotionStatus {
+	active
+	inactive
+	expired
+}
+
+input RatesInput {
+	hotelId: ID!
+	roomTypeId: ID
+	checkInDate: LocalDate!
+	checkOutDate: LocalDate!
+	adults: Int!
+	children: Int!
+}
+
+type RoomRateOption {
+	roomTypeId: ID!
+	ratePlanId: ID!
+	ratePlanCode: String!
+	ratePlanName: String!
+	mealPlan: String
+	pricePerNight: Float!
+	currencyCode: String!
+	cancellationPolicy: String
+	isRefundable: Boolean!
+}
+
+input QuoteInput {
+	hotelId: ID!
+	checkInDate: LocalDate!
+	checkOutDate: LocalDate!
+	adults: Int!
+	children: Int!
+	currencyCode: String!
+	rooms: [QuoteRoomInput!]!
+	extras: [QuoteExtraInput!]
+	promoCode: String
+}
+
+input QuoteRoomInput {
+	roomTypeId: ID!
+	ratePlanId: ID!
+}
+
+input QuoteExtraInput {
+	extraId: ID!
+	quantity: Int!
+}
+
+type Quote {
+	currencyCode: String!
+	subtotalAmount: Float!
+	discountAmount: Float!
+	taxAmount: Float!
+	feeAmount: Float!
+	totalAmount: Float!
+	originalTotal: Float!
+	valid: Boolean!
+	message: String
+	lines: [QuoteLine!]!
+}
+
+type QuoteLine {
+	roomTypeId: ID!
+	ratePlanId: ID!
+	ratePerNight: Float!
+	nights: Int!
+	subtotalAmount: Float!
+}
+
+type RatePlan {
+	id: ID!
+	hotelId: ID!
+	name: String!
+	code: String!
+	currencyCode: String!
+	mealPlan: String
+	cancellationPolicy: String
+	isRefundable: Boolean!
+	cancellationDeadlineDays: Int
+	cancellationPenaltyType: String
+	cancellationPenaltyValue: Float
+	paymentTiming: String!
+	minStay: Int
+	maxStay: Int
+	status: RatePlanStatus!
+}
+
+enum RatePlanStatus {
+	active
+	inactive
+}
+
+type AdminRatePlan {
+	id: ID!
+	hotelId: ID!
+	name: String!
+	code: String!
+	currencyCode: String!
+	mealPlan: String
+	cancellationPolicy: String
+	paymentPolicy: String
+	isRefundable: Boolean!
+	cancellationDeadlineDays: Int
+	cancellationPenaltyType: String
+	cancellationPenaltyValue: Float
+	paymentTiming: String!
+	depositPercentage: Float
+	minStay: Int
+	maxStay: Int
+	status: RatePlanStatus!
+	links: [RoomTypeRatePlanInfo!]!
+}
+
+input AdminRatePlanInput {
+	name: String
+	code: String
+	currencyCode: String
+	mealPlan: String
+	cancellationPolicy: String
+	paymentPolicy: String
+	isRefundable: Boolean
+	cancellationDeadlineDays: Int
+	cancellationPenaltyType: String
+	cancellationPenaltyValue: Float
+	paymentTiming: String
+	depositPercentage: Float
+	minStay: Int
+	maxStay: Int
+	status: RatePlanStatus
+}
+
+type RoomTypeRatePlanInfo {
+	id: ID!
+	roomTypeId: ID!
+	roomTypeName: String!
+	ratePlanId: ID!
+	currencyCode: String!
+	prices: [RatePlanPriceInfo!]!
+}
+
+type RatePlanPriceInfo {
+	id: ID!
+	validFrom: LocalDate!
+	validTo: LocalDate!
+	priceAmount: Float!
+}
+
+input RatePlanPriceInput {
+	validFrom: LocalDate!
+	validTo: LocalDate!
+	priceAmount: Float!
+}
+
+type AdminPromotion {
+	id: ID!
+	hotelId: ID
+	code: String!
+	name: String!
+	description: String
+	discountType: String!
+	discountValue: Float!
+	bookingWindowStart: LocalDate
+	bookingWindowEnd: LocalDate
+	stayWindowStart: LocalDate
+	stayWindowEnd: LocalDate
+	minNights: Int
+	maxUsageTotal: Int
+	maxUsagePerGuest: Int
+	stackable: Boolean!
+	appliesToAllRoomTypes: Boolean!
+	appliesToAllRatePlans: Boolean!
+	applicableDaysOfWeek: String
+	status: PromotionStatus!
+	createdAt: DateTime!
+}
+
+input AdminPromotionInput {
+	code: String
+	name: String
+	description: String
+	discountType: String
+	discountValue: Float
+	bookingWindowStart: LocalDate
+	bookingWindowEnd: LocalDate
+	stayWindowStart: LocalDate
+	stayWindowEnd: LocalDate
+	minNights: Int
+	maxUsageTotal: Int
+	maxUsagePerGuest: Int
+	stackable: Boolean
+	appliesToAllRoomTypes: Boolean
+	appliesToAllRatePlans: Boolean
+	applicableDaysOfWeek: String
+	status: PromotionStatus
+}

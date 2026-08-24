@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ channel: 'chrome' });
+const page = await browser.newPage();
+page.on('console', (m) => { if (m.type() === 'error') console.log('CONSOLE-ERR:', m.text().slice(0, 250)); });
+page.on('pageerror', (e) => console.log('PAGE-ERR:', String(e).slice(0, 400)));
+await page.goto('http://localhost:3101/login');
+await page.getByLabel('Email').fill('admin@hotelcollection.test');
+await page.getByLabel('Password').fill('admin123');
+await page.getByRole('button', { name: /sign in/i }).click();
+await page.waitForTimeout(5000);
+const text = await page.locator('body').innerText();
+console.log('BODY:', text.replace(/\n+/g, ' | ').slice(0, 600));
+await browser.close();

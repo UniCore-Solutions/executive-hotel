@@ -1,0 +1,14 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ channel: 'chrome' });
+const page = await browser.newPage();
+page.on('response', async (r) => { if (r.status() >= 400) console.log('HTTP', r.status(), r.url()); });
+page.on('pageerror', (e) => console.log('PAGE-ERR:', e.message.slice(0, 200)));
+await page.goto('http://localhost:3101/login');
+await page.getByLabel('Email').fill('admin@hotelcollection.test');
+await page.getByLabel('Password').fill('admin123');
+await page.getByRole('button', { name: /sign in/i }).click();
+await page.waitForURL(/\/dashboard$/);
+await page.waitForTimeout(2000);
+await page.goto('http://localhost:3101/hotels');
+await page.waitForTimeout(3000);
+await browser.close();

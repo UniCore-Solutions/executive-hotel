@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>DOMAIN_MAP_REVIEW.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="domainmapreviewmd">DOMAIN_MAP_REVIEW.md</h1>
+<p>Comparison of the 18-domain map you laid out against the current
+<code>hotel_collection_schema.sql</code> (now v1.2). Every table you proposed is
+classified as:</p>
+<ul>
+<li><strong>KEEP</strong> — already exists, already correct, untouched</li>
+<li><strong>MODIFY</strong> — already exists, extended with new columns</li>
+<li><strong>ADD</strong> — new table, added in v1.2</li>
+<li><strong>DEFER</strong> — genuinely good idea, but out of scope for this MVP; not built now</li>
+<li><strong>DUPLICATE</strong> — would represent a fact the schema already represents elsewhere; not added, existing table used instead</li>
+</ul>
+<p>No table was removed. Nothing in v1.0/v1.1 broke.</p>
+<hr>
+<h2 id="domain-1--platform--configuration">Domain 1 — Platform / Configuration</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>countries</code>, <code>currencies</code>, <code>languages</code></td>
+<td><strong>KEEP</strong></td>
+<td>Already present, unchanged.</td>
+</tr>
+<tr>
+<td><code>platform_settings</code>, <code>platform_media</code></td>
+<td><strong>DEFER</strong></td>
+<td>Site branding (logo, colors, name, contact) is already a centralized <em>frontend</em> config-file decision from earlier in this project — putting it in the DB too would create two sources of truth for the same thing. Revisit only if a non-technical admin needs to edit branding without a deploy.</td>
+</tr>
+<tr>
+<td><code>translations</code>, <code>translation_keys</code></td>
+<td><strong>DEFER</strong></td>
+<td>See Domain 17.</td>
+</tr>
+<tr>
+<td><code>notification_templates</code>, <code>notifications</code>, <code>notification_deliveries</code></td>
+<td><strong>DEFER</strong></td>
+<td>See Domain 16.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-2--hotel--product">Domain 2 — Hotel / Product</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hotels</code>, <code>room_types</code>, <code>rooms</code></td>
+<td><strong>KEEP</strong></td>
+<td></td>
+</tr>
+<tr>
+<td><code>amenities</code>, <code>hotel_amenities</code>, <code>room_type_amenities</code></td>
+<td><strong>KEEP</strong></td>
+<td>Added last round, already reusable across hotel + room type.</td>
+</tr>
+<tr>
+<td><code>experiences</code>, <code>restaurants</code>, <code>faqs</code></td>
+<td><strong>KEEP</strong></td>
+<td>Added last round.</td>
+</tr>
+<tr>
+<td><code>services</code>, <code>service_options</code></td>
+<td><strong>DUPLICATE</strong></td>
+<td>This would model the same fact as <code>extras</code> (a bookable hotel add-on with a price). Two tables for one concept invites drift — e.g. an airport transfer being defined in both <code>extras</code> and <code>services</code> with different prices. If you later need <em>tiered options</em> per service (e.g. sedan vs. van transfer), that's a real reason to revisit — but it can be added as <code>extra_options</code> off the existing <code>extras</code> table rather than a parallel domain.</td>
+</tr>
+<tr>
+<td><code>restaurants</code> (optional per your note)</td>
+<td><strong>KEEP</strong></td>
+<td>Already added; harmless to keep even if the current hotel doesn't use it — an empty table costs nothing.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-3--room-inventory--availability-%E2%AD%90">Domain 3 — Room Inventory / Availability ⭐</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rooms</code></td>
+<td><strong>KEEP</strong></td>
+<td>(Cross-referenced from Domain 2 — physical inventory.)</td>
+</tr>
+<tr>
+<td><code>availability</code></td>
+<td><strong>KEEP</strong></td>
+<td>Exactly the shape you described — room_type × date × total/sold/out_of_order/blocked, plus the <code>version</code> column added for optimistic locking. This was correct before and stays untouched.</td>
+</tr>
+<tr>
+<td><code>room_blocks</code></td>
+<td><strong>ADD</strong></td>
+<td>New. Gives <code>availability.blocked</code> an actual reason (maintenance / owner use / event / other), a date range, and who created the block — instead of an unexplained integer.</td>
+</tr>
+<tr>
+<td><code>room_assignments</code></td>
+<td><strong>DEFER</strong></td>
+<td><code>reservation_rooms.room_id</code> already tracks <em>which</em> physical room is currently assigned to a reservation. A full assignment-history table (tracking every reassignment during a stay) is a real future feature, but not needed until room-swapping-mid-stay is common enough to need an audit trail.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-4--pricing--rate-management">Domain 4 — Pricing / Rate Management</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rate_plans</code>, <code>room_type_rate_plans</code>, <code>rates</code></td>
+<td><strong>KEEP</strong></td>
+<td>Already the exact Room Type → Rate Plan → date-specific Rate model you described.</td>
+</tr>
+<tr>
+<td><code>promotions</code>, <code>promotion_rules</code>, <code>promotion_eligible_room_types</code>, <code>promotion_eligible_rate_plans</code></td>
+<td><strong>KEEP</strong></td>
+<td></td>
+</tr>
+<tr>
+<td><code>tax_fee_types</code></td>
+<td><strong>KEEP</strong></td>
+<td>Added last round.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-5--search--filtering">Domain 5 — Search / Filtering</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>filter_definitions</code>, <code>filter_options</code></td>
+<td><strong>DEFER</strong></td>
+<td>Matches your own caveat — filter values are already derivable from <code>room_types</code>, <code>amenities</code>, <code>rates</code>, <code>availability</code>, <code>reviews</code>, <code>rate_plans</code>. Worth adding only if the filter <em>set itself</em> needs to be editable by staff without a deploy.</td>
+</tr>
+<tr>
+<td><code>saved_searches</code></td>
+<td><strong>DEFER</strong></td>
+<td>Same bucket as &quot;recently viewed&quot; — client-side for now, per the earlier decision in this project.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-6--client--guest">Domain 6 — Client / Guest</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>guests</code></td>
+<td><strong>KEEP</strong></td>
+<td></td>
+</tr>
+<tr>
+<td><code>guest_preferences</code></td>
+<td><strong>DUPLICATE</strong></td>
+<td><code>guests.preferences</code> (free text) already covers this at MVP scope. A structured preferences table (pillow type, floor, dietary) is worth it once the backoffice needs to <em>query</em> on preferences, not just display them.</td>
+</tr>
+<tr>
+<td><code>guest_addresses</code></td>
+<td><strong>DUPLICATE</strong></td>
+<td>Billing address is captured per-invoice instead (Domain 11) — a guest's billing address is a billing-event fact, not a permanent identity fact (they may bill differently next stay).</td>
+</tr>
+<tr>
+<td><code>guest_documents</code></td>
+<td><strong>DUPLICATE</strong></td>
+<td>Already covered by <code>check_ins.id_document_reference</code> (a tokenized pointer, not the raw document) — that's the one place the platform actually needs a document reference.</td>
+</tr>
+<tr>
+<td><code>guest_contacts</code></td>
+<td><strong>DUPLICATE</strong></td>
+<td><code>guests.email</code>/<code>phone</code> already cover primary contact; a full secondary-contacts table is enterprise scope not currently justified.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-7--users--agents--back-office">Domain 7 — Users / Agents / Back Office</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>users</code>, <code>roles</code>, <code>permissions</code>, <code>role_permissions</code>, <code>user_roles</code></td>
+<td><strong>KEEP</strong></td>
+<td>Already a solid RBAC foundation, confirmed against your description (Reservation Agent, Reception Agent, Hotel Administrator, etc. — not AI agents).</td>
+</tr>
+<tr>
+<td><code>audit_logs</code></td>
+<td><strong>KEEP</strong></td>
+<td>See Domain 18.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-8--reservations">Domain 8 — Reservations</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>reservations</code>, <code>reservation_rooms</code>, <code>reservation_guests</code>, <code>reservation_extras</code>, <code>reservation_charges</code></td>
+<td><strong>KEEP</strong></td>
+<td>Typed, separate tables preserved exactly as you argued for — no generic <code>reservation_details</code> collapse.</td>
+</tr>
+<tr>
+<td><code>reservation_services</code></td>
+<td><strong>DUPLICATE</strong></td>
+<td>Same reasoning as <code>services</code> in Domain 2 — <code>reservation_extras</code> already covers a selected bookable add-on and snapshots its price at booking time.</td>
+</tr>
+<tr>
+<td><code>reservation_modifications</code></td>
+<td><strong>DEFER</strong></td>
+<td>A full field-level diff of every edit is real audit tooling. <code>audit_logs</code> already records &quot;reservation modified&quot; at the coarse level an MVP needs; revisit if support/ops need to see exactly <em>which field</em> changed and from what value.</td>
+</tr>
+<tr>
+<td><code>reservation_status_history</code></td>
+<td><strong>ADD</strong></td>
+<td>New. Lightweight append-only log of status transitions (pending → confirmed → checked_in → …) — cheap, and useful both for a guest-facing booking timeline and for support.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-9--modification--cancellation">Domain 9 — Modification / Cancellation</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>reservation_cancellations</code></td>
+<td><strong>ADD</strong></td>
+<td>New. Captures who cancelled, the reason, and — importantly — a <em>snapshot</em> of whether it was refundable and what penalty/refund applied, taken from the rate plan's structured cancellation fields (Domain 4) at the moment of cancellation. This means a later change to a rate plan's policy never rewrites what actually happened on a past cancellation.</td>
+</tr>
+<tr>
+<td><code>cancellation_reasons</code></td>
+<td><strong>ADD</strong></td>
+<td>New. Small reusable reason catalog (<code>guest_changed_plans</code>, <code>found_cheaper</code>, …) referenced by <code>reservation_cancellations</code>.</td>
+</tr>
+<tr>
+<td><code>reservation_status_history</code></td>
+<td><strong>ADD</strong></td>
+<td>(See Domain 8 — this table also carries the general lifecycle, cancellation is just one transition in it.)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-10--payment">Domain 10 — Payment</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>payments</code>, <code>payment_transactions</code></td>
+<td><strong>KEEP</strong></td>
+<td></td>
+</tr>
+<tr>
+<td><code>refunds</code></td>
+<td><strong>DUPLICATE</strong></td>
+<td>Already representable as a <code>payment_transactions</code> row with <code>transaction_type = 'refund'</code>. A separate <code>refunds</code> table would just be the same fact stored twice.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-11--invoicing">Domain 11 — Invoicing</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>invoices</code></td>
+<td><strong>ADD</strong></td>
+<td>New. The financial document — what the guest owes — kept separate from <code>payments</code> (how they paid), exactly per your distinction. Billing name/address/country are snapshotted onto the invoice itself.</td>
+</tr>
+<tr>
+<td><code>invoice_items</code></td>
+<td><strong>ADD</strong></td>
+<td>New. Line items (room nights, extras, taxes, fees, discounts) referencing <code>invoices</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-12--check-in--stay">Domain 12 — Check-in / Stay</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>check_ins</code></td>
+<td><strong>MODIFY</strong></td>
+<td>Added <code>checked_out_at TIMESTAMP</code> directly on the existing row.</td>
+</tr>
+<tr>
+<td><code>check_in_guests</code></td>
+<td><strong>DUPLICATE</strong></td>
+<td><code>check_ins</code> is already one row per <code>reservation_guest_id</code> — that's the same grain this table would add.</td>
+</tr>
+<tr>
+<td><code>room_assignments</code></td>
+<td><strong>DEFER</strong></td>
+<td>See Domain 3.</td>
+</tr>
+<tr>
+<td><code>check_outs</code></td>
+<td><strong>DUPLICATE</strong></td>
+<td>Folded into <code>check_ins.checked_out_at</code> instead of a parallel table — checkout is the other end of the same stay event, not a separate entity.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-13--reviews--ratings--feedback">Domain 13 — Reviews / Ratings / Feedback</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>reviews</code></td>
+<td><strong>MODIFY</strong></td>
+<td>Added <code>cleanliness_rating</code>, <code>location_rating</code>, <code>service_rating</code>, <code>value_rating</code> (all nullable 1–5) alongside the existing overall <code>rating</code> — gives you the multi-category breakdown you described without a join.</td>
+</tr>
+<tr>
+<td><code>ratings</code>, <code>feedback_categories</code></td>
+<td><strong>DUPLICATE</strong></td>
+<td>Would model exactly what the four new columns above already model — a generic category/score table only earns its place once the category list itself needs to be dynamic (admin-configurable), which isn't a current requirement.</td>
+</tr>
+<tr>
+<td><code>review_responses</code></td>
+<td><strong>DUPLICATE</strong></td>
+<td>Added as <code>response_text</code> / <code>responded_at</code> / <code>responded_by_user_id</code> directly on <code>reviews</code> instead — a hotel's reply is 1:1 with the review, so a join table adds no new relationship shape.</td>
+</tr>
+<tr>
+<td><code>feedback</code></td>
+<td><strong>DEFER</strong></td>
+<td>General (non-review) feedback capture wasn't part of the original PRD scope; revisit if there's an actual use case beyond reviews.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-14--complaints">Domain 14 — Complaints</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>complaints</code>, <code>complaint_categories</code>, <code>complaint_messages</code>, <code>complaint_attachments</code>, <code>complaint_status_history</code></td>
+<td><strong>DEFER</strong></td>
+<td>This is a full support-ticketing system — real enterprise scope. Front-desk staff can handle issues operationally today. Clean to bolt on later since nothing else in the schema references it.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-15--loyalty">Domain 15 — Loyalty</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>loyalty_accounts</code>, <code>loyalty_tiers</code>, <code>loyalty_points_transactions</code>, <code>loyalty_rewards</code>, <code>loyalty_redemptions</code></td>
+<td><strong>DEFER</strong></td>
+<td>Matches the original platform overview's explicit non-goals list. Only worth building once a loyalty program is a real, funded initiative.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-16--notifications">Domain 16 — Notifications</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>notification_templates</code>, <code>notifications</code>, <code>notification_deliveries</code>, <code>notification_preferences</code></td>
+<td><strong>DEFER</strong></td>
+<td>For the MVP, booking confirmation / cancellation / payment-receipt emails can be sent directly by the application layer without a persisted log. Worth adding once you need to audit delivery status, support multiple channels (SMS/push), or let guests set channel preferences.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-17--content--translations">Domain 17 — Content / Translations</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>translation_keys</code>, <code>translations</code>, <code>localized_contents</code></td>
+<td><strong>DEFER</strong></td>
+<td>Static UI strings already go through the frontend's i18n library (an existing project decision). Dynamic, DB-editable multilingual <em>content</em> (hotel/room descriptions in EN/FR/AR editable without a redeploy) is a real future need — most useful once there's more than one hotel or a non-technical content editor in the picture.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="domain-18--audit--system">Domain 18 — Audit / System</h2>
+<table>
+<thead>
+<tr>
+<th>Proposed table</th>
+<th>Verdict</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>audit_logs</code></td>
+<td><strong>KEEP</strong></td>
+<td></td>
+</tr>
+<tr>
+<td><code>system_logs</code>, <code>admin_actions</code></td>
+<td><strong>DUPLICATE</strong></td>
+<td><code>audit_logs</code>' actor/action/resource/result/metadata shape already covers both — a system-level technical log (errors, request logs) belongs in an observability tool (Domain 44 of the original platform overview), not the business database.</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="summary">Summary</h2>
+<table>
+<thead>
+<tr>
+<th>Verdict</th>
+<th>Count</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KEEP</td>
+<td>32 tables</td>
+</tr>
+<tr>
+<td>MODIFY</td>
+<td>2 tables (<code>reviews</code>, <code>check_ins</code>)</td>
+</tr>
+<tr>
+<td>ADD</td>
+<td>6 tables (<code>room_blocks</code>, <code>reservation_status_history</code>, <code>cancellation_reasons</code>, <code>reservation_cancellations</code>, <code>invoices</code>, <code>invoice_items</code>)</td>
+</tr>
+<tr>
+<td>DEFER</td>
+<td>5 whole domains (Search/Filtering, Complaints, Loyalty, Notifications, Content/Translations) + a handful of individual tables in other domains</td>
+</tr>
+<tr>
+<td>DUPLICATE</td>
+<td>11 proposed tables — each mapped to an existing table that already represents the same fact</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Net result: 39 → 45 tables.</strong> Every addition ties back to something concrete already in your requirements (structured cancellations, itemized taxes needing an actual invoice, a reason for <code>blocked</code> inventory) rather than speculative future-proofing — consistent with &quot;practical for the MVP, room to expand.&quot;</p>
+
+</body>
+</html>

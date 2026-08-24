@@ -1,0 +1,16 @@
+type Media {
+	id: ID!
+	url: String!
+	altText: String
+	category: String
+	isPrimary: Boolean!
+	sortOrder: Int!
+}
+
+input MediaInput {
+	url: String!
+	altText: String
+	category: String
+	isPrimary: Boolean
+	sortOrder: Int
+}

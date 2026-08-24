@@ -1,0 +1,192 @@
+query AdminHotels($page: PageInput) {
+  adminHotels(page: $page) {
+    total
+    page
+    size
+    items {
+      id
+      name
+      brand
+      city
+      countryCode
+      status
+      starRating
+      roomTypeCount
+      activeReservations
+    }
+  }
+}
+
+query AdminHotelWorkspace($hotelId: ID!) {
+  adminHotel(hotelId: $hotelId) {
+    id
+    name
+    status
+    hotel {
+      id
+      name
+      brand
+      description
+      hotelType
+      addressLine1
+      addressLine2
+      city
+      countryCode
+      latitude
+      longitude
+      phone
+      email
+      starRating
+      checkInTime
+      checkOutTime
+      defaultCurrency
+      status
+    }
+    amenities {
+      id
+      name
+      icon
+      category
+    }
+    media {
+      id
+      url
+      altText
+      category
+      isPrimary
+      sortOrder
+    }
+    roomTypes {
+      id
+      hotelId
+      name
+      description
+      maxAdults
+      maxChildren
+      bedConfiguration
+      sizeSqm
+      viewType
+      status
+      amenities {
+        id
+        name
+        category
+      }
+      media {
+        id
+        url
+        altText
+        isPrimary
+      }
+      rooms {
+        id
+        roomNumber
+        floor
+        status
+        housekeepingStatus
+        maintenanceStatus
+      }
+    }
+    ratePlans {
+      id
+      hotelId
+      name
+      code
+      currencyCode
+      mealPlan
+      cancellationPolicy
+      paymentPolicy
+      isRefundable
+      cancellationDeadlineDays
+      cancellationPenaltyType
+      cancellationPenaltyValue
+      paymentTiming
+      depositPercentage
+      minStay
+      maxStay
+      status
+      links {
+        id
+        roomTypeId
+        roomTypeName
+        currencyCode
+        prices {
+          id
+          validFrom
+          validTo
+          priceAmount
+        }
+      }
+    }
+    availability {
+      id
+      roomTypeId
+      stayDate
+      totalInventory
+      roomsSold
+      outOfOrder
+      blocked
+      free
+    }
+    experiences {
+      id
+      name
+      category
+      priceAmount
+      currencyCode
+    }
+    restaurants {
+      id
+      name
+      cuisineType
+    }
+    extras {
+      id
+      name
+      pricingModel
+      priceAmount
+      currencyCode
+    }
+  }
+}
+
+query AdminAmenities {
+  adminAmenities {
+    id
+    name
+    icon
+    category
+  }
+}
+
+mutation CreateHotel($input: AdminHotelInput!) {
+  createHotel(input: $input) {
+    id
+    name
+    status
+  }
+}
+
+mutation UpdateHotel($id: ID!, $input: AdminHotelInput!) {
+  updateHotel(id: $id, input: $input) {
+    id
+    name
+    status
+  }
+}
+
+mutation SetHotelAmenities($hotelId: ID!, $amenityIds: [ID!]!) {
+  setHotelAmenities(hotelId: $hotelId, amenityIds: $amenityIds) {
+    id
+    name
+  }
+}
+
+mutation SetHotelMedia($hotelId: ID!, $media: [MediaInput!]!) {
+  setHotelMedia(hotelId: $hotelId, media: $media) {
+    id
+    url
+    altText
+    isPrimary
+  }
+}

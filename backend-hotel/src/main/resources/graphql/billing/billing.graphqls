@@ -1,0 +1,80 @@
+extend type Query {
+	adminPayments(hotelId: ID!, page: PageInput): PaymentPage!
+	adminInvoices(hotelId: ID!, page: PageInput): InvoicePage!
+}
+
+extend type Mutation {
+	createPayment(input: CreatePaymentInput!): Payment!
+	capturePayment(input: CapturePaymentInput!): Payment!
+	issueInvoice(input: ReservationLookupInput!): Invoice!
+}
+
+enum PaymentStatus {
+	pending
+	authorized
+	captured
+	failed
+	refunded
+	partially_refunded
+}
+
+type Payment {
+	id: ID!
+	reservationId: ID!
+	amount: Float!
+	currencyCode: String!
+	status: PaymentStatus!
+	provider: String!
+	providerReference: String
+	createdAt: DateTime!
+}
+
+input CreatePaymentInput {
+	reservationId: ID!
+	amount: Float!
+	currencyCode: String!
+	provider: String!
+}
+
+input CapturePaymentInput {
+	paymentId: ID!
+}
+
+type Invoice {
+	id: ID!
+	invoiceNumber: String!
+	reservationId: ID!
+	billingName: String!
+	currencyCode: String!
+	subtotalAmount: Float!
+	discountAmount: Float!
+	taxAmount: Float!
+	feeAmount: Float!
+	totalAmount: Float!
+	status: String!
+	issuedAt: DateTime!
+	items: [InvoiceItem!]!
+}
+
+type InvoiceItem {
+	id: ID!
+	description: String!
+	itemType: String!
+	quantity: Float!
+	unitPrice: Float!
+	totalPrice: Float!
+}
+
+type PaymentPage {
+	total: Int!
+	page: Int!
+	size: Int!
+	items: [Payment!]!
+}
+
+type InvoicePage {
+	total: Int!
+	page: Int!
+	size: Int!
+	items: [Invoice!]!
+}

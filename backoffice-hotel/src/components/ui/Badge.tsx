@@ -1,0 +1,47 @@
+/** Badge primitives */
+import { HTMLAttributes } from 'react';
+
+export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
+  variant?: 'available' | 'few' | 'soldout' | 'plan' | 'promo' | 'gold' | 'navy' | 'outline';
+}
+
+export function Badge({ children, variant = 'available', className = '', ...props }: BadgeProps) {
+  const variants = {
+    available: 'bg-emerald-700/10 text-emerald-800 border-emerald-700/20',
+    few: 'bg-gold/10 text-gold-dark border-gold/20',
+    soldout: 'bg-clay/10 text-clay-dark border-clay/30',
+    plan: 'bg-navy/10 text-navy border-navy/20',
+    promo: 'bg-gold/10 text-gold-dark border-gold/20',
+    gold: 'bg-gold/10 text-gold-dark border-gold/20',
+    navy: 'bg-navy/10 text-navy border-navy/20',
+    outline: 'bg-transparent text-muted-foreground border-border',
+  };
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase ${variants[variant]} ${className}`}
+      {...props}
+    >
+      {children}
+    </span>
+  );
+}
+
+export function PlanBadge({ freeCancellation }: { freeCancellation: boolean }) {
+  return freeCancellation ? (
+    <Badge variant="plan">Free cancellation</Badge>
+  ) : (
+    <Badge variant="soldout">Non-refundable</Badge>
+  );
+}
+
+export function PolicyChip({ policy }: { policy: string }) {
+  if (policy.startsWith('Free cancellation')) {
+    const until = policy.match(/up to (\d+) days?/i);
+    return (
+      <Badge variant="plan">
+        {until ? `Free cancellation until ${until[1]} days before arrival` : policy}
+      </Badge>
+    );
+  }
+  return <Badge variant="soldout">{policy}</Badge>;
+}

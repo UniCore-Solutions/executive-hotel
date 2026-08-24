@@ -1,0 +1,47 @@
+mutation CreateRatePlan($hotelId: ID!, $input: AdminRatePlanInput!) {
+  createRatePlan(hotelId: $hotelId, input: $input) {
+    id
+    name
+    code
+    currencyCode
+    status
+  }
+}
+
+mutation UpdateRatePlan($id: ID!, $input: AdminRatePlanInput!) {
+  updateRatePlan(id: $id, input: $input) {
+    id
+    name
+    code
+    currencyCode
+    status
+  }
+}
+
+mutation LinkRoomTypeRatePlan($roomTypeId: ID!, $ratePlanId: ID!) {
+  linkRoomTypeRatePlan(roomTypeId: $roomTypeId, ratePlanId: $ratePlanId) {
+    id
+    roomTypeId
+    roomTypeName
+    currencyCode
+    prices {
+      id
+      validFrom
+      validTo
+      priceAmount
+    }
+  }
+}
+
+mutation UnlinkRoomTypeRatePlan($linkId: ID!) {
+  unlinkRoomTypeRatePlan(linkId: $linkId)
+}
+
+mutation SetRatePlanPrices($linkId: ID!, $prices: [RatePlanPriceInput!]!) {
+  setRatePlanPrices(linkId: $linkId, prices: $prices) {
+    id
+    validFrom
+    validTo
+    priceAmount
+  }
+}

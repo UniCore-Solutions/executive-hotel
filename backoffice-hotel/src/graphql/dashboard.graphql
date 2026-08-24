@@ -1,0 +1,29 @@
+query AdminDashboard($hotelId: ID!) {
+  adminDashboard(hotelId: $hotelId) {
+    hotelId
+    hotelName
+    arrivalsToday
+    departuresToday
+    inHouseToday
+    soldOutTonight
+    occupancyPct
+    availableTonight
+    revenueTotal
+    pendingPayments
+    pendingInvoices
+    recentReservations {
+      id
+      reference
+      status
+      paymentStatus
+      checkInDate
+      checkOutDate
+      totalAmount
+      currencyCode
+      guest {
+        firstName
+        lastName
+      }
+    }
+  }
+}

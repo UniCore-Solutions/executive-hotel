@@ -1,0 +1,323 @@
+@import 'tailwindcss';
+@import './tw-animate.css';
+
+@theme {
+  --color-navy: #142639;
+  --color-navy-light: #1e3a54;
+  --color-navy-dark: #0d1c29;
+  --color-gold: #b98b3e;
+  --color-gold-light: #d9b876;
+  --color-gold-dark: #7a5622;
+  --color-clay: #a2543a;
+  --color-clay-dark: #7d3a1f;
+  --color-clay-light: #c97e5f;
+  --color-paper: #f7f4ee;
+  --color-ink: #20242c;
+
+  --font-display: var(--font-fraunces), 'Georgia', serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-script: var(--font-cormorant), 'Georgia', serif;
+}
+
+/* shadcn/ui semantic tokens mapped to the Executive Boutique hotel palette:
+   the primitives (Button, Input, Tabs, DropdownMenu…) inherit the brand. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  :root {
+    --background: #f7f4ee;
+    --foreground: #20242c;
+    --card: #ffffff;
+    --card-foreground: #20242c;
+    --popover: #ffffff;
+    --popover-foreground: #20242c;
+    --primary: #142639;
+    --primary-foreground: #ffffff;
+    --secondary: #1e3a54;
+    --secondary-foreground: #ffffff;
+    --muted: #efebe2;
+    --muted-foreground: #5b6472;
+    --accent: #b98b3e;
+    --accent-foreground: #ffffff;
+    --destructive: #a2543a;
+    --border: #e6e2da;
+    --input: #e6e2da;
+    --ring: #b98b3e;
+    --radius: 0.75rem;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #f7f4ee;
+  color: #20242c;
+}
+
+/* Horizontal scroll carousels */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.snap-x-mandatory {
+  scroll-snap-type: x mandatory;
+}
+.snap-card {
+  scroll-snap-align: start;
+}
+
+/* ---- Header states ---- */
+header {
+  transition:
+    background 0.3s ease,
+    box-shadow 0.3s ease,
+    border-color 0.3s ease;
+}
+.utility-bar {
+  overflow: visible;
+}
+
+/* Utility strip: signature navy bar with white text */
+header .utility-bar {
+  background-color: #0d1c29;
+}
+body[data-header-theme='dark'] header:not([data-scrolled]) .utility-bar {
+  background-color: transparent;
+}
+
+/* Light theme (inner pages over the paper canvas): soft paper scrim */
+body[data-header-theme='light'] header,
+header {
+  background: linear-gradient(to bottom, rgba(250, 248, 243, 0.97), rgba(247, 244, 238, 0.55));
+}
+
+/* Dark theme (image-hero pages: home, hotel): transparent at the top */
+body[data-header-theme='dark'] header:not([data-scrolled]) {
+  background: linear-gradient(
+    to bottom,
+    rgba(13, 28, 41, 0.55),
+    rgba(13, 28, 41, 0.12) 72%,
+    rgba(13, 28, 41, 0)
+  );
+}
+
+/* Scrolled: frosted paper */
+body[data-header-theme='light'] header[data-scrolled],
+body[data-header-theme='dark'] header[data-scrolled],
+header[data-scrolled] {
+  background: rgba(247, 244, 238, 0.88);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  backdrop-filter: blur(18px) saturate(1.15);
+  border-bottom: 1px solid rgba(20, 38, 57, 0.1);
+  box-shadow:
+    0 1px 2px rgba(20, 38, 57, 0.06),
+    0 16px 32px -20px rgba(20, 38, 57, 0.25);
+}
+
+/* Dark-theme top-of-page text flips to white; scrolled restores navy */
+body[data-header-theme='dark'] header:not([data-scrolled]) .hdr-logo-name {
+  color: #ffffff;
+}
+body[data-header-theme='dark'] header:not([data-scrolled]) .hdr-brand-line {
+  color: #d9b876;
+}
+body[data-header-theme='dark'] header:not([data-scrolled]) .hdr-nav {
+  color: rgba(255, 255, 255, 0.84);
+}
+body[data-header-theme='dark'] header:not([data-scrolled]) .hdr-nav a:hover {
+  color: #ffffff;
+}
+body[data-header-theme='dark'] header:not([data-scrolled]) .hdr-toggle {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+body[data-header-theme='dark'] header:not([data-scrolled]) .hdr-utility {
+  color: rgba(255, 255, 255, 0.9);
+}
+body[data-header-theme='dark'] header:not([data-scrolled]) .hdr-utility-link {
+  color: rgba(255, 255, 255, 0.8);
+}
+body[data-header-theme='dark'] header:not([data-scrolled]) .hdr-utility-link:hover {
+  color: #ffffff;
+}
+body[data-header-theme='dark'] header:not([data-scrolled]) .hdr-utility-dim {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Mobile menu */
+#mobile-menu {
+  transition:
+    max-height 0.3s ease,
+    opacity 0.25s ease;
+}
+
+input[type='date']::-webkit-calendar-picker-indicator {
+  opacity: 0.55;
+}
+
+::selection {
+  background: #d9b876;
+  color: #142639;
+}
+
+a,
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+img {
+  background-color: #e7e1d4;
+}
+
+/* Full-bleed hero images: keep the section dark while loading / on failure —
+   never a light strip between the hero and the section below. */
+[data-hero] img {
+  background-color: #0d1c29;
+}
+
+section[id],
+div[id] {
+  scroll-margin-top: 8.5rem;
+}
+@media (max-width: 1023px) {
+  section[id],
+  div[id] {
+    scroll-margin-top: 7rem;
+  }
+}
+
+/* ---- Widget layer (search bar, panels, sheet, dock) ---- */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-rise {
+  animation: rise 0.22s ease both;
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-pop {
+  animation: pop 0.18s ease both;
+}
+
+#date-picker,
+#guests-panel {
+  animation: pop 0.18s ease both;
+}
+#date-picker {
+  max-height: calc(100vh - 6.5rem);
+  overflow-y: auto;
+}
+@media (min-width: 640px) {
+  #date-picker {
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
+.searchbar-wrap {
+  z-index: 30;
+}
+.day-cell {
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+#search-sheet {
+  will-change: transform;
+}
+#search-sheet::-webkit-scrollbar {
+  width: 6px;
+}
+#search-sheet::-webkit-scrollbar-thumb {
+  background: #14263933;
+  border-radius: 99px;
+}
+
+#sticky-dock {
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  header,
+  footer,
+  #sticky-dock,
+  #search-sheet,
+  .toast-host,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+}
+
+/* WCAG AA contrast — muted navy text raised to ≥ 4.5:1 on light surfaces
+   (a11y audit 2026-08, D-18). Chosen so all body-copy opacities share one
+   tonal value; decorative blacks (navy/20 empty stars etc.) stay unchanged.
+   Declared at the end of the utilities layer so they win equal-specificity
+   ties against the theme-generated utilities but never beat state variants
+   like data-[state=active]:text-white. */
+@layer utilities {
+  .text-navy\/35,
+  .text-navy\/40,
+  .text-navy\/45,
+  .text-navy\/50,
+  .text-navy\/55,
+  .text-navy\/60 {
+    color: color-mix(in srgb, var(--color-navy) 88%, white);
+  }
+}

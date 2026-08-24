@@ -1,0 +1,66 @@
+query Homepage {
+  homepage {
+    featuredHotels {
+      id
+      name
+      brand
+      description
+      hotelType
+      city
+      countryCode
+      starRating
+      status
+      averageRating
+      defaultCurrency
+      fromPricePerNight
+      media {
+        url
+        altText
+      }
+    }
+    featuredRoomTypes {
+      id
+      hotelId
+      hotelName
+      currencyCode
+      name
+      description
+      maxAdults
+      maxChildren
+      bedConfiguration
+      sizeSqm
+      viewType
+      status
+      pricePerNight
+      amenities {
+        name
+        icon
+      }
+      media {
+        url
+        altText
+      }
+    }
+    featuredExperiences {
+      id
+      hotelId
+      name
+      description
+      category
+      durationMinutes
+      priceAmount
+      currencyCode
+      location
+    }
+    featuredReviews {
+      id
+      hotelId
+      authorName
+      rating
+      title
+      comment
+      moderationStatus
+      createdAt
+    }
+  }
+}

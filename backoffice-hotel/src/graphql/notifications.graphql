@@ -1,0 +1,22 @@
+query AdminNotifications($hotelId: ID!, $page: PageInput) {
+  adminNotifications(hotelId: $hotelId, page: $page) {
+    total
+    page
+    size
+    items {
+      id
+      hotelId
+      recipientType
+      recipientId
+      channel
+      type
+      subject
+      body
+      status
+      provider
+      attempts
+      sentAt
+      createdAt
+    }
+  }
+}

@@ -1,0 +1,88 @@
+'use client';
+
+import { useQuery } from '@tanstack/react-query';
+import { proxyRequest } from '@/lib/api';
+import { formatDateTime, formatMoney } from '@/lib/format';
+import { AdminInvoicesDocument } from '@/graphql/generated/graphql';
+import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { PageHeader, StatusBadge } from '@/components/admin/page';
+import { useHotelScope } from '@/context/HotelScopeContext';
+
+export default function InvoicesPage() {
+  const { hotels, activeHotelId } = useHotelScope();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['adminInvoices', activeHotelId],
+    queryFn: () =>
+      proxyRequest(AdminInvoicesDocument, {
+        hotelId: activeHotelId ?? '',
+        page: { page: 0, size: 50 },
+      }),
+    enabled: !!activeHotelId,
+  });
+
+  if (hotels.length === 0) {
+    return (
+      <Card className="mx-auto mt-16 max-w-md items-center text-center">
+        <CardContent>
+          <p className="text-sm text-muted-foreground">You are not a member of any hotel.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const invoices = data?.adminInvoices.items ?? [];
+
+  return (
+    <div>
+      <PageHeader title="Invoices" description="Invoices issued for the selected hotel" />
+      {isLoading ? (
+        <Skeleton className="h-72 w-full" />
+      ) : invoices.length === 0 ? (
+        <Card>
+          <CardContent className="text-sm text-muted-foreground">No invoices yet.</CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="overflow-x-auto px-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead>Billing name</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Issued</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invoices.map((inv) => (
+                  <TableRow key={inv.id}>
+                    <TableCell className="font-medium">{inv.invoiceNumber}</TableCell>
+                    <TableCell>{inv.billingName}</TableCell>
+                    <TableCell>
+                      <StatusBadge status={inv.status} />
+                    </TableCell>
+                    <TableCell>{formatDateTime(inv.issuedAt)}</TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatMoney(inv.totalAmount, inv.currencyCode)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}

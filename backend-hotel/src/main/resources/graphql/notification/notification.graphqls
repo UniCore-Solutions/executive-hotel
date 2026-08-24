@@ -1,0 +1,26 @@
+extend type Query {
+	adminNotifications(hotelId: ID!, page: PageInput): NotificationPage!
+}
+
+type Notification {
+	id: ID!
+	hotelId: ID
+	recipientType: String!
+	recipientId: ID!
+	channel: String!
+	type: String!
+	subject: String
+	body: String
+	status: String!
+	provider: String
+	attempts: Int!
+	sentAt: DateTime
+	createdAt: DateTime!
+}
+
+type NotificationPage {
+	total: Int!
+	page: Int!
+	size: Int!
+	items: [Notification!]!
+}

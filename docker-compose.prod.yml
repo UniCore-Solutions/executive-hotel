@@ -1,0 +1,39 @@
+# Production overlay: hardened settings.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Differences from the base file:
+#   * PostgreSQL/Kafka are NOT exposed on host ports (internal network only)
+#   * Spring runs with the 'prod' profile (GraphiQL + introspection off, CSP)
+#   * CORS origins must be set explicitly in .env
+#   * Log rotation applied to app containers
+
+services:
+  postgres:
+    ports: []
+
+  kafka:
+    ports: []
+
+  backend:
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS required for prod (comma-separated, no trailing slash)}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  frontend:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  backoffice:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

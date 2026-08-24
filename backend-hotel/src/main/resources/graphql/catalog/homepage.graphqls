@@ -1,0 +1,11 @@
+extend type Query {
+	"""Curated homepage sections for the guest frontend (database-driven flags)."""
+	homepage: Homepage!
+}
+
+type Homepage {
+	featuredHotels: [Hotel!]!
+	featuredRoomTypes: [RoomType!]!
+	featuredExperiences: [Experience!]!
+	featuredReviews: [Review!]!
+}

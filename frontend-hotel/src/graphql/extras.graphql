@@ -1,0 +1,10 @@
+query HotelExtras($hotelId: ID!) {
+  extras(hotelId: $hotelId) {
+    id
+    name
+    description
+    pricingModel
+    priceAmount
+    currencyCode
+  }
+}

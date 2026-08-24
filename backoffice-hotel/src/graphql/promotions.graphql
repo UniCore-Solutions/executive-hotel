@@ -1,0 +1,51 @@
+query AdminPromotions($hotelId: ID!) {
+  adminPromotions(hotelId: $hotelId) {
+    id
+    hotelId
+    code
+    name
+    description
+    discountType
+    discountValue
+    bookingWindowStart
+    bookingWindowEnd
+    stayWindowStart
+    stayWindowEnd
+    minNights
+    maxUsageTotal
+    maxUsagePerGuest
+    stackable
+    appliesToAllRoomTypes
+    appliesToAllRatePlans
+    applicableDaysOfWeek
+    status
+    createdAt
+  }
+}
+
+mutation CreatePromotion($hotelId: ID, $input: AdminPromotionInput!) {
+  createPromotion(hotelId: $hotelId, input: $input) {
+    id
+    code
+    name
+    status
+  }
+}
+
+mutation UpdatePromotion($id: ID!, $input: AdminPromotionInput!) {
+  updatePromotion(id: $id, input: $input) {
+    id
+    code
+    name
+    status
+  }
+}
+
+mutation SetPromotionStatus($id: ID!, $status: PromotionStatus!) {
+  setPromotionStatus(id: $id, status: $status) {
+    id
+    code
+    name
+    status
+  }
+}

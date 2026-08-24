@@ -1,0 +1,23 @@
+extend type Query {
+	adminAuditLogs(page: PageInput): AuditLogPage!
+}
+
+type AuditLogEntry {
+	id: ID!
+	actorUserId: ID
+	actorEmail: String
+	action: String!
+	resourceType: String!
+	resourceId: ID!
+	hotelId: ID
+	result: String!
+	metadata: String
+	createdAt: DateTime!
+}
+
+type AuditLogPage {
+	total: Int!
+	page: Int!
+	size: Int!
+	items: [AuditLogEntry!]!
+}

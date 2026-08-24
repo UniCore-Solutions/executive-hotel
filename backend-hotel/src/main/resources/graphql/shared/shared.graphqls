@@ -1,0 +1,11 @@
+input PageInput {
+	page: Int
+	size: Int
+}
+
+type ReviewPage {
+	total: Int!
+	page: Int!
+	size: Int!
+	items: [Review!]!
+}

@@ -1,0 +1,497 @@
+package com.hotelcollection.hotel.service.impl;
+
+import java.time.Instant;
+import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.hotelcollection.hotel.service.AuditService;
+import com.hotelcollection.hotel.service.AvailabilityService;
+import com.hotelcollection.hotel.dto.catalog.AdminHotelInput;
+import com.hotelcollection.hotel.dto.catalog.AdminRoomInput;
+import com.hotelcollection.hotel.dto.catalog.AdminRoomTypeInput;
+import com.hotelcollection.hotel.service.CatalogAdminService;
+import com.hotelcollection.hotel.entity.Amenity;
+import com.hotelcollection.hotel.entity.Hotel;
+import com.hotelcollection.hotel.entity.Room;
+import com.hotelcollection.hotel.entity.RoomType;
+import com.hotelcollection.hotel.repository.AmenityRepository;
+import com.hotelcollection.hotel.repository.HotelRepository;
+import com.hotelcollection.hotel.repository.RoomRepository;
+import com.hotelcollection.hotel.repository.RoomTypeRepository;
+import com.hotelcollection.hotel.security.CurrentUserAccessor;
+import com.hotelcollection.hotel.security.CurrentUser;
+import com.hotelcollection.hotel.service.MediaAdminService;
+import com.hotelcollection.hotel.dto.media.MediaInput;
+import com.hotelcollection.hotel.entity.Media;
+import com.hotelcollection.hotel.service.ReferenceQueryService;
+import com.hotelcollection.hotel.exception.DomainException;
+
+/**
+ * Back-office catalog write use cases (hotels, room types, rooms,
+ * amenities). Authorization (hotel scoping / super_admin) is enforced
+ * internally; media sets are delegated to the media services.
+ */
+@Service
+public class CatalogAdminServiceImpl implements CatalogAdminService {
+
+	private final HotelRepository hotelRepository;
+	private final RoomTypeRepository roomTypeRepository;
+	private final RoomRepository roomRepository;
+	private final AmenityRepository amenityRepository;
+	private final MediaAdminService mediaAdmin;
+	private final ReferenceQueryService reference;
+	private final AuditService audit;
+	private final CurrentUserAccessor currentUser;
+	private final AvailabilityService availability;
+
+	public CatalogAdminServiceImpl(HotelRepository hotelRepository,
+			RoomTypeRepository roomTypeRepository, RoomRepository roomRepository,
+			AmenityRepository amenityRepository, MediaAdminService mediaAdmin,
+			ReferenceQueryService reference, AuditService audit, CurrentUserAccessor currentUser,
+			AvailabilityService availability) {
+		this.hotelRepository = hotelRepository;
+		this.roomTypeRepository = roomTypeRepository;
+		this.roomRepository = roomRepository;
+		this.amenityRepository = amenityRepository;
+		this.mediaAdmin = mediaAdmin;
+		this.reference = reference;
+		this.audit = audit;
+		this.currentUser = currentUser;
+		this.availability = availability;
+	}
+
+	// ---------------------------------------------------------------- hotel
+
+	@Override
+	@Transactional
+	public Hotel createHotel(AdminHotelInput in) {
+		CurrentUser actor = requireSuperAdmin();
+		Hotel hotel = new Hotel();
+		hotel.setName(required(in.name(), "name"));
+		hotel.setBrand(in.brand());
+		hotel.setDescription(in.description());
+		hotel.setLongDescription(in.longDescription());
+		hotel.setHotelType(in.hotelType());
+		hotel.setAddressLine1(in.addressLine1());
+		hotel.setAddressLine2(in.addressLine2());
+		hotel.setCity(in.city());
+		hotel.setCountryCode(in.countryCode());
+		hotel.setLatitude(in.latitude());
+		hotel.setLongitude(in.longitude());
+		hotel.setPhone(in.phone());
+		hotel.setEmail(in.email());
+		hotel.setStarRating(in.starRating() == null ? null : in.starRating().shortValue());
+		hotel.setCheckInTime(parseTime(in.checkInTime()));
+		hotel.setCheckOutTime(parseTime(in.checkOutTime()));
+		hotel.setDefaultCurrency(validateCurrency(in.defaultCurrency(), "defaultCurrency"));
+		hotel.setStatus(in.status() == null ? "active" : validStatus(in.status(), "hotel"));
+		hotel.setSlug(uniqueHotelSlug(hotel.getName()));
+		hotel.setCreatedAt(Instant.now());
+		hotel.setUpdatedAt(Instant.now());
+		try {
+			hotelRepository.saveAndFlush(hotel);
+		} catch (DataIntegrityViolationException ex) {
+			throw DomainException.validation("invalid reference data (country or currency)");
+		}
+		audit.record(actor, "hotel.created", "hotel", hotel.getId(), hotel.getId(),
+				Map.of("name", hotel.getName()));
+		return hotel;
+	}
+
+	@Override
+	@Transactional
+	public Hotel updateHotel(UUID id, AdminHotelInput in) {
+		CurrentUser actor = requireStaffAccess(id);
+		Hotel hotel = hotelRepository.findById(id)
+				.orElseThrow(() -> DomainException.notFound("hotel not found"));
+		if (in.name() != null) {
+			hotel.setName(required(in.name(), "name"));
+		}
+		applyIfPresent(in.brand(), hotel::setBrand);
+		applyIfPresent(in.description(), hotel::setDescription);
+		applyIfPresent(in.longDescription(), hotel::setLongDescription);
+		applyIfPresent(in.hotelType(), hotel::setHotelType);
+		applyIfPresent(in.addressLine1(), hotel::setAddressLine1);
+		applyIfPresent(in.addressLine2(), hotel::setAddressLine2);
+		applyIfPresent(in.city(), hotel::setCity);
+		applyIfPresent(in.countryCode(), hotel::setCountryCode);
+		applyIfPresent(in.latitude(), hotel::setLatitude);
+		applyIfPresent(in.longitude(), hotel::setLongitude);
+		applyIfPresent(in.phone(), hotel::setPhone);
+		applyIfPresent(in.email(), hotel::setEmail);
+		if (in.starRating() != null) {
+			hotel.setStarRating(in.starRating().shortValue());
+		}
+		if (in.checkInTime() != null) {
+			hotel.setCheckInTime(parseTime(in.checkInTime()));
+		}
+		if (in.checkOutTime() != null) {
+			hotel.setCheckOutTime(parseTime(in.checkOutTime()));
+		}
+		if (in.defaultCurrency() != null) {
+			hotel.setDefaultCurrency(validateCurrency(in.defaultCurrency(), "defaultCurrency"));
+		}
+		if (in.status() != null) {
+			hotel.setStatus(validStatus(in.status(), "hotel"));
+		}
+		hotel.setUpdatedAt(Instant.now());
+		try {
+			hotelRepository.saveAndFlush(hotel);
+		} catch (DataIntegrityViolationException ex) {
+			throw DomainException.validation("invalid reference data (country or currency)");
+		}
+		audit.record(actor, "hotel.updated", "hotel", hotel.getId(), hotel.getId(),
+				Map.of("name", hotel.getName()));
+		return hotel;
+	}
+
+	@Override
+	@Transactional
+	public List<Amenity> setHotelAmenities(UUID hotelId, List<UUID> amenityIds) {
+		CurrentUser actor = requireStaffAccess(hotelId);
+		Hotel hotel = hotelRepository.findById(hotelId)
+				.orElseThrow(() -> DomainException.notFound("hotel not found"));
+		List<Amenity> amenities = amenityRepository.findAllById(amenityIds == null
+				? List.of() : amenityIds);
+		if (amenities.size() != (amenityIds == null ? 0 : amenityIds.size())) {
+			throw DomainException.validation("unknown amenity id");
+		}
+		hotel.getAmenities().clear();
+		hotel.getAmenities().addAll(amenities);
+		hotel.setUpdatedAt(Instant.now());
+		hotelRepository.save(hotel);
+		audit.record(actor, "hotel.amenities.updated", "hotel", hotelId, hotelId,
+				Map.of("count", amenities.size()));
+		return List.copyOf(hotel.getAmenities());
+	}
+
+	@Override
+	@Transactional
+	public List<Media> setHotelMedia(UUID hotelId, List<MediaInput> inputs) {
+		CurrentUser actor = requireStaffAccess(hotelId);
+		List<Media> media = mediaAdmin.replaceHotelMedia(hotelId, inputs);
+		audit.record(actor, "hotel.media.updated", "hotel", hotelId, hotelId,
+				Map.of("count", media.size()));
+		return media;
+	}
+
+	// ---------------------------------------------------------------- room types
+
+	@Override
+	@Transactional
+	public RoomType createRoomType(UUID hotelId, AdminRoomTypeInput in) {
+		CurrentUser actor = requireStaffAccess(hotelId);
+		requireHotel(hotelId);
+		RoomType rt = new RoomType();
+		rt.setHotelId(hotelId);
+		rt.setName(required(in.name(), "name"));
+		rt.setDescription(in.description());
+		rt.setLongDescription(in.longDescription());
+		rt.setMaxAdults(in.maxAdults() == null ? (short) 2 : in.maxAdults().shortValue());
+		rt.setMaxChildren(in.maxChildren() == null ? (short) 0 : in.maxChildren().shortValue());
+		rt.setBedConfiguration(in.bedConfiguration());
+		rt.setSizeSqm(in.sizeSqm());
+		rt.setViewType(in.viewType());
+		rt.setStatus(in.status() == null ? "active" : validStatus(in.status(), "room type"));
+		rt.setTotalInventory(in.totalInventory() == null ? 10
+				: nonNegative(in.totalInventory(), "totalInventory"));
+		rt.setCreatedAt(Instant.now());
+		rt.setUpdatedAt(Instant.now());
+		if (rt.getMaxAdults() < 0 || rt.getMaxChildren() < 0) {
+			throw DomainException.validation("occupancy cannot be negative");
+		}
+		roomTypeRepository.save(rt);
+		audit.record(actor, "room_type.created", "room_type", rt.getId(), hotelId,
+				Map.of("name", rt.getName()));
+		return rt;
+	}
+
+	@Override
+	@Transactional
+	public RoomType updateRoomType(UUID id, AdminRoomTypeInput in) {
+		RoomType rt = roomTypeRepository.findById(id)
+				.orElseThrow(() -> DomainException.notFound("room type not found"));
+		CurrentUser actor = requireStaffAccess(rt.getHotelId());
+		if (in.name() != null) {
+			rt.setName(required(in.name(), "name"));
+		}
+		applyIfPresent(in.description(), rt::setDescription);
+		applyIfPresent(in.longDescription(), rt::setLongDescription);
+		if (in.maxAdults() != null) {
+			rt.setMaxAdults(in.maxAdults().shortValue());
+		}
+		if (in.maxChildren() != null) {
+			rt.setMaxChildren(in.maxChildren().shortValue());
+		}
+		applyIfPresent(in.bedConfiguration(), rt::setBedConfiguration);
+		applyIfPresent(in.sizeSqm(), rt::setSizeSqm);
+		applyIfPresent(in.viewType(), rt::setViewType);
+		if (in.totalInventory() != null) {
+			int newTotal = nonNegative(in.totalInventory(), "totalInventory");
+			int floor = availability.maxSoldUnits(rt.getId());
+			if (newTotal < floor) {
+				throw DomainException.conflict("totalInventory cannot be lower than the "
+						+ floor + " units already sold/blocked for this room type");
+			}
+			rt.setTotalInventory(newTotal);
+		}
+		if (in.status() != null) {
+			rt.setStatus(validStatus(in.status(), "room type"));
+		}
+		if (rt.getMaxAdults() < 0 || rt.getMaxChildren() < 0) {
+			throw DomainException.validation("occupancy cannot be negative");
+		}
+		rt.setUpdatedAt(Instant.now());
+		roomTypeRepository.save(rt);
+		audit.record(actor, "room_type.updated", "room_type", rt.getId(), rt.getHotelId(),
+				Map.of("name", rt.getName()));
+		return rt;
+	}
+
+	@Override
+	@Transactional
+	public List<Amenity> setRoomTypeAmenities(UUID roomTypeId, List<UUID> amenityIds) {
+		RoomType rt = roomTypeRepository.findById(roomTypeId)
+				.orElseThrow(() -> DomainException.notFound("room type not found"));
+		CurrentUser actor = requireStaffAccess(rt.getHotelId());
+		List<Amenity> amenities = amenityRepository.findAllById(amenityIds == null
+				? List.of() : amenityIds);
+		if (amenities.size() != (amenityIds == null ? 0 : amenityIds.size())) {
+			throw DomainException.validation("unknown amenity id");
+		}
+		rt.getAmenities().clear();
+		rt.getAmenities().addAll(amenities);
+		rt.setUpdatedAt(Instant.now());
+		roomTypeRepository.save(rt);
+		audit.record(actor, "room_type.amenities.updated", "room_type", roomTypeId,
+				rt.getHotelId(), Map.of("count", amenities.size()));
+		return List.copyOf(rt.getAmenities());
+	}
+
+	@Override
+	@Transactional
+	public List<Media> setRoomTypeMedia(UUID roomTypeId, List<MediaInput> inputs) {
+		RoomType rt = roomTypeRepository.findById(roomTypeId)
+				.orElseThrow(() -> DomainException.notFound("room type not found"));
+		CurrentUser actor = requireStaffAccess(rt.getHotelId());
+		List<Media> media = mediaAdmin.replaceRoomTypeMedia(roomTypeId, inputs);
+		audit.record(actor, "room_type.media.updated", "room_type", roomTypeId, rt.getHotelId(),
+				Map.of("count", media.size()));
+		return media;
+	}
+
+	// ---------------------------------------------------------------- rooms
+
+	@Override
+	@Transactional
+	public Room createRoom(UUID hotelId, AdminRoomInput in) {
+		CurrentUser actor = requireStaffAccess(hotelId);
+		requireHotel(hotelId);
+		UUID roomTypeId = in.roomTypeId();
+		RoomType rt = roomTypeId == null ? null
+				: roomTypeRepository.findById(roomTypeId).orElse(null);
+		if (rt == null) {
+			throw DomainException.validation("room type not found");
+		}
+		if (!rt.getHotelId().equals(hotelId)) {
+			throw DomainException.validation("room type does not belong to this hotel");
+		}
+		if (roomRepository.existsByHotelIdAndRoomNumber(hotelId, in.roomNumber())) {
+			throw DomainException.conflict("room number already exists in this hotel");
+		}
+		Room room = new Room();
+		room.setHotelId(hotelId);
+		room.setRoomTypeId(in.roomTypeId());
+		room.setRoomNumber(required(in.roomNumber(), "roomNumber"));
+		room.setFloor(in.floor());
+		room.setStatus(in.status() == null ? "active" : validRoomStatus(in.status()));
+		room.setHousekeepingStatus(in.housekeepingStatus() == null ? "clean"
+				: validHousekeepingStatus(in.housekeepingStatus()));
+		room.setMaintenanceStatus(in.maintenanceStatus() == null ? "ok"
+				: validMaintenanceStatus(in.maintenanceStatus()));
+		room.setCreatedAt(Instant.now());
+		room.setUpdatedAt(Instant.now());
+		roomRepository.save(room);
+		audit.record(actor, "room.created", "room", room.getId(), hotelId,
+				Map.of("roomNumber", room.getRoomNumber()));
+		return room;
+	}
+
+	@Override
+	@Transactional
+	public Room updateRoom(UUID id, AdminRoomInput in) {
+		Room room = roomRepository.findById(id)
+				.orElseThrow(() -> DomainException.notFound("room not found"));
+		CurrentUser actor = requireStaffAccess(room.getHotelId());
+		if (in.roomTypeId() != null) {
+			RoomType rt = roomTypeRepository.findById(in.roomTypeId())
+					.orElseThrow(() -> DomainException.validation("room type not found"));
+			if (!rt.getHotelId().equals(room.getHotelId())) {
+				throw DomainException.validation("room type does not belong to this hotel");
+			}
+			room.setRoomTypeId(in.roomTypeId());
+		}
+		if (in.roomNumber() != null) {
+			if (!in.roomNumber().equals(room.getRoomNumber())
+					&& roomRepository.existsByHotelIdAndRoomNumber(room.getHotelId(),
+							in.roomNumber())) {
+				throw DomainException.conflict("room number already exists in this hotel");
+			}
+			room.setRoomNumber(required(in.roomNumber(), "roomNumber"));
+		}
+		applyIfPresent(in.floor(), room::setFloor);
+		if (in.status() != null) {
+			room.setStatus(validRoomStatus(in.status()));
+		}
+		if (in.housekeepingStatus() != null) {
+			room.setHousekeepingStatus(validHousekeepingStatus(in.housekeepingStatus()));
+		}
+		if (in.maintenanceStatus() != null) {
+			room.setMaintenanceStatus(validMaintenanceStatus(in.maintenanceStatus()));
+		}
+		room.setUpdatedAt(Instant.now());
+		roomRepository.save(room);
+		audit.record(actor, "room.updated", "room", room.getId(), room.getHotelId(),
+				Map.of("roomNumber", room.getRoomNumber()));
+		return room;
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<Amenity> amenityCatalog() {
+		currentUser.requireStaff();
+		return amenityRepository.findAllByOrderByCategoryAscNameAsc();
+	}
+
+	@Override
+	@Transactional
+	public RoomType setRoomTypeInventory(UUID roomTypeId, int totalInventory) {
+		RoomType rt = roomTypeRepository.findById(roomTypeId)
+				.orElseThrow(() -> DomainException.validation("room type not found"));
+		requireStaffAccess(rt.getHotelId());
+		int floor = availability.maxSoldUnits(roomTypeId);
+		if (totalInventory < floor) {
+			throw DomainException.conflict("totalInventory cannot be lower than the "
+					+ floor + " units already sold/blocked for this room type");
+		}
+		rt.setTotalInventory(nonNegative(totalInventory, "totalInventory"));
+		rt.setUpdatedAt(Instant.now());
+		return roomTypeRepository.save(rt);
+	}
+
+	// ---------------------------------------------------------------- helpers
+
+	/** Unique slug from a name (collision strategy: append -2, -3, …). */
+	private String uniqueHotelSlug(String name) {
+		String base = name == null ? "hotel"
+				: name.trim().toLowerCase().replaceAll("[^a-z0-9]+", "-")
+						.replaceAll("(^-|-$)", "");
+		if (base.isBlank()) {
+			base = "hotel";
+		}
+		if (!hotelRepository.existsBySlug(base)) {
+			return base;
+		}
+		for (int suffix = 2; ; suffix++) {
+			String candidate = base + "-" + suffix;
+			if (!hotelRepository.existsBySlug(candidate)) {
+				return candidate;
+			}
+		}
+	}
+
+	private Hotel requireHotel(UUID hotelId) {
+		return hotelRepository.findById(hotelId)
+				.orElseThrow(() -> DomainException.notFound("hotel not found"));
+	}
+
+	private CurrentUser requireStaffAccess(UUID hotelId) {
+		CurrentUser actor = currentUser.require();
+		if (!actor.hasRole("super_admin") && !actor.inHotel(hotelId)) {
+			throw DomainException.forbidden("no access to this hotel");
+		}
+		return actor;
+	}
+
+	private CurrentUser requireSuperAdmin() {
+		CurrentUser actor = currentUser.require();
+		if (!actor.hasRole("super_admin")) {
+			throw DomainException.forbidden("super_admin role required");
+		}
+		return actor;
+	}
+
+	private String required(String value, String field) {
+		if (value == null || value.isBlank()) {
+			throw DomainException.validation(field + " is required");
+		}
+		return value;
+	}
+
+	private <T> void applyIfPresent(T value, java.util.function.Consumer<T> setter) {
+		if (value != null) {
+			setter.accept(value);
+		}
+	}
+
+	private String validateCurrency(String code, String field) {
+		String trimmed = required(code, field).trim().toUpperCase();
+		if (!reference.currencyExists(trimmed)) {
+			throw DomainException.validation("unknown currency: " + trimmed);
+		}
+		return trimmed;
+	}
+
+	private LocalTime parseTime(String value) {
+		if (value == null || value.isBlank()) {
+			return null;
+		}
+		try {
+			return LocalTime.parse(value.trim());
+		} catch (DateTimeParseException ex) {
+			throw DomainException.validation("time must be in HH:mm format");
+		}
+	}
+
+	private String validStatus(String status, String what) {
+		if (!List.of("active", "inactive", "draft").contains(status)) {
+			throw DomainException.validation("invalid " + what + " status");
+		}
+		return status;
+	}
+
+	private String validRoomStatus(String status) {
+		if (!List.of("active", "inactive", "out_of_order").contains(status)) {
+			throw DomainException.validation("invalid room status");
+		}
+		return status;
+	}
+
+	private String validHousekeepingStatus(String status) {
+		if (!List.of("clean", "dirty", "inspected", "out_of_service").contains(status)) {
+			throw DomainException.validation("invalid housekeeping status");
+		}
+		return status;
+	}
+
+	private String validMaintenanceStatus(String status) {
+		if (!List.of("ok", "needs_repair", "under_repair").contains(status)) {
+			throw DomainException.validation("invalid maintenance status");
+		}
+		return status;
+	}
+
+	private int nonNegative(int value, String field) {
+		if (value < 0) {
+			throw DomainException.validation(field + " cannot be negative");
+		}
+		return value;
+	}
+}

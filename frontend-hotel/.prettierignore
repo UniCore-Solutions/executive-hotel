@@ -1,0 +1,4 @@
+# Vendored third-party file (tw-animate-css dist) — keep upstream formatting
+src/app/tw-animate.css
+.next/
+node_modules/

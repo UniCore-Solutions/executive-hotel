@@ -1,0 +1,35 @@
+extend type Query {
+	reviews(hotelId: ID!, page: PageInput): ReviewPage!
+	adminReviews(hotelId: ID!, status: ReviewModerationStatus, page: PageInput): ReviewPage!
+}
+
+extend type Mutation {
+	createReview(input: CreateReviewInput!): Review!
+	moderateReview(id: ID!, status: ReviewModerationStatus!, response: String): Review!
+}
+
+input CreateReviewInput {
+	hotelId: ID!
+	reservationId: ID
+	rating: Int!
+	title: String
+	comment: String
+}
+
+enum ReviewModerationStatus {
+	pending
+	approved
+	rejected
+}
+
+type Review {
+	id: ID!
+	hotelId: ID!
+	authorName: String
+	rating: Int!
+	title: String
+	comment: String
+	moderationStatus: String!
+	responseText: String
+	createdAt: DateTime!
+}

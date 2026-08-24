@@ -1,0 +1,33 @@
+# Secrets / environment
+.env
+.env.*
+!.env.example
+
+# Backups (never commit database dumps)
+backups/
+
+# Node
+node_modules/
+.next/
+coverage/
+*.tsbuildinfo
+
+# Java
+target/
+*.class
+
+# Test artifacts
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Runtime state
+logs/
+*.log
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

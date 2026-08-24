@@ -1,0 +1,20 @@
+mutation Login($input: LoginInput!) {
+  login(input: $input) {
+    token
+    me {
+      id
+      email
+      roles
+      hotelIds
+    }
+  }
+}
+
+query Me {
+  me {
+    id
+    email
+    roles
+    hotelIds
+  }
+}

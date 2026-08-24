@@ -1,0 +1,11 @@
+target/
+data/
+docs/
+postman/
+scripts/
+.git/
+.gitignore
+.env
+.env.*
+!.env.example
+*.md

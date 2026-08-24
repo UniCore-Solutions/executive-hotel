@@ -1,0 +1,65 @@
+query AdminUsers {
+  adminUsers {
+    id
+    email
+    firstName
+    lastName
+    phone
+    status
+    lastLoginAt
+    createdAt
+    roles {
+      id
+      roleName
+      hotelId
+      hotelName
+    }
+  }
+}
+
+query AdminRoles {
+  adminRoles {
+    name
+    hotelScoped
+  }
+}
+
+mutation CreateUser($input: AdminCreateUserInput!) {
+  createUser(input: $input) {
+    id
+    email
+    status
+    roles {
+      id
+      roleName
+      hotelId
+      hotelName
+    }
+  }
+}
+
+mutation AssignRole($userId: ID!, $roleName: String!, $hotelId: ID) {
+  assignRole(userId: $userId, roleName: $roleName, hotelId: $hotelId) {
+    id
+    email
+    roles {
+      id
+      roleName
+      hotelId
+      hotelName
+    }
+  }
+}
+
+mutation RevokeRole($userRoleId: ID!) {
+  revokeRole(userRoleId: $userRoleId) {
+    id
+    email
+    roles {
+      id
+      roleName
+      hotelId
+      hotelName
+    }
+  }
+}

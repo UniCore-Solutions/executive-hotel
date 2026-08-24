@@ -1,0 +1,140 @@
+query HotelById($id: ID!) {
+  hotel(id: $id) {
+    id
+    name
+    brand
+    description
+    hotelType
+    addressLine1
+    addressLine2
+    city
+    countryCode
+    latitude
+    longitude
+    phone
+    email
+    starRating
+    checkInTime
+    checkOutTime
+    defaultCurrency
+    status
+    averageRating
+    amenities {
+      id
+      name
+      icon
+      category
+    }
+    media {
+      id
+      url
+      altText
+      category
+      isPrimary
+      sortOrder
+    }
+  }
+}
+
+query HotelRoomTypes($hotelId: ID!) {
+  roomTypes(hotelId: $hotelId) {
+    id
+    hotelId
+    hotelName
+    currencyCode
+    name
+    description
+    maxAdults
+    maxChildren
+    bedConfiguration
+    sizeSqm
+    viewType
+    status
+    amenities {
+      id
+      name
+      category
+    }
+    media {
+      id
+      url
+      altText
+      isPrimary
+    }
+    pricePerNight
+  }
+}
+
+query HotelExperiences($hotelId: ID!) {
+  experiences(hotelId: $hotelId) {
+    id
+    name
+    description
+    category
+    durationMinutes
+    priceAmount
+    currencyCode
+    location
+    sortOrder
+  }
+}
+
+query HotelOffers($hotelId: ID!) {
+  offers(hotelId: $hotelId) {
+    id
+    code
+    name
+    description
+    discountType
+    discountValue
+    bookingWindowStart
+    bookingWindowEnd
+    stayWindowStart
+    stayWindowEnd
+    minNights
+    stackable
+    appliesToAllRoomTypes
+    appliesToAllRatePlans
+    status
+  }
+}
+
+query HotelReviews($hotelId: ID!, $page: PageInput) {
+  reviews(hotelId: $hotelId, page: $page) {
+    total
+    page
+    size
+    items {
+      id
+      authorName
+      rating
+      title
+      comment
+      responseText
+      createdAt
+    }
+  }
+}
+
+query StayAvailability($input: AvailabilityInput!) {
+  availability(input: $input) {
+    roomTypeId
+    available
+    status
+    capacityFits
+  }
+}
+
+query StayRates($input: RatesInput!) {
+  rates(input: $input) {
+    roomTypeId
+    ratePlanId
+    ratePlanCode
+    ratePlanName
+    mealPlan
+    pricePerNight
+    currencyCode
+    cancellationPolicy
+    isRefundable
+  }
+}

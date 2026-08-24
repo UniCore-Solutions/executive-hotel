@@ -1,0 +1,60 @@
+query PlatformBySlug($slug: String!) {
+  platform(slug: $slug) {
+    id
+    slug
+    name
+    tagline
+    description
+    status
+    media {
+      id
+      url
+      altText
+      category
+      isPrimary
+    }
+    contentBlocks {
+      __typename
+      id
+      type
+      position
+      isEnabled
+      ... on HeroBlock {
+        eyebrow
+        title
+        subtitle
+        image {
+          id
+          url
+          altText
+        }
+        mobileImage {
+          id
+          url
+          altText
+        }
+        ctaLabel
+        ctaTarget
+      }
+      ... on FeaturedExperiencesBlock {
+        title
+        items {
+          id
+          position
+          experience {
+            id
+            hotelId
+            name
+            description
+            category
+            durationMinutes
+            priceAmount
+            currencyCode
+            location
+            sortOrder
+          }
+        }
+      }
+    }
+  }
+}

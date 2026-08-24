@@ -1,0 +1,69 @@
+extend type Query {
+	platform(slug: String!): Platform!
+}
+
+"""The collection / brand tenant; identity + site-level content blocks."""
+type Platform {
+	id: ID!
+	slug: String!
+	name: String!
+	tagline: String
+	description: String
+	status: PlatformStatus!
+	defaultCurrency: String
+	media: [Media!]!
+	contentBlocks: [ContentBlock!]!
+	hotels: [Hotel!]!
+	createdAt: DateTime!
+	updatedAt: DateTime!
+}
+
+enum PlatformStatus {
+	draft
+	active
+	inactive
+}
+
+"""Base fields shared by every content block (platform_content_blocks row)."""
+interface ContentBlock {
+	id: ID!
+	type: PlatformBlockType!
+	position: Int!
+	isEnabled: Boolean!
+}
+
+"""Closed block-type enum; new types require a migration + GraphQL type."""
+enum PlatformBlockType {
+	HERO
+	EXPERIENCES
+}
+
+type HeroBlock implements ContentBlock {
+	id: ID!
+	type: PlatformBlockType!
+	position: Int!
+	isEnabled: Boolean!
+	eyebrow: String
+	title: String!
+	subtitle: String
+	image: Media
+	mobileImage: Media
+	ctaLabel: String
+	ctaTarget: String
+}
+
+type FeaturedExperiencesBlock implements ContentBlock {
+	id: ID!
+	type: PlatformBlockType!
+	position: Int!
+	isEnabled: Boolean!
+	title: String!
+	items: [FeaturedExperienceItem!]!
+}
+
+"""Ordered curation row referencing a real Experience (single source of truth)."""
+type FeaturedExperienceItem {
+	id: ID!
+	experience: Experience!
+	position: Int!
+}

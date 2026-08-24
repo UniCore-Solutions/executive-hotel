@@ -1,0 +1,1500 @@
+{
+  "info": {
+    "name": "Hotel Collection — GraphQL API",
+    "description": "Backend contract for the Hotel Collection platform. Single endpoint POST /graphql (GraphiQL in dev). Error contract: extensions.code ∈ UNAUTHORIZED | FORBIDDEN | NOT_FOUND | CONFLICT | VALIDATION. Auth: stateless Bearer JWT (see 'register' → token). Accountless flows (quote, book, lookup, invoice) need no token; payments and admin queries do.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1 · Catalog & Search",
+      "item": [
+        {
+          "name": "Search hotels (query + sort + page)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Search($input: HotelSearchInput) {\n  hotels(input: $input) {\n    total\n    page\n    size\n    items { id name city countryCode starRating fromPricePerNight }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"query\": \"marrakech\",\n    \"page\": { \"page\": 0, \"size\": 20 },\n    \"sort\": \"RATING_DESC\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "name": "Hotel detail (batched media/amenities/prices)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Hotel($id: ID!) {\n  hotel(id: $id) {\n    name\n    city\n    checkInTime\n    checkOutTime\n    fromPricePerNight\n    media { url }\n    amenities { name }\n    roomTypes { id name maxAdults pricePerNight }\n  }\n}",
+                "variables": "{\n  \"id\": \"1\"\n}"
+              }
+            }
+          }
+        },
+        {
+          "name": "Hotel details page (reviews + aggregates)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Details($id: ID!) {\n  hotelDetails(id: $id) {\n    hotel { name city }\n    experiences { name }\n    restaurants { name }\n    reviewsCount\n    averageRating\n    reviews { total items { authorName rating title } }\n  }\n}",
+                "variables": "{\n  \"id\": \"1\"\n}"
+              }
+            }
+          }
+        },
+        {
+          "name": "Offers / extras / reviews",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Offers($hotelId: ID!) {\n  offers(hotelId: $hotelId) { code name discountType discountValue }\n  extras(hotelId: $hotelId) { name pricePerUnit }\n  reviews(hotelId: $hotelId) { total items { rating title } }\n}",
+                "variables": "{\n  \"hotelId\": \"1\"\n}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 · Stay & Pricing",
+      "item": [
+        {
+          "name": "Availability (rooms honored)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Availability($input: AvailabilityInput!) {\n  availability(input: $input) { roomTypeId status available capacityFits }\n}",
+                "variables": "{\n  \"input\": {\n    \"hotelId\": \"1\",\n    \"checkInDate\": \"2026-09-01\",\n    \"checkOutDate\": \"2026-09-04\",\n    \"adults\": 2,\n    \"children\": 0,\n    \"rooms\": 1\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "name": "Rates per room type / rate plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Rates($input: RatesInput!) {\n  rates(input: $input) { roomTypeId ratePlanId ratePlanCode pricePerNight }\n}",
+                "variables": "{\n  \"input\": {\n    \"hotelId\": \"1\",\n    \"checkInDate\": \"2026-09-01\",\n    \"checkOutDate\": \"2026-09-04\",\n    \"adults\": 2,\n    \"children\": 0\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "name": "Quote (server pricing, incl. promo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Quote($input: QuoteInput!) {\n  quote(input: $input) {\n    currencyCode\n    subtotalAmount\n    discountAmount\n    taxAmount\n    feeAmount\n    totalAmount\n    originalTotal\n    valid\n    message\n    lines { roomTypeId ratePlanId ratePerNight nights subtotalAmount }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"hotelId\": \"1\",\n    \"checkInDate\": \"2026-09-10\",\n    \"checkOutDate\": \"2026-09-12\",\n    \"adults\": 2,\n    \"children\": 0,\n    \"currencyCode\": \"EUR\",\n    \"rooms\": [\n      {\n        \"roomTypeId\": \"1\",\n        \"ratePlanId\": \"1\"\n      }\n    ],\n    \"extras\": [\n      {\n        \"extraId\": 1,\n        \"quantity\": 2\n      },\n      {\n        \"extraId\": 2,\n        \"quantity\": 1\n      }\n    ],\n    \"promoCode\": \"SPRING25\"\n  }\n}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 · Auth & Account",
+      "item": [
+        {
+          "name": "Register (returns token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Register($input: RegisterInput!) {\n  register(input: $input) { token me { id email roles hotelIds } }\n}",
+                "variables": "{\n  \"input\": {\n    \"firstName\": \"Zahra\",\n    \"lastName\": \"Bennani\",\n    \"email\": \"zahra@example.com\",\n    \"password\": \"secret123\"\n  }\n}"
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const token = pm.response.json().data?.register?.token;",
+                  "if (token) pm.collectionVariables.set('token', token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Login($input: LoginInput!) {\n  login(input: $input) { token me { id email roles hotelIds } }\n}",
+                "variables": "{\n  \"input\": {\n    \"email\": \"zahra@example.com\",\n    \"password\": \"secret123\"\n  }\n}"
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const token = pm.response.json().data?.login?.token;",
+                  "if (token) pm.collectionVariables.set('token', token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me (requires token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Me { me { id email roles hotelIds } }"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 · Booking",
+      "item": [
+        {
+          "name": "Create reservation (anonymous, idempotent)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Book($input: CreateReservationInput!) {\n  createReservation(input: $input) {\n    created\n    reservation {\n      id reference status paymentStatus checkInDate checkOutDate totalAmount\n      roomLines { roomTypeId ratePlanId nights ratePerNight subtotalAmount }\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"hotelId\": \"1\",\n    \"checkInDate\": \"2026-09-10\",\n    \"checkOutDate\": \"2026-09-12\",\n    \"adults\": 2,\n    \"children\": 0,\n    \"currencyCode\": \"EUR\",\n    \"guest\": {\n      \"firstName\": \"Amine\",\n      \"lastName\": \"El Idrissi\",\n      \"email\": \"amine@example.com\",\n      \"phone\": \"+212600000000\",\n      \"countryCode\": \"MA\"\n    },\n    \"rooms\": [\n      {\n        \"roomTypeId\": \"1\",\n        \"ratePlanId\": \"1\"\n      }\n    ],\n    \"extras\": [\n      {\n        \"extraId\": 1,\n        \"quantity\": 2\n      },\n      {\n        \"extraId\": 2,\n        \"quantity\": 1\n      }\n    ],\n    \"promoCode\": \"SPRING25\",\n    \"idempotencyKey\": \"postman-azure-2026-09-10-1\"\n  }\n}"
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const ref = pm.response.json().data?.createReservation?.reservation?.reference;",
+                  "const id = pm.response.json().data?.createReservation?.reservation?.id;",
+                  "if (ref) pm.collectionVariables.set('reference', ref);",
+                  "if (id) pm.collectionVariables.set('reservationId', id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lookup by reference + email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Lookup($input: ReservationLookupInput!) {\n  reservation(input: $input) {\n    reference status paymentStatus checkInDate checkOutDate totalAmount\n    guest { firstName lastName email }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"reference\": \"{{reference}}\",\n    \"email\": \"amine@example.com\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "name": "Cancel reservation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Cancel($input: CancelReservationInput!) {\n  cancelReservation(input: $input) {\n    reservation {\n      reference status\n      cancellation { penaltyAmount refundAmount refundable reason }\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"reference\": \"{{reference}}\",\n    \"email\": \"amine@example.com\",\n    \"reasonCode\": \"guest_changed_plans\",\n    \"reasonNote\": \"changed plans\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "name": "My reservations (requires token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Mine { myReservations { reference status checkInDate totalAmount } }"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 · Billing",
+      "item": [
+        {
+          "name": "Create payment (requires owner/staff token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Pay($input: CreatePaymentInput!) {\n  createPayment(input: $input) { id reservationId amount currencyCode status provider }\n}",
+                "variables": "{\n  \"input\": {\n    \"reservationId\": \"{{reservationId}}\",\n    \"amount\": 480.93,\n    \"currencyCode\": \"EUR\",\n    \"provider\": \"mock\"\n  }\n}"
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const id = pm.response.json().data?.createPayment?.id;",
+                  "if (id) pm.collectionVariables.set('paymentId', id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Capture payment (requires owner/staff token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Capture($input: CapturePaymentInput!) {\n  capturePayment(input: $input) { id status providerReference }\n}",
+                "variables": "{\n  \"input\": {\n    \"paymentId\": \"{{paymentId}}\"\n  }\n}"
+              }
+            }
+          }
+        },
+        {
+          "name": "Issue invoice (idempotent)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Bill($input: ReservationLookupInput!) {\n  issueInvoice(input: $input) {\n    invoiceNumber billingName totalAmount\n    items { description quantity unitPrice totalPrice }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"reference\": \"{{reference}}\",\n    \"email\": \"amine@example.com\"\n  }\n}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6 · Reviews",
+      "item": [
+        {
+          "name": "Create review (requires a checked-out stay)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Review($input: CreateReviewInput!) {\n  createReview(input: $input) { id rating title comment moderationStatus }\n}",
+                "variables": "{\n  \"input\": {\n    \"hotelId\": \"1\",\n    \"reservationId\": \"{{reservationId}}\",\n    \"rating\": 5,\n    \"title\": \"Wonderful stay\",\n    \"comment\": \"Perfect location and service.\"\n  }\n}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7 · Admin (staff only)",
+      "item": [
+        {
+          "name": "Admin hotel (hotel-scoped)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query AdminHotel($hotelId: ID!) {\n  adminHotel(hotelId: $hotelId) {\n    name status\n    roomTypes { id name maxAdults }\n    ratePlans { id code name pricePerNight }\n    availability { roomTypeId stayDate totalInventory roomsSold }\n  }\n}",
+                "variables": "{\n  \"hotelId\": \"1\"\n}"
+              }
+            }
+          }
+        },
+        {
+          "name": "Admin reservations (hotel-scoped, clamped paging)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query AdminReservations($hotelId: ID!, $status: ReservationStatus, $page: PageInput) {\n  adminReservations(hotelId: $hotelId, status: $status, page: $page) {\n    total page size\n    items { reference status paymentStatus checkInDate totalAmount }\n  }\n}",
+                "variables": "{\n  \"hotelId\": \"1\",\n  \"status\": null,\n  \"page\": { \"page\": 0, \"size\": 20 }\n}"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8 · Back Office Admin (staff only)",
+      "item": [
+        {
+          "name": "Admin login (seed super-admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Login($input: LoginInput!) {\n  login(input: $input) { token me { id email roles hotelIds } }\n}",
+                "variables": "{\n  \"input\": {\n    \"email\": \"admin@hotelcollection.test\",\n    \"password\": \"admin123\"\n  }\n}"
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const token = pm.response.json().data?.login?.token;",
+                  "if (token) pm.collectionVariables.set('token', token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me (roles & hotels)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Me {\n  me { id email firstName lastName roles hotelIds }\n}",
+                "variables": "{}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.me).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Dashboard($hotelId: ID!) {\n  adminDashboard(hotelId: $hotelId) {\n    hotelName arrivalsToday departuresToday inHouseToday soldOutTonight\n    occupancyPct revenueTotal pendingPayments pendingInvoices availableTonight\n  }\n}",
+                "variables": "{\n  \"hotelId\": \"3\"\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.adminDashboard).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Hotels (paginated)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Hotels($page: PageInput) {\n  adminHotels(page: $page) { total page size items { id name brand city countryCode starRating status roomTypeCount activeReservations } }\n}",
+                "variables": "{\n  \"page\": { \"page\": 0, \"size\": 20 }\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.adminHotels).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Hotel workspace",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Workspace($hotelId: ID!) {\n  adminHotel(hotelId: $hotelId) {\n    hotel { id name status }\n    amenities { id name }\n    media { id url isPrimary }\n    roomTypes { id name status }\n    rooms { id roomNumber status }\n    ratePlans { id name status links { id roomTypeName prices { validFrom validTo priceAmount } } }\n    availability { id stayDate totalInventory sold outOfOrder blocked }\n  }\n}",
+                "variables": "{\n  \"hotelId\": \"3\"\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.adminHotel).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create hotel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation CreateHotel($input: AdminHotelInput!) {\n  createHotel(input: $input) { id name status }\n}",
+                "variables": "{\n  \"input\": {\n    \"name\": \"Postman Demo Hotel\",\n    \"brand\": \"Hotel Collection\",\n    \"city\": \"Rabat\",\n    \"countryCode\": \"MA\",\n    \"defaultCurrency\": \"MAD\",\n    \"checkInTime\": \"15:00\",\n    \"checkOutTime\": \"12:00\",\n    \"starRating\": 4,\n    \"status\": \"active\"\n  }\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.createHotel).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create room type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation CreateRoomType($hotelId: ID!, $input: AdminRoomTypeInput!) {\n  createRoomType(hotelId: $hotelId, input: $input) { id name }\n}",
+                "variables": "{\n  \"hotelId\": \"3\",\n  \"input\": { \"name\": \"Postman Garden Room\", \"maxAdults\": 2, \"maxChildren\": 1, \"status\": \"active\" }\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.createRoomType).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create room",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation CreateRoom($hotelId: ID!, $input: AdminRoomInput!) {\n  createRoom(hotelId: $hotelId, input: $input) { id roomNumber status }\n}",
+                "variables": "{\n  \"hotelId\": \"3\",\n  \"input\": {\n    \"roomTypeId\": \"7\",\n    \"roomNumber\": \"201\",\n    \"floor\": \"2\",\n    \"status\": \"active\",\n    \"housekeepingStatus\": \"clean\",\n    \"maintenanceStatus\": \"ok\"\n  }\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.createRoom).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create rate plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation CreateRatePlan($hotelId: ID!, $input: AdminRatePlanInput!) {\n  createRatePlan(hotelId: $hotelId, input: $input) { id name code }\n}",
+                "variables": "{\n  \"hotelId\": \"3\",\n  \"input\": { \"name\": \"Postman Rate\", \"code\": \"PMR\", \"currencyCode\": \"EUR\", \"isRefundable\": true, \"paymentTiming\": \"prepay_deposit\", \"depositPercentage\": 20, \"minStay\": 1, \"status\": \"active\" }\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.createRatePlan).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Link room type to rate plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Link($roomTypeId: ID!, $ratePlanId: ID!) {\n  linkRoomTypeRatePlan(roomTypeId: $roomTypeId, ratePlanId: $ratePlanId) { id }\n}",
+                "variables": "{\n  \"roomTypeId\": \"7\",\n  \"ratePlanId\": \"5\"\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has data', () => pm.expect(pm.response.json().data).to.be.an('object'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Set rate plan prices",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation SetPrices($linkId: ID!, $prices: [RatePlanPriceInput!]!) {\n  setRatePlanPrices(linkId: $linkId, prices: $prices) { id }\n}",
+                "variables": "{\n  \"linkId\": \"13\",\n  \"prices\": [\n    {\n      \"validFrom\": \"2026-08-19\",\n      \"validTo\": \"2026-10-17\",\n      \"priceAmount\": 199.0\n    }\n  ]\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has data', () => pm.expect(pm.response.json().data).to.be.an('object'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Amenity catalog",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Amenities {\n  adminAmenities { id name category }\n}",
+                "variables": "{}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.adminAmenities).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reservations (hotel-scoped)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Reservations($hotelId: ID!, $page: PageInput) {\n  adminReservations(hotelId: $hotelId, page: $page) {\n    total items { id reference status paymentStatus checkInDate checkOutDate totalAmount guest { firstName lastName } }\n  }\n}",
+                "variables": "{\n  \"hotelId\": \"3\",\n  \"page\": { \"page\": 0, \"size\": 20 }\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.adminReservations).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Guests search",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Guests($hotelId: ID!, $query: String, $page: PageInput) {\n  adminGuests(hotelId: $hotelId, query: $query, page: $page) { total items { id firstName lastName email phone } }\n}",
+                "variables": "{\n  \"hotelId\": \"3\",\n  \"query\": \"maria\",\n  \"page\": { \"page\": 0, \"size\": 20 }\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.adminGuests).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Payments",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Payments($hotelId: ID!, $page: PageInput) {\n  adminPayments(hotelId: $hotelId, page: $page) { total items { id amount currencyCode status provider } }\n}",
+                "variables": "{\n  \"hotelId\": \"3\",\n  \"page\": { \"page\": 0, \"size\": 20 }\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.adminPayments).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invoices",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Invoices($hotelId: ID!, $page: PageInput) {\n  adminInvoices(hotelId: $hotelId, page: $page) { total items { id invoiceNumber totalAmount status } }\n}",
+                "variables": "{\n  \"hotelId\": \"3\",\n  \"page\": { \"page\": 0, \"size\": 20 }\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.adminInvoices).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Promotions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Promotions($hotelId: ID!) {\n  adminPromotions(hotelId: $hotelId) { id code name discountType discountValue status }\n}",
+                "variables": "{\n  \"hotelId\": \"3\"\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.adminPromotions).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reviews",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Reviews($hotelId: ID!, $page: PageInput) {\n  adminReviews(hotelId: $hotelId, page: $page) { total items { id rating title status } }\n}",
+                "variables": "{\n  \"hotelId\": \"3\",\n  \"page\": { \"page\": 0, \"size\": 20 }\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.adminReviews).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Notifications",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Notifications($hotelId: ID!, $page: PageInput) {\n  adminNotifications(hotelId: $hotelId, page: $page) { total items { id type message isRead createdAt } }\n}",
+                "variables": "{\n  \"hotelId\": \"3\",\n  \"page\": { \"page\": 0, \"size\": 20 }\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.adminNotifications).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Users & roles (super_admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Users {\n  adminUsers(page: { page: 0, size: 50 }) { total items { id email firstName lastName status roles { roleName hotelName } } }\n  adminRoles { id name description }\n}",
+                "variables": "{}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.adminUsers).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Audit log (super_admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Audit($page: PageInput) {\n  adminAuditLogs(page: $page) { total items { id actorEmail action entityType entityId createdAt } }\n}",
+                "variables": "{\n  \"page\": { \"page\": 0, \"size\": 20 }\n}"
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('has data', () => pm.expect(data).to.be.an('object'));",
+                  "pm.test('field present', () => pm.expect(data?.adminAuditLogs).to.not.be.undefined);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "9 · Client Platform Index",
+      "item": [
+        {
+          "name": "Platform by slug (identity + hero + featured experiences)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query PlatformBySlug($slug: String!) {\n  platform(slug: $slug) {\n    id\n    slug\n    name\n    tagline\n    description\n    status\n    media { id url altText category isPrimary }\n    contentBlocks {\n      __typename\n      id\n      type\n      position\n      isEnabled\n      ... on HeroBlock {\n        eyebrow\n        title\n        subtitle\n        image { id url altText }\n        mobileImage { id url altText }\n        ctaLabel\n        ctaTarget\n      }\n      ... on FeaturedExperiencesBlock {\n        title\n        items {\n          id\n          position\n          experience {\n            id\n            hotelId\n            name\n            description\n            category\n            durationMinutes\n            priceAmount\n            currencyCode\n            location\n            sortOrder\n          }\n        }\n      }\n    }\n  }\n}",
+                "variables": "{\n  \"slug\": \"the-hotel-collection\"\n}"
+              }
+            }
+          }
+        },
+        {
+          "name": "Upload media to platform (requires token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/v1/media/upload",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "platformId",
+                  "value": "1",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Read media (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/media/202608/5eaf6394-c140-4e4d-b08e-538c72117a4f.png"
+          }
+        }
+      ]
+    }
+  ]
+}

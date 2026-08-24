@@ -1,0 +1,278 @@
+extend type Query {
+	hotels(input: HotelSearchInput): HotelSearchResult!
+	hotel(id: ID!): Hotel
+	hotelDetails(id: ID!): HotelDetails
+	roomType(id: ID!): RoomType
+	roomTypes(hotelId: ID!): [RoomType!]!
+	experiences(hotelId: ID!): [Experience!]!
+	restaurants(hotelId: ID!): [Restaurant!]!
+	extras(hotelId: ID!): [Extra!]!
+	faqs(hotelId: ID!): [Faq!]!
+	adminHotel(hotelId: ID!): AdminHotel
+	adminHotels(page: PageInput): AdminHotelPage!
+	adminAmenities: [Amenity!]!
+}
+
+extend type Mutation {
+	createHotel(input: AdminHotelInput!): Hotel!
+	updateHotel(id: ID!, input: AdminHotelInput!): Hotel!
+	setHotelAmenities(hotelId: ID!, amenityIds: [ID!]!): [Amenity!]!
+	setHotelMedia(hotelId: ID!, media: [MediaInput!]!): [Media!]!
+	createRoomType(hotelId: ID!, input: AdminRoomTypeInput!): RoomType!
+	updateRoomType(id: ID!, input: AdminRoomTypeInput!): RoomType!
+	setRoomTypeAmenities(roomTypeId: ID!, amenityIds: [ID!]!): [Amenity!]!
+	setRoomTypeMedia(roomTypeId: ID!, media: [MediaInput!]!): [Media!]!
+	createRoom(hotelId: ID!, input: AdminRoomInput!): Room!
+	updateRoom(id: ID!, input: AdminRoomInput!): Room!
+}
+
+input HotelSearchInput {
+	query: String
+	page: PageInput
+	sort: HotelSort
+}
+
+enum HotelSort {
+	RATING_DESC
+	PRICE_ASC
+	NAME_ASC
+}
+
+type HotelSearchResult {
+	total: Int!
+	page: Int!
+	size: Int!
+	items: [Hotel!]!
+}
+
+type Hotel {
+	id: ID!
+	name: String!
+	brand: String
+	description: String
+	hotelType: String
+	addressLine1: String
+	addressLine2: String
+	city: String
+	countryCode: String
+	latitude: Float
+	longitude: Float
+	phone: String
+	email: String
+	starRating: Int
+	checkInTime: String
+	checkOutTime: String
+	defaultCurrency: String!
+	status: HotelStatus!
+	averageRating: Float
+	amenities: [Amenity!]!
+	media: [Media!]!
+	roomTypes: [RoomType!]!
+	fromPricePerNight: Int
+}
+
+enum HotelStatus {
+	active
+	inactive
+	draft
+}
+
+type HotelDetails {
+	hotel: Hotel!
+	experiences: [Experience!]!
+	restaurants: [Restaurant!]!
+	faqs: [Faq!]!
+	reviews: ReviewPage!
+	reviewsCount: Int!
+	averageRating: Float
+}
+
+type Amenity {
+	id: ID!
+	name: String!
+	icon: String
+	category: String
+}
+
+type RoomType {
+	id: ID!
+	hotelId: ID!
+	hotelName: String
+	currencyCode: String
+	name: String!
+	description: String
+	maxAdults: Int!
+	maxChildren: Int!
+	bedConfiguration: String
+	sizeSqm: Float
+	viewType: String
+	status: RoomTypeStatus!
+	amenities: [Amenity!]!
+	media: [Media!]!
+	pricePerNight: Int
+}
+
+enum RoomTypeStatus {
+	active
+	inactive
+	draft
+}
+
+type Experience {
+	id: ID!
+	hotelId: ID!
+	name: String!
+	description: String
+	category: String
+	durationMinutes: Int
+	priceAmount: Float
+	currencyCode: String
+	location: String
+	sortOrder: Int!
+}
+
+type Restaurant {
+	id: ID!
+	hotelId: ID!
+	name: String!
+	description: String
+	cuisineType: String
+	openingHours: String
+	location: String
+	sortOrder: Int!
+}
+
+type Extra {
+	id: ID!
+	hotelId: ID!
+	name: String!
+	description: String
+	pricingModel: ExtraPricingModel!
+	priceAmount: Float!
+	currencyCode: String!
+}
+
+enum ExtraPricingModel {
+	per_stay
+	per_person
+	per_night
+	per_room
+}
+
+type Faq {
+	id: ID!
+	hotelId: ID
+	question: String!
+	answer: String!
+	category: String
+	sortOrder: Int!
+}
+
+# ---------------------------------------------------------------- admin catalog
+
+type AdminHotel {
+	id: ID!
+	name: String!
+	status: HotelStatus!
+	hotel: Hotel!
+	roomTypes: [AdminRoomType!]!
+	ratePlans: [AdminRatePlan!]!
+	availability: [AvailabilityRow!]!
+	amenities: [Amenity!]!
+	media: [Media!]!
+	experiences: [Experience!]!
+	restaurants: [Restaurant!]!
+	faqs: [Faq!]!
+	extras: [Extra!]!
+}
+
+type AdminHotelPage {
+	total: Int!
+	page: Int!
+	size: Int!
+	items: [AdminHotelSummary!]!
+}
+
+type AdminHotelSummary {
+	id: ID!
+	name: String!
+	brand: String
+	city: String
+	countryCode: String
+	status: HotelStatus!
+	starRating: Int
+	roomTypeCount: Int!
+	activeReservations: Int!
+}
+
+input AdminHotelInput {
+	name: String
+	brand: String
+	description: String
+	longDescription: String
+	hotelType: String
+	addressLine1: String
+	addressLine2: String
+	city: String
+	countryCode: String
+	latitude: Float
+	longitude: Float
+	phone: String
+	email: String
+	starRating: Int
+	checkInTime: String
+	checkOutTime: String
+	defaultCurrency: String
+	status: HotelStatus
+}
+
+type AdminRoomType {
+	id: ID!
+	hotelId: ID!
+	name: String!
+	description: String
+	maxAdults: Int!
+	maxChildren: Int!
+	totalInventory: Int!
+	bedConfiguration: String
+	sizeSqm: Float
+	viewType: String
+	status: RoomTypeStatus!
+	amenities: [Amenity!]!
+	media: [Media!]!
+	rooms: [Room!]!
+}
+
+input AdminRoomTypeInput {
+	name: String
+	description: String
+	longDescription: String
+	maxAdults: Int
+	maxChildren: Int
+	totalInventory: Int
+	bedConfiguration: String
+	sizeSqm: Float
+	viewType: String
+	status: RoomTypeStatus
+}
+
+type Room {
+	id: ID!
+	hotelId: ID!
+	roomTypeId: ID!
+	roomNumber: String!
+	floor: String
+	status: String!
+	housekeepingStatus: String!
+	maintenanceStatus: String!
+	createdAt: DateTime!
+}
+
+input AdminRoomInput {
+	roomTypeId: ID
+	roomNumber: String
+	floor: String
+	status: String
+	housekeepingStatus: String
+	maintenanceStatus: String
+}
