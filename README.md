@@ -7,7 +7,7 @@ One-command Dockerization of the full platform:
 | Guest frontend (Next.js) | `frontend-hotel/` | http://localhost:3000 | `hotel-frontend` |
 | Back-office (Next.js) | `backoffice-hotel/` | http://localhost:3101/login | `hotel-backoffice` |
 | Backend API (Spring Boot GraphQL) | `backend-hotel/` | http://localhost:8180/graphql · GraphiQL at `/graphiql` | `hotel-backend` |
-| PostgreSQL 16 | — | localhost:5432 (`POSTGRES_USER/PASSWORD/DB` from `.env`) | `hotel-platform-postgres` |
+| PostgreSQL 16 | — | localhost:5433 (`POSTGRES_USER/PASSWORD/DB` from `.env`) | `hotel-platform-postgres` |
 | Kafka (KRaft) | — | localhost:9092 (external), `kafka:29092` (internal) | `hotel-platform-kafka` |
 
 ## Quickstart

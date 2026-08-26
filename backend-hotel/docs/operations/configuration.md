@@ -11,7 +11,7 @@ committed, see `.gitignore`).
 |---|---|---|---|
 | `JWT_SECRET` | **yes** | — | JWT signing secret. The app **fails to start** without it; `JwtService` rejects secrets < 32 bytes or equal to the historic default. Generate: `openssl rand -hex 32` |
 | `JWT_TTL_MINUTES` | no | `60` | access-token lifetime |
-| `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` | no | `localhost` / `5432` / `hotel_platform` | datasource |
+| `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` | no | `localhost` / `5433` / `hotel_platform` | datasource |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` | no | `postgres` / `postgres` | datasource (dev defaults; real deployments must set them) |
 | `KAFKA_BOOTSTRAP` | no | `localhost:9092` | Kafka bootstrap servers |
 | `MEDIA_STORAGE_PATH` | no | `./data/media` | local filesystem media root (gitignored) |

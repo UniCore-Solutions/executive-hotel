@@ -12,7 +12,7 @@ command -v curl    >/dev/null 2>&1 || warn "curl not found — health checks wil
 
 # ---- port availability (warnings only) --------------------------------------
 if command -v ss >/dev/null 2>&1; then
-  for p in 3000 3101 8180 5432 9092; do
+  for p in 3000 3101 8180 5433 9092; do
     if ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${p}\$"; then
       warn "Host port ${p} is already in use — the matching service will fail to bind."
     fi
