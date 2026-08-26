@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { EXTRAS, PROPERTY } from '@/data';
+import { EXTRAS } from '@/data';
 import { useSearch } from '@/context/SearchContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/context/ToastContext';
@@ -26,16 +26,17 @@ import { getStayRoom } from '@/services/catalog';
 import { getExtras } from '@/services/extras';
 import { ensurePricingSources } from '@/services/pricingHydration';
 import { recordRoomView } from '@/services/activity';
-import { compute } from '@/services/pricing';
+import { getQuote } from '@/services/quote';
 import { bookingURL, hotelRoomURL, roomURL } from '@/lib/links';
 import Calendar from '@/components/search/Calendar';
+import Breadcrumb from '@/components/ui/Breadcrumb';
 import { ExtrasPicker } from '@/components/ui/ExtrasPicker';
 import { PromoField } from '@/components/ui/PromoField';
 import { QuoteTable } from '@/components/ui/QuoteTable';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/button';
 import { parseExtrasParam, type ExtraSelection } from '@/lib/extras';
-import type { Availability, Extra, Property, RatePlan, Room, StayRoomResult } from '@/types';
+import type { Availability, Extra, PriceBreakdown, RatePlan, Room, StayRoomResult } from '@/types';
 
 type ExtrasSel = ExtraSelection;
 
@@ -115,12 +116,14 @@ export default function RoomDetails({
   initialExtras,
   hasGuestParams,
   hotelId,
+  hotelName,
 }: {
   roomId: string;
   initialPlan: string;
   initialExtras: string;
   hasGuestParams: boolean;
   hotelId?: string;
+  hotelName?: string;
 }) {
   const router = useRouter();
   const { state, setDate, setGuests, setChildrenAges, setPromo } = useSearch();
@@ -128,13 +131,13 @@ export default function RoomDetails({
   const { toast } = useToast();
 
   const [room, setRoom] = useState<Room | null>(null);
-  const [property, setProperty] = useState<Property | null>(null);
   const [availability, setAvailability] = useState<Availability>('available');
   const [plans, setPlans] = useState<RatePlan[]>([]);
   const [siblings, setSiblings] = useState<StayRoomResult['siblingRooms']>([]);
   const [fits, setFits] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [selectedPlanId, setSelectedPlanId] = useState(initialPlan);
   /* initialPlan is a snapshot (the URL rewrites itself on this page; the hotel
      gate re-renders with the synced plan, which must not change the badge). */
@@ -170,16 +173,21 @@ export default function RoomDetails({
   const refreshStay = useCallback(async () => {
     if (!room) return;
     const seq = ++seqRef.current;
-    const res = await getStayRoom(undefined, roomId, {
-      checkin: state.checkin,
-      adults: state.adults || 2,
-      children: state.children || 0,
-    });
-    if (seq !== seqRef.current || !res || !res.room) return;
-    setAvailability(res.availability);
-    setFits(res.fits !== false);
-    setAvailForCheckin(state.checkin ? toISODate(state.checkin) : '');
-    setSiblings(res.siblingRooms || []);
+    try {
+      const res = await getStayRoom(undefined, roomId, {
+        checkin: state.checkin,
+        adults: state.adults || 2,
+        children: state.children || 0,
+      });
+      if (seq !== seqRef.current || !res || !res.room) return;
+      setAvailability(res.availability);
+      setFits(res.fits !== false);
+      setAvailForCheckin(state.checkin ? toISODate(state.checkin) : '');
+      setSiblings(res.siblingRooms || []);
+    } catch {
+      if (seq !== seqRef.current) return;
+      setLoadError('Could not refresh availability — please check your connection.');
+    }
   }, [room, roomId, state.checkin, state.adults, state.children]);
 
   useEffect(() => {
@@ -195,7 +203,6 @@ export default function RoomDetails({
         return;
       }
       setRoom(res.room);
-      setProperty(res.property ?? null);
       setAvailability(res.availability);
       setFits(res.fits !== false);
       setAvailForCheckin(state.checkin ? toISODate(state.checkin) : '');
@@ -208,6 +215,9 @@ export default function RoomDetails({
         });
       }
       setLoaded(true);
+    }).catch(() => {
+      if (!alive) return;
+      setLoadError('Could not load room details — please check your connection and try again.');
     });
     return () => {
       alive = false;
@@ -231,14 +241,14 @@ export default function RoomDetails({
 
   /* Backend extras catalog + pricing sources (promos) once the hotel is known. */
   useEffect(() => {
-    if (!property?.id) return;
+    if (!hotelId) return;
     let alive = true;
-    getExtras(property.id).then((list) => alive && setExtrasList(list));
+    getExtras(hotelId).then((list) => alive && setExtrasList(list));
     ensurePricingSources();
     return () => {
       alive = false;
     };
-  }, [property?.id]);
+  }, [hotelId]);
 
   /* Keep the URL query in sync (plan / extras / stay) — reference updateQuoteURL.
      Preserves the roomId param so the hotel page keeps the room selected. */
@@ -255,19 +265,87 @@ export default function RoomDetails({
   }, [loaded, state, roomId, selectedPlanId, extrasSel]);
 
   /* Dialog: Escape cancels, body scroll locked. */
-  const quote = useMemo(() => {
-    if (!plan) return null;
-    return compute({
-      perNight: plan.price,
+  /* Server-priced quote — the booking card uses the same backend engine as the
+     booking page, so room and checkout totals always agree. The local
+     fixture-based engine (`pricing/compute`) has been retired. */
+  const [quoteState, setQuoteState] = useState<{
+    quote: PriceBreakdown | null;
+    loading: boolean;
+    error: string;
+  }>({ quote: null, loading: false, error: '' });
+  const quoteReqId = useRef(0);
+
+  useEffect(() => {
+    if (!plan || !hasDates || !state.checkin || !state.checkout || !room) return;
+    const reqId = ++quoteReqId.current;
+    getQuote({
+      hotelId: room.hotelId ?? hotelId ?? '',
+      checkInDate: state.checkin,
+      checkOutDate: state.checkout,
+      adults: state.adults || 2,
+      children: state.children || 0,
+      currencyCode: currency,
+      rooms: [{ roomTypeId: room.id, ratePlanId: plan.backendRatePlanId }],
+      extras: extrasSel.map((x) => ({ extraId: x.id, quantity: x.qty })),
+      promoCode: state.promo || undefined,
+    })
+      .then((result) => {
+        if (reqId !== quoteReqId.current) return;
+        if (result.raw.valid) {
+          setQuoteState({ quote: result.quote, loading: false, error: '' });
+        } else {
+          setQuoteState({
+            quote: null,
+            loading: false,
+            error: result.raw.message || 'Invalid request — adjust dates or extras.',
+          });
+        }
+      })
+      .catch(() => {
+        if (reqId !== quoteReqId.current) return;
+        setQuoteState({ quote: null, loading: false, error: 'Could not calculate price — please try again.' });
+      });
+  }, [
+    plan,
+    hasDates,
+    state.checkin,
+    state.checkout,
+    state.adults,
+    state.children,
+    state.rooms,
+    state.promo,
+    extrasSel,
+    room,
+    currency,
+    hotelId,
+  ]);
+
+  /* When there are no dates (or the quote is still loading), show a nightly-only
+     placeholder from the backend rate rather than computing a 12% tax locally.
+     Totals are only displayed from the authoritative server quote. */
+  const noDatesPlaceholder = useMemo((): PriceBreakdown => {
+    const perNight = plan?.price ?? 0;
+    const roomSubtotal = perNight * nights * (state.rooms || 1);
+    return {
+      perNight,
       nights,
       rooms: state.rooms || 1,
-      extras: extrasSel,
-      extraPrices: Object.fromEntries(extrasList.map((x) => [x.id, x.price])),
-      promo: state.promo,
-      planId: plan.id,
-      checkin: state.checkin,
-    });
-  }, [plan, nights, state.rooms, state.promo, state.checkin, extrasSel, extrasList]);
+      roomSubtotal,
+      discount: 0,
+      taxedBase: 0,
+      taxes: 0,
+      taxAmount: 0,
+      feeAmount: 0,
+      taxRate: 0,
+      extrasTotal: 0,
+      total: roomSubtotal,
+      originalTotal: roomSubtotal,
+      currency,
+    };
+  }, [plan, nights, state.rooms, currency]);
+
+  const quote: PriceBreakdown | null = hasDates ? quoteState.quote : plan ? noDatesPlaceholder : null;
+  const quoteError = hasDates ? quoteState.error : '';
 
   /* ---------- dialogs ---------- */
 
@@ -435,13 +513,68 @@ export default function RoomDetails({
   }
 
   if (!room || !loaded) {
+    if (loadError) {
+      return (
+        <div className="border-navy/10 mx-auto mt-8 max-w-xl rounded-3xl border bg-white p-10 text-center">
+          <p className="font-display text-navy text-xl font-semibold">Unable to load room</p>
+          <p className="text-navy/60 mt-2 text-sm">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="bg-navy hover:bg-navy-light mt-5 inline-flex items-center gap-2 rounded-xl px-6 py-3 text-xs font-bold tracking-widest text-white uppercase transition-colors"
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
     return (
-      <div className="mt-8 grid gap-6">
-        <div className="border-navy/10 animate-pulse overflow-hidden rounded-3xl border bg-white">
+      <div className="mt-8 space-y-6 animate-pulse">
+        <div className="border-navy/10 overflow-hidden rounded-3xl border bg-white">
           <div className="bg-navy/5 aspect-[16/9]" />
-          <div className="space-y-2.5 p-6">
-            <div className="bg-navy/10 h-4 w-1/2 rounded-full" />
-            <div className="bg-navy/5 h-3 w-2/3 rounded-full" />
+          <div className="p-6">
+            <div className="bg-navy/8 h-3 w-1/4 rounded-full" />
+            <div className="bg-navy/10 mt-3 h-5 w-1/3 rounded-full" />
+            <div className="mt-4 flex gap-2">
+              <div className="bg-navy/5 h-7 w-20 rounded-full" />
+              <div className="bg-navy/5 h-7 w-24 rounded-full" />
+              <div className="bg-navy/5 h-7 w-16 rounded-full" />
+            </div>
+            <div className="mt-4 space-y-2">
+              <div className="bg-navy/5 h-3 w-full rounded-full" />
+              <div className="bg-navy/5 h-3 w-5/6 rounded-full" />
+              <div className="bg-navy/5 h-3 w-2/3 rounded-full" />
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_440px]">
+          <div className="space-y-4">
+            <div className="border-navy/10 rounded-3xl border bg-white p-6">
+              <div className="bg-navy/8 h-3 w-1/4 rounded-full" />
+              <div className="bg-navy/10 mt-3 h-5 w-1/3 rounded-full" />
+              <div className="mt-5 grid grid-cols-2 gap-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-start gap-3">
+                    <div className="bg-navy/5 h-9 w-9 shrink-0 rounded-full" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="bg-navy/5 h-3 w-3/4 rounded-full" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="border-navy/10 rounded-3xl border bg-white p-6">
+            <div className="bg-navy-dark h-20 rounded-2xl" />
+            <div className="mt-4 space-y-3">
+              <div className="bg-navy/5 h-3 w-1/3 rounded-full" />
+              <div className="bg-navy/10 h-8 w-1/2 rounded-full" />
+            </div>
+            <div className="mt-4 space-y-2">
+              <div className="bg-navy/5 h-12 rounded-2xl" />
+              <div className="bg-navy/5 h-12 rounded-2xl" />
+            </div>
+            <div className="bg-navy mt-4 h-12 rounded-2xl" />
           </div>
         </div>
       </div>
@@ -560,6 +693,25 @@ export default function RoomDetails({
         </div>
       </div>
 
+      {/* Back-to-hotel + breadcrumb */}
+      {hotelId && (
+        <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <Link
+            href={`/hotel?hotelid=${hotelId}#rooms`}
+            className="text-navy hover:text-gold-dark inline-flex items-center gap-1.5 text-sm font-semibold transition-colors"
+          >
+            <span aria-hidden="true">←</span> Back to hotel
+          </Link>
+          <Breadcrumb
+            items={[
+              { label: 'Home', href: '/' },
+              ...(hotelName ? [{ label: hotelName, href: `/hotel?hotelid=${hotelId}` }] : []),
+              { label: room?.name ?? 'Room details' },
+            ]}
+          />
+        </div>
+      )}
+
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_440px] lg:gap-10">
         {/* Photo gallery */}
         <div className="order-1 min-w-0 lg:col-start-1 lg:row-start-1">
@@ -573,7 +725,7 @@ export default function RoomDetails({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={image(room.images[thumbIndex] ?? IMG_FALLBACK, 1400)}
-                    alt={`${room.name} — photo ${thumbIndex + 1} of ${room.images.length} — Executive Boutique Hotel Rabat`}
+                    alt={`${room.name} — photo ${thumbIndex + 1} of ${room.images.length} — Executive Hotel`}
                     className="absolute inset-0 h-full w-full object-cover"
                   />
                   <Button
@@ -646,11 +798,7 @@ export default function RoomDetails({
         {/* Summary: badges, title, facts, highlights */}
         <div className="order-2 min-w-0 lg:col-start-1 lg:row-start-2">
           <section aria-labelledby="room-name">
-            <p className="eyebrow text-gold-dark text-[11px] font-semibold tracking-[0.3em] uppercase">
-              {property?.brand ?? PROPERTY.brand} · {property?.city || PROPERTY.city}
-              {room.view ? ` · ${room.view}` : ''}
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant={availability}>
                 {availability === 'available'
                   ? 'Available'
@@ -896,6 +1044,12 @@ export default function RoomDetails({
                       : 'Add dates to complete the quote.'
                   }
                 />
+              ) : quoteState.loading && hasDates ? (
+                <p className="text-navy/50 py-2 text-sm">Calculating price…</p>
+              ) : quoteError ? (
+                <p className="text-clay-dark py-2 text-sm" role="alert">
+                  {quoteError}
+                </p>
               ) : null}
             </div>
 
@@ -978,71 +1132,6 @@ export default function RoomDetails({
                     ))}
                   </ul>
                 </div>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        {/* About the hotel */}
-        <div className="order-5 min-w-0 lg:col-start-1 lg:row-start-4">
-          <section aria-label="About the hotel">
-            <div className="bg-navy-dark relative overflow-hidden rounded-3xl p-6 text-white sm:p-8">
-              <div
-                className="bg-gold/10 absolute -top-10 -right-10 h-44 w-44 rounded-full"
-                aria-hidden="true"
-              ></div>
-              <div
-                className="bg-gold/10 absolute right-14 -bottom-12 h-32 w-32 rounded-full"
-                aria-hidden="true"
-              ></div>
-              <div className="relative">
-                <p className="eyebrow text-gold-light text-[11px] font-semibold tracking-[0.3em] uppercase">
-                  About your stay
-                </p>
-                <h2 className="font-display mt-2 text-2xl font-semibold">{property?.name ?? PROPERTY.name}</h2>
-                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/70">
-                  {property?.description || PROPERTY.description}
-                </p>
-                <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 text-sm lg:grid-cols-3">
-                  {(
-                    [
-                      ['check', 'Check-in', `${property?.checkIn ?? PROPERTY.checkIn} – 23:30`],
-                      ['check', 'Check-out', `until ${property?.checkOut ?? PROPERTY.checkOut}`],
-                      ['car', 'Parking', 'Free, on site'],
-                      ['wifi', 'Wi-Fi', 'Free, in-room & public areas'],
-                      ['utensils', 'Dining', 'Restaurant · French, Mediterranean, Moroccan'],
-                      ['coffee', 'Breakfast', 'Free buffet, every morning'],
-                    ] as Array<[string, string, string]>
-                  ).map(([icon, label, value]) => (
-                    <div key={label} className="flex items-start gap-2.5">
-                      <dt className="flex items-center gap-2.5">
-                        <span className="bg-gold/15 border-gold/40 text-gold-light flex h-9 w-9 shrink-0 items-center justify-center rounded-full border">
-                          <svg
-                            className="h-[18px] w-[18px]"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path d={ICON[icon]} />
-                          </svg>
-                        </span>
-                        <span className="text-[11px] tracking-wider text-white/60 uppercase">
-                          {label}
-                        </span>
-                      </dt>
-                      <dd className="font-medium text-white">{value}</dd>
-                    </div>
-                  ))}
-                </dl>
-                <p className="mt-6 text-xs text-white/60">
-                  {property?.location.address || PROPERTY.location.address}
-                </p>
-                <Link
-                  href={property ? `/hotel?hotelid=${property.id}` : '/hotel'}
-                  className="text-gold-light mt-4 inline-flex items-center gap-2 text-sm font-semibold transition-colors hover:text-white"
-                >
-                  Explore the hotel <span aria-hidden="true">→</span>
-                </Link>
               </div>
             </div>
           </section>

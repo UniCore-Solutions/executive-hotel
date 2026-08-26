@@ -32,6 +32,7 @@ export type PlanSuffix = 'bb' | 'ro' | 'hb';
 
 export interface RatePlan {
   id: string;
+  backendRatePlanId: string;
   name: string;
   mealPlan: string;
   price: number;
@@ -99,6 +100,13 @@ export interface PriceBreakdown {
   originalTotal: number;
   currency?: string;
   promo?: PromoResult;
+  /** Server-derived figures when pricing came from the backend quote engine.
+      `taxes` is the aggregate for display; these preserve the split. */
+  taxAmount?: number;
+  feeAmount?: number;
+  /** Effective combined tax+fee rate over the taxed base (0..1). Optional —
+      clients must render the generic "Taxes & fees" label unless this is set. */
+  taxRate?: number;
 }
 
 export type ReservationStatus = 'confirmed' | 'checked-in' | 'cancelled';
@@ -277,8 +285,12 @@ export interface User {
 }
 
 export interface Session {
+  id: string;
   email: string;
   name: string;
+  roles: string[];
+  hotelIds: string[];
+  token: string;
   at: number;
 }
 

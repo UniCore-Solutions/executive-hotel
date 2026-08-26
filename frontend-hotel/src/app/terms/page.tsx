@@ -3,7 +3,7 @@ import Link from 'next/link';
 import HeaderTheme from '@/components/layout/HeaderTheme';
 
 export const metadata: Metadata = {
-  title: 'Terms & Conditions — Executive Boutique Hotel Rabat',
+  title: 'Terms & Conditions — Executive Hotel',
 };
 
 export default function TermsPage() {
@@ -24,7 +24,7 @@ export default function TermsPage() {
               1. About these terms
             </h2>
             <p>
-              These terms apply to bookings made directly at Executive Boutique Hotel Rabat, 72 Rue
+               These terms apply to bookings made directly at Executive Hotel, 72 Rue
               Oued Sebou, 10106 Rabat, Morocco. This website is a frontend prototype: no real
               contract is formed and no real payment is processed.
             </p>
@@ -35,8 +35,9 @@ export default function TermsPage() {
             </h2>
             <p>
               Rates are per room per night in Moroccan Dirham (MAD). Other currencies shown are
-              indicative daily conversions. Taxes (12%) are included in every quote shown. A booking
-              is confirmed once we display a confirmation reference.
+              indicative daily conversions. Applicable taxes and fees are itemised in every quote
+              shown (rates vary by hotel and rate plan). A booking is confirmed once we display a
+              confirmation reference.
             </p>
           </section>
           <section>

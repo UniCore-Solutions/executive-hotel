@@ -1,62 +1,19 @@
-import { describe, expect, it } from 'vitest';
-import {
-  compute,
-  forRoomAndPlan,
-  promoDiscount,
-  taxesRate,
-  validatePromo,
-} from '@/services/pricing';
-import { PROPERTY } from '@/data';
-import type { Room, RatePlan } from '@/types';
+import { describe, expect, it, beforeAll } from 'vitest';
+import { setOffersSource, validatePromo } from '@/services/pricing';
+import { DATA } from '@/data';
+import type { PromoCtx } from '@/services/pricing';
 
-/** Local test helper — generates rate plans from a room's base price. */
-function plansFor(room: Room): RatePlan[] {
-  const base = room.pricePerNight;
-  const freeCancel = room.cancellationPolicy.startsWith('Free cancellation');
-  const plans: RatePlan[] = [
-    {
-      id: `${room.id}::bb`,
-      name: 'Bed & Breakfast',
-      mealPlan: 'Breakfast included',
-      price: base,
-      cancellationPolicy: room.cancellationPolicy,
-      benefits: ['Daily breakfast', 'Fresh hammam towels', 'Free Wi-Fi'],
-      freeCancellation: freeCancel,
-    },
-    {
-      id: `${room.id}::ro`,
-      name: 'Room Only',
-      mealPlan: 'No meals included',
-      price: Math.round(base * 0.85 / 10) * 10,
-      cancellationPolicy: 'Non-refundable',
-      benefits: [],
-      freeCancellation: false,
-    },
-  ];
-  if (base >= 950) {
-    plans.push({
-      id: `${room.id}::hb`,
-      name: 'Half Board',
-      mealPlan: 'Breakfast & dinner included',
-      price: Math.round(base * 1.12 / 10) * 10,
-      cancellationPolicy: room.cancellationPolicy,
-      benefits: ['Daily breakfast', 'Dinner', 'Evening tea service'],
-      freeCancellation: freeCancel,
-    });
-  }
-  return plans;
-}
+beforeAll(() => {
+  setOffersSource(DATA.OFFERS);
+});
 
-const ci = new Date(2026, 8, 12); // 2026-09-12 (within SUMMER2026 stay window)
-
-const ctx = (planId: string, nights = 4, promo = '', checkin: Date | null = ci) => ({
-  perNight: 1050,
+const ctx = (planId: string, nights = 4, checkin: Date | null = ci): PromoCtx => ({
   nights,
-  rooms: 1,
-  promo,
   planId,
   checkin,
 });
+
+const ci = new Date(2026, 8, 12); // 2026-09-12 (within SUMMER2026 stay window)
 
 describe('validatePromo', () => {
   it('empty / unknown codes — exact messages', () => {
@@ -87,7 +44,7 @@ describe('validatePromo', () => {
     expect(validatePromo('SUMMER2026', ctx('r::ro')).message).toBe(
       'Early Bird Savings (SUMMER2026) is not available on this rate plan. Eligible: bb, hb.'
     );
-    expect(validatePromo('SUMMER2026', ctx('r::bb', 4, '', new Date(2026, 10, 20))).message).toBe(
+    expect(validatePromo('SUMMER2026', ctx('r::bb', 4, new Date(2026, 10, 20))).message).toBe(
       'Early Bird Savings (SUMMER2026) applies to stays between 2026-06-01 and 2026-10-31.'
     );
   });
@@ -102,79 +59,5 @@ describe('validatePromo', () => {
     expect(validatePromo('STAY4PAY3', ctx('r::bb', 3)).message).toContain(
       'needs a stay of at least 4 nights'
     );
-  });
-});
-
-describe('compute', () => {
-  it('base math with 12% tax', () => {
-    const b = compute(ctx('executive-suite::bb', 4));
-    expect(b.roomSubtotal).toBe(4200);
-    expect(b.discount).toBe(0);
-    expect(b.taxedBase).toBe(4200);
-    expect(b.taxes).toBe(504);
-    expect(b.total).toBe(4704);
-    expect(b.originalTotal).toBe(4704);
-    expect(taxesRate).toBe(0.12);
-  });
-
-  it('percent promo discount then tax on the discounted base', () => {
-    const b = compute(ctx('executive-suite::bb', 4, 'SUMMER2026'));
-    expect(b.discount).toBe(420);
-    expect(b.taxedBase).toBe(3780);
-    expect(b.taxes).toBe(454);
-    expect(b.total).toBe(4234);
-    // reference: originalTotal recomputed from roomSubtotal with promo taxes
-    expect(b.originalTotal).toBe(4654);
-    expect(b.promo).toMatchObject({ valid: true, code: 'SUMMER2026' });
-  });
-
-  it('night-free promo: 4th night free = one night', () => {
-    const b = compute(ctx('executive-suite::bb', 8, 'STAY4PAY3'));
-    expect(b.discount).toBe(1050 * 2);
-    expect(b.roomSubtotal).toBe(1050 * 8);
-  });
-
-  it('extras add at face value', () => {
-    const b = compute({ ...ctx('r::bb'), extras: [{ id: 'airport-shuttle', qty: 1 }] });
-    expect(b.extrasTotal).toBe(250);
-  });
-
-  it('invalid promo adds nothing', () => {
-    const b = compute(ctx('r::bb', 4, 'NOPE'));
-    expect(b.discount).toBe(0);
-    expect(b.promo?.message).toContain('not a valid promo code');
-  });
-});
-
-describe('promoDiscount + plans + forRoomAndPlan', () => {
-  it('plan prices follow ro −15% / hb +12% rounding', () => {
-    const plans = plansFor(PROPERTY.rooms[0]!);
-    const byPlan = Object.fromEntries(plans.map((p) => [p.id.split('::')[1], p.price]));
-    expect(byPlan).toEqual({ bb: 1050, ro: 890, hb: 1180 });
-  });
-
-  it('no hb for rooms under 950 MAD', () => {
-    const plans = plansFor(PROPERTY.rooms[1]!);
-    expect(plans.map((p) => p.id.split('::')[1])).toEqual(['bb', 'ro']);
-  });
-
-  it('night promoDiscount needs at least the offer period', () => {
-    const ok = validatePromo('STAY4PAY3', ctx('r::bb', 4));
-    expect(promoDiscount(ok, 1050, 4, 1)).toBe(1050);
-    const short = validatePromo('STAY4PAY3', ctx('r::bb', 3));
-    expect(promoDiscount(short, 1050, 3, 1)).toBe(0);
-  });
-
-  it('forRoomAndPlan honors promo + nights', () => {
-    const plans = plansFor(PROPERTY.rooms[0]!);
-    const b = forRoomAndPlan(PROPERTY.rooms[0]!, plans[0]!, {
-      perNight: plans[0]!.price,
-      nights: 2,
-      rooms: 1,
-      promo: 'SUMMER2026',
-      planId: plans[0]!.id,
-      checkin: ci,
-    });
-    expect(b.discount).toBe(210);
   });
 });

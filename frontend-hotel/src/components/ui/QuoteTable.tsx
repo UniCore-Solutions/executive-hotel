@@ -17,11 +17,16 @@ export function QuoteTable({
   highlight,
   note = '',
 }: QuoteTableProps) {
-  const fmt = (n: number) => fmtPrice(n, currency);
+  const displayCurrency: CurrencyCode = (b.currency ?? currency) as CurrencyCode;
+  const fmt = (n: number) => fmtPrice(n, displayCurrency);
+  const taxLabel =
+    b.taxRate != null && b.taxRate > 0
+      ? `Taxes & fees (${Math.round(b.taxRate * 100)}%)`
+      : 'Taxes & fees';
   const rows: Array<[string, string, string, boolean]> = [
     [
       'Rooms',
-      `${b.rooms} × ${fmtPrice(b.perNight, currency, { perNight: true })} × ${b.nights} ${b.nights === 1 ? 'night' : 'nights'}`,
+      `${b.rooms} × ${fmtPrice(b.perNight, displayCurrency, { perNight: true })} × ${b.nights} ${b.nights === 1 ? 'night' : 'nights'}`,
       fmt(b.roomSubtotal),
       false,
     ],
@@ -35,7 +40,7 @@ export function QuoteTable({
     ]);
   }
   if (b.extrasTotal > 0) rows.push(['Extras & services', '', fmt(b.extrasTotal), false]);
-  rows.push(['Taxes & fees (12%)', '', fmt(b.taxes), false]);
+  rows.push([taxLabel, '', fmt(b.taxes), false]);
 
   const totalRow = highlight ? (
     <div className="bg-gold/[0.09] border-gold/25 mt-3 flex items-baseline justify-between gap-3 rounded-2xl border px-4 py-3">
@@ -68,7 +73,7 @@ export function QuoteTable({
         {totalRow}
       </dl>
       <div className="text-navy/40 text-[11px]">
-        Indicative price in {currency} · billed in MAD · {note}
+        Indicative price in {displayCurrency} · billed in {displayCurrency} · {note}
       </div>
     </>
   );

@@ -47,6 +47,9 @@ export async function getQuote(params: QuoteParams): Promise<{
   const nights = first?.nights ?? 0;
   const extrasTotal = Math.max(0, raw.subtotalAmount - roomSubtotal);
   const taxedBase = Math.max(0, raw.subtotalAmount - raw.discountAmount);
+  const taxAmount = raw.taxAmount ?? 0;
+  const feeAmount = raw.feeAmount ?? 0;
+  const taxRate = taxedBase > 0 ? (taxAmount + feeAmount) / taxedBase : 0;
 
   const breakdown: PriceBreakdown = {
     perNight,
@@ -55,7 +58,10 @@ export async function getQuote(params: QuoteParams): Promise<{
     roomSubtotal,
     discount: raw.discountAmount,
     taxedBase,
-    taxes: raw.taxAmount,
+    taxes: taxAmount + feeAmount,
+    taxAmount,
+    feeAmount,
+    taxRate,
     extrasTotal,
     total: raw.totalAmount,
     originalTotal: raw.originalTotal,
