@@ -51,7 +51,7 @@ public class MediaStorageServiceImpl implements MediaStorageService {
 	public MediaStorageServiceImpl(MediaStorageProvider storage, MediaRepository mediaRepository,
 			PlatformService platform, CatalogQueryService catalog,
 			CurrentUserAccessor currentUser,
-			@Value("${app.media.base-url:http://localhost:8080}") String baseUrl) {
+			@Value("${app.media.base-url:http://localhost:8180}") String baseUrl) {
 		this.storage = storage;
 		this.mediaRepository = mediaRepository;
 		this.platform = platform;

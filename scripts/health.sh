@@ -42,7 +42,7 @@ else
 fi
 
 # --- Backend --------------------------------------------------------------------
-code="$(http_status "http://localhost:${BACKEND_PORT:-8080}/actuator/health/readiness" 10)"
+code="$(http_status "http://localhost:${BACKEND_PORT:-8180}/actuator/health/readiness" 10)"
 if [[ "$code" == 200 ]]; then
   record ok "backend" "readiness UP"
 else

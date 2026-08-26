@@ -18,7 +18,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (typeof query !== 'string') {
     return NextResponse.json({ error: 'missing query' }, { status: 400 });
   }
-  const res = await fetch(process.env.HOTEL_API_URL ?? 'http://localhost:8080/graphql', {
+  const res = await fetch(process.env.HOTEL_API_URL ?? 'http://localhost:8180/graphql', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

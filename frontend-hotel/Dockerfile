@@ -15,7 +15,7 @@ CMD ["npm", "run", "dev"]
 
 FROM deps AS builder
 ARG NEXT_PUBLIC_USE_MOCK_SERVICES=false
-ARG NEXT_PUBLIC_PLATFORM_SLUG=the-hotel-collection
+ARG NEXT_PUBLIC_PLATFORM_SLUG=executive-hotel
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
 ARG NEXT_PUBLIC_FX_EUR=0.091
 ARG NEXT_PUBLIC_FX_USD=0.100
@@ -25,7 +25,7 @@ ARG NEXT_PUBLIC_ENABLE_ANALYTICS=false
 ENV NEXT_TELEMETRY_DISABLED=1
 # next build bakes rewrites() into routes-manifest.json, so the internal API
 # origin must be known at BUILD time (runtime env cannot alter it).
-ARG API_INTERNAL_URL=http://backend:8080
+ARG API_INTERNAL_URL=http://backend:8180
 ENV API_INTERNAL_URL=${API_INTERNAL_URL}
 COPY . .
 RUN npm run build

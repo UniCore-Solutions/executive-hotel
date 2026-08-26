@@ -6,7 +6,7 @@ One-command Dockerization of the full platform:
 |---|---|---|---|
 | Guest frontend (Next.js) | `frontend-hotel/` | http://localhost:3000 | `hotel-frontend` |
 | Back-office (Next.js) | `backoffice-hotel/` | http://localhost:3101/login | `hotel-backoffice` |
-| Backend API (Spring Boot GraphQL) | `backend-hotel/` | http://localhost:8080/graphql · GraphiQL at `/graphiql` | `hotel-backend` |
+| Backend API (Spring Boot GraphQL) | `backend-hotel/` | http://localhost:8180/graphql · GraphiQL at `/graphiql` | `hotel-backend` |
 | PostgreSQL 16 | — | localhost:5432 (`POSTGRES_USER/PASSWORD/DB` from `.env`) | `hotel-platform-postgres` |
 | Kafka (KRaft) | — | localhost:9092 (external), `kafka:29092` (internal) | `hotel-platform-kafka` |
 
@@ -55,7 +55,7 @@ The legacy bigint-era seed is preserved at `backend-hotel/scripts/seed-bigint-le
 
 All config flows through `.env` (see `.env.example`). Required: `JWT_SECRET`, `POSTGRES_PASSWORD`. Ports (`FRONTEND_PORT`, `BACKOFFICE_PORT`, `BACKEND_PORT`, `POSTGRES_HOST_PORT`, `KAFKA_HOST_PORT`) are host-side only — change freely without touching code.
 
-Frontend browser calls go to same-origin `/graphql`, proxied by a Next rewrite to `API_INTERNAL_URL` (**baked at build time** — set as build arg when deploying elsewhere). Server-side rendering talks straight to `http://backend:8080/graphql` inside the network.
+Frontend browser calls go to same-origin `/graphql`, proxied by a Next rewrite to `API_INTERNAL_URL` (**baked at build time** — set as build arg when deploying elsewhere). Server-side rendering talks straight to `http://backend:8180/graphql` inside the network.
 
 Cross-machine: everything binds `0.0.0.0`; access other PCs via `http://<LAN-IP>:3000` etc. For browser access from other machines, add their origin to `CORS_ALLOWED_ORIGINS` or serve through a reverse proxy.
 

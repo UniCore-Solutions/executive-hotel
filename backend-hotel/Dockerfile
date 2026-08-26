@@ -24,7 +24,7 @@ COPY pom.xml mvnw ./
 COPY .mvn ./.mvn
 RUN chmod +x mvnw
 RUN --mount=type=cache,target=/root/.m2 ./mvnw -B -q dependency:go-offline || true
-EXPOSE 8080 5005
+EXPOSE 8180 5005
 CMD ["./mvnw", "spring-boot:run"]
 
 
@@ -37,5 +37,5 @@ WORKDIR /app
 COPY --from=build /workspace/app.jar app.jar
 RUN mkdir -p /app/media && chown -R spring:spring /app
 USER spring
-EXPOSE 8080
+EXPOSE 8180
 ENTRYPOINT ["java", "-jar", "app.jar"]

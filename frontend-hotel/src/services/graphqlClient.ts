@@ -1,12 +1,12 @@
 /** Thin GraphQL client over the backend gateway. */
-import { print } from 'graphql';
+import { parse, print } from 'graphql';
 import type { TypedDocumentNode } from '@graphql-typed-document-node/core';
 
 // Browser requests go to the same origin ("/graphql") and are proxied to the
 // backend by the next.config rewrite; server-side fetches need an absolute URL.
 const BROWSER_GRAPHQL_URL = process.env.NEXT_PUBLIC_API_URL ?? '/graphql';
 const SERVER_GRAPHQL_URL =
-  process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:8080/graphql';
+  process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:8180/graphql';
 
 export const GRAPHQL_API_URL =
   typeof window === 'undefined' ? SERVER_GRAPHQL_URL : BROWSER_GRAPHQL_URL;
@@ -27,10 +27,16 @@ export async function gqlRequest<TResult, TVariables>(
   document: TypedDocumentNode<TResult, TVariables>,
   variables: TVariables
 ): Promise<TResult> {
+  const query = typeof document === 'string' ? document : print(document);
+  const parsed = typeof document === 'string' ? parse(query) : document;
+  const opDef = parsed.definitions.find((d) => d.kind === 'OperationDefinition');
+  const operationName = opDef?.kind === 'OperationDefinition' ? opDef.name?.value : undefined;
+  const body: Record<string, unknown> = { query, variables };
+  if (operationName) body.operationName = operationName;
   const res = await fetch(GRAPHQL_API_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ query: typeof document === 'string' ? document : print(document), variables }),
+    body: JSON.stringify(body),
     // Server-side: never cache. Build-time prerendering with an unreachable
     // backend would otherwise bake fallback content into static HTML forever.
     cache: 'no-store',

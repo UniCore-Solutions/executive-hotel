@@ -1,6 +1,6 @@
 import { request } from 'graphql-request';
 
-const API = process.env.HOTEL_API_URL || 'http://localhost:8080/graphql';
+const API = process.env.HOTEL_API_URL || 'http://localhost:8180/graphql';
 
 async function main() {
   const login = await request(API, `

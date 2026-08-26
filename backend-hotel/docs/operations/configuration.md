@@ -15,7 +15,7 @@ committed, see `.gitignore`).
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` | no | `postgres` / `postgres` | datasource (dev defaults; real deployments must set them) |
 | `KAFKA_BOOTSTRAP` | no | `localhost:9092` | Kafka bootstrap servers |
 | `MEDIA_STORAGE_PATH` | no | `./data/media` | local filesystem media root (gitignored) |
-| `MEDIA_BASE_URL` | no | `http://localhost:8080` | public base URL for media reads |
+| `MEDIA_BASE_URL` | no | `http://localhost:8180` | public base URL for media reads |
 | `OUTBOX_RELAY_INTERVAL_MS` | no | `1000` | outbox relay poll interval |
 | `CORS_ALLOWED_ORIGINS` | no | `*` | comma-separated allowed browser origins (pin real origins in production) |
 

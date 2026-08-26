@@ -1,7 +1,7 @@
 import { print } from 'graphql';
 import type { TypedDocumentNode } from '@graphql-typed-document-node/core';
 
-export const HOTEL_API_URL = process.env.HOTEL_API_URL ?? 'http://localhost:8080/graphql';
+export const HOTEL_API_URL = process.env.HOTEL_API_URL ?? 'http://localhost:8180/graphql';
 
 export class ApiError extends Error {
   readonly code?: string;

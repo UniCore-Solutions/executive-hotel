@@ -13,7 +13,7 @@ app:
     auth-rate-limit-enabled: false
   media:
     storage-path: ${MEDIA_STORAGE_PATH:./target/test-data/media}
-    base-url: http://localhost:8080
+    base-url: http://localhost:8180
   outbox:
     relay-interval-ms: 600000
     batch-size: 50

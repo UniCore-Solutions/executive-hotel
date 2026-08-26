@@ -1,10 +1,10 @@
 import type { NextConfig } from 'next';
 
 const IMG_HOSTS = ['cf.bstatic.com', 'aw-d.tripcdn.com', 'images.unsplash.com'];
-const API_ORIGIN = 'http://localhost:8080';
+const API_ORIGIN = 'http://localhost:8180';
 // Same-origin browser calls to /graphql are proxied to the backend by the
 // rewrite below; the target must be resolvable from the Next.js server.
-const BACKEND_INTERNAL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:8080';
+const BACKEND_INTERNAL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:8180';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -13,7 +13,7 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       ...IMG_HOSTS.map((hostname) => ({ protocol: 'https' as const, hostname })),
-      { protocol: 'http', hostname: 'localhost', port: '8080' },
+      { protocol: 'http', hostname: 'localhost', port: '8180' },
     ],
   },
   async rewrites() {

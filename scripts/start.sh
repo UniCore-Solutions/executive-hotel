@@ -74,7 +74,7 @@ fi
 
 frontend_port="${FRONTEND_PORT:-3000}"
 backoffice_port="${BACKOFFICE_PORT:-3101}"
-backend_port="${BACKEND_PORT:-8080}"
+backend_port="${BACKEND_PORT:-8180}"
 
 cat <<EOF
 

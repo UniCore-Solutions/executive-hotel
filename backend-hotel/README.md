@@ -50,7 +50,7 @@ JWT_SECRET=$(openssl rand -hex 32) ./mvnw spring-boot:run
 ```
 
 `JWT_SECRET` is **required** — the app refuses to start without a strong
-secret. GraphiQL is available at `http://localhost:8080/graphiql` in the
+secret. GraphiQL is available at `http://localhost:8180/graphiql` in the
 default `dev` profile (deployments must run
 `SPRING_PROFILES_ACTIVE=prod`).
 
@@ -63,7 +63,7 @@ default `dev` profile (deployments must run
 
 ## Access the API
 
-- GraphQL: `POST http://localhost:8080/graphql` — schema in
+- GraphQL: `POST http://localhost:8180/graphql` — schema in
   `src/main/resources/graphql/`, docs in `docs/api/graphql.md`
 - REST splits: `/api/v1/auth/**`, `/api/v1/reservations/**`, `/api/v1/media/**`
 - Health probes: `/actuator/health`, `/actuator/health/readiness|/liveness`
