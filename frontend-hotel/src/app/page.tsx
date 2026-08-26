@@ -99,7 +99,7 @@ export default async function HomePage() {
           className="from-navy-dark/60 absolute inset-x-0 top-0 h-44 bg-gradient-to-b to-transparent"
         />
 
-        <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-col justify-end px-4 pt-28 pb-12 sm:px-6 lg:px-8 lg:pt-40 lg:pb-20">
+        <div className="relative mx-auto flex w-full max-w-7xl flex-col justify-end px-4 pt-28 pb-12 sm:px-6 lg:px-8 lg:pt-40 lg:pb-20">
           <p className="eyebrow text-gold-light text-[11px] font-semibold tracking-[0.3em] uppercase">
             {hero?.eyebrow ?? 'Rabat · Agdal'}
           </p>
@@ -376,7 +376,7 @@ export default async function HomePage() {
       {/* ======================= REVIEWS ======================= */}
       <section
         id="reviews"
-        className="bg-paper border-navy/10 border-y"
+        className="bg-paper border-navy/10 border-y overflow-hidden"
         aria-labelledby="reviews-title"
       >
         <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24">

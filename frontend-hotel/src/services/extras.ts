@@ -1,8 +1,7 @@
-/** Extras GraphQL service — backend-first with fixture fallback. */
-import { DATA } from '@/data';
+/** Extras GraphQL service. */
 import { HotelExtrasDocument, type HotelExtrasQuery } from '@/graphql/generated/graphql';
 import type { Extra, ExtraUnit } from '@/types';
-import { gqlRequest, useGraphql } from './graphqlClient';
+import { gqlRequest } from './graphqlClient';
 import { toBaseMad } from './catalog';
 
 type ExtraSource = HotelExtrasQuery['extras'][number];
@@ -25,13 +24,8 @@ export function mapExtra(e: ExtraSource): Extra {
   };
 }
 
-/** Extras for one hotel (backend mode); falls back to the static fixture when
-    mock mode is on, no hotel is known yet, or the gateway is unreachable. */
+/** Extras for one hotel. */
 export async function getExtras(hotelId?: string | null): Promise<Extra[]> {
-  if (!useGraphql || !hotelId) return DATA.EXTRAS;
-  try {
-    return (await gqlRequest(HotelExtrasDocument, { hotelId })).extras.map(mapExtra);
-  } catch {
-    return DATA.EXTRAS;
-  }
+  if (!hotelId) return [];
+  return (await gqlRequest(HotelExtrasDocument, { hotelId })).extras.map(mapExtra);
 }

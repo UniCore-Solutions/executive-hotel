@@ -67,17 +67,17 @@ export default function StickySearchBar() {
       <div
         ref={barRef}
         className={
-          pinned ? 'fixed inset-x-0 top-[100px] z-30 px-4 py-2.5 sm:px-6 lg:top-[116px]' : ''
+          pinned ? 'fixed inset-x-0 top-[100px] z-[90] px-4 py-2.5 sm:px-6 lg:top-[116px]' : ''
         }
       >
         <div
           className={pinned ? 'mx-auto w-full max-w-4xl will-change-transform' : 'w-full'}
-          style={{
+          style={pinned ? {
             transform: `translate(${offset.x}px, ${offset.y}px) scale(${offset.s})`,
             opacity: offset.o,
             transition:
               'transform 750ms cubic-bezier(0.16, 1, 0.3, 1), opacity 750ms cubic-bezier(0.16, 1, 0.3, 1)',
-          }}
+          } : undefined}
         >
           <SearchBar className="w-full" />
         </div>

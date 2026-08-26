@@ -57,3 +57,26 @@ type AvailabilityRow {
 	blocked: Int!
 	free: Int!
 }
+# Single-roundtrip search seam: hotels + availability + rates + room types
+# composed server-side so clients need one query per search.
+input StaySearchInput {
+	hotelId: ID
+	checkInDate: LocalDate!
+	checkOutDate: LocalDate!
+	adults: Int!
+	children: Int!
+	rooms: Int!
+}
+
+type StaySearchRoom {
+	hotelId: ID!
+	hotelName: String!
+	roomType: RoomType!
+	status: AvailabilityStatus!
+	capacityFits: Boolean!
+	rates: [RoomRateOption!]!
+}
+
+extend type Query {
+	staySearch(input: StaySearchInput!): [StaySearchRoom!]!
+}

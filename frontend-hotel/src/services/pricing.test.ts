@@ -6,8 +6,46 @@ import {
   taxesRate,
   validatePromo,
 } from '@/services/pricing';
-import { plansFor } from '@/services/availability';
 import { PROPERTY } from '@/data';
+import type { Room, RatePlan } from '@/types';
+
+/** Local test helper — generates rate plans from a room's base price. */
+function plansFor(room: Room): RatePlan[] {
+  const base = room.pricePerNight;
+  const freeCancel = room.cancellationPolicy.startsWith('Free cancellation');
+  const plans: RatePlan[] = [
+    {
+      id: `${room.id}::bb`,
+      name: 'Bed & Breakfast',
+      mealPlan: 'Breakfast included',
+      price: base,
+      cancellationPolicy: room.cancellationPolicy,
+      benefits: ['Daily breakfast', 'Fresh hammam towels', 'Free Wi-Fi'],
+      freeCancellation: freeCancel,
+    },
+    {
+      id: `${room.id}::ro`,
+      name: 'Room Only',
+      mealPlan: 'No meals included',
+      price: Math.round(base * 0.85 / 10) * 10,
+      cancellationPolicy: 'Non-refundable',
+      benefits: [],
+      freeCancellation: false,
+    },
+  ];
+  if (base >= 950) {
+    plans.push({
+      id: `${room.id}::hb`,
+      name: 'Half Board',
+      mealPlan: 'Breakfast & dinner included',
+      price: Math.round(base * 1.12 / 10) * 10,
+      cancellationPolicy: room.cancellationPolicy,
+      benefits: ['Daily breakfast', 'Dinner', 'Evening tea service'],
+      freeCancellation: freeCancel,
+    });
+  }
+  return plans;
+}
 
 const ci = new Date(2026, 8, 12); // 2026-09-12 (within SUMMER2026 stay window)
 

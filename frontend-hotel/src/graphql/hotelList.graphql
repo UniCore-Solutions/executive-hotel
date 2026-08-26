@@ -1,0 +1,22 @@
+query HotelList($input: HotelSearchInput) {
+  hotels(input: $input) {
+    total
+    items {
+      id
+      name
+      brand
+      city
+      countryCode
+      starRating
+      status
+      averageRating
+      fromPricePerNight
+      defaultCurrency
+      description
+      media {
+        url
+        altText
+      }
+    }
+  }
+}

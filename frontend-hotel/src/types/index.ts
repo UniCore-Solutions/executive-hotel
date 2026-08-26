@@ -146,6 +146,10 @@ export interface SearchState {
   rooms: number;
   promo: string;
   currency: CurrencyCode;
+  /** Hotel ID for destination — empty string means "any/all". */
+  destination: string;
+  /** Human-readable destination name (not persisted in URL, display only). */
+  destinationName?: string;
 }
 
 export type CurrencyCode = 'MAD' | 'EUR' | 'USD' | 'GBP';

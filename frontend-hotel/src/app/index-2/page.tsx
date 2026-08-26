@@ -31,7 +31,7 @@ export default function IndexTwoPage() {
         />
         <div className="from-navy-dark/80 via-navy-dark/35 to-navy-dark/10 absolute inset-0 bg-gradient-to-b" />
 
-        <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-col px-4 pt-32 sm:px-6 lg:px-8 lg:pt-44">
+        <div className="relative mx-auto flex w-full max-w-7xl flex-col px-4 pt-32 sm:px-6 lg:px-8 lg:pt-44">
           <p className="eyebrow text-gold-light text-[11px] font-semibold tracking-[0.3em] uppercase">
             Executive Boutique Hotel · Agdal
           </p>

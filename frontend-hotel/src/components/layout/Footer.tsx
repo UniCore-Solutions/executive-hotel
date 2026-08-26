@@ -24,7 +24,7 @@ export default function Footer({ platform }: FooterProps) {
     'A 4-star boutique hotel in Rabat&rsquo;s Agdal district — air-conditioned rooms with free Wi-Fi, a restaurant serving French, Mediterranean and Moroccan cuisine, a free buffet breakfast and free private parking.';
 
   return (
-    <footer className="bg-navy-dark text-white/80">
+    <footer className="bg-navy-dark text-white/80 pb-20 md:pb-0">
       <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-16">
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-4">
           <div>

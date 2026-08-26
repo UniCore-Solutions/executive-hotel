@@ -71,7 +71,7 @@ export default async function HotelDetail({
       <HeaderTheme theme="dark" />
 
       {/* hero */}
-      <section data-hero className="relative h-[64vh] min-h-[420px] overflow-hidden">
+      <section data-hero className="relative h-[56vh] min-h-[340px] overflow-hidden sm:h-[64vh] sm:min-h-[420px]">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={image?.url ?? ''}

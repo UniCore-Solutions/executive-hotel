@@ -1,0 +1,20 @@
+query Quote($input: QuoteInput!) {
+  quote(input: $input) {
+    currencyCode
+    subtotalAmount
+    discountAmount
+    taxAmount
+    feeAmount
+    totalAmount
+    originalTotal
+    valid
+    message
+    lines {
+      roomTypeId
+      ratePlanId
+      ratePerNight
+      nights
+      subtotalAmount
+    }
+  }
+}

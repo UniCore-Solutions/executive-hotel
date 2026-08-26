@@ -7,18 +7,16 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { PROPERTY, EXTRAS } from '@/data';
+import { PROPERTY } from '@/data';
 import { useSearch } from '@/context/SearchContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/context/ToastContext';
 import { useSession } from '@/context/SessionContext';
-import { compute } from '@/services/pricing';
-import { ensurePricingSources } from '@/services/pricingHydration';
-import { plansFor } from '@/services/availability';
 import { getStayRoom } from '@/services/catalog';
 import { getExtras } from '@/services/extras';
+import { getQuote } from '@/services/quote';
 import { charge } from '@/services/payment';
-import type { Extra } from '@/types';
+import type { Extra, PriceBreakdown } from '@/types';
 import { bookingKey, reservations } from '@/services/reservations';
 import { fmtShort, nightsBetween, stateToParams, toISODate } from '@/lib/dates';
 import { roomURL } from '@/lib/links';
@@ -145,14 +143,14 @@ export default function BookingFlow({
 
   const room = resolved ? resolved.room : fixtureRoom;
   const plans = useMemo(
-    () => (resolved ? resolved.plans : fixtureRoom ? plansFor(fixtureRoom) : []),
-    [resolved, fixtureRoom]
+    () => (resolved ? resolved.plans : []),
+    [resolved]
   );
   const plan = plans.find((p) => p.id === planId) ?? plans[0] ?? null;
 
   /* Extras catalog follows the resolved hotel; empty until known so backend
      ids never render fixture rows. */
-  const [extrasList, setExtrasList] = useState<Extra[]>(fixtureRoom ? EXTRAS : []);
+  const [extrasList, setExtrasList] = useState<Extra[]>([]);
   useEffect(() => {
     if (!resolved) return;
     let alive = true;
@@ -190,30 +188,52 @@ export default function BookingFlow({
   const nights = nightsBetween(state.checkin, state.checkout);
   const validStay = !!room && !!plan && hasDates && nights >= 1;
 
-  /* Re-run the quote once backend promo/extras catalogs have hydrated. */
-  const [sourcesReady, setSourcesReady] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    ensurePricingSources().then(() => alive && setSourcesReady(true));
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const [quoteState, setQuoteState] = useState<{
+    quote: PriceBreakdown | null;
+    loading: boolean;
+    error: string;
+  }>({ quote: null, loading: false, error: '' });
+  const quoteReqId = useRef(0);
 
-  const quote = useMemo(() => {
-    if (!plan || !validStay) return null;
-    return compute({
-      perNight: plan.price,
-      nights,
-      rooms: state.rooms || 1,
-      extras: extrasSel,
-      extraPrices: Object.fromEntries(extrasList.map((x) => [x.id, x.price])),
-      promo: state.promo,
-      planId: plan.id,
-      checkin: state.checkin,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- sourcesReady only triggers a refresh
-  }, [plan, validStay, nights, state.rooms, state.promo, state.checkin, extrasSel, extrasList, sourcesReady]);
+  useEffect(() => {
+    if (!plan || !validStay || !state.checkin || !state.checkout) return;
+    const reqId = ++quoteReqId.current;
+    getQuote({
+      hotelId: resolved?.property.id ?? PROPERTY.id,
+      checkInDate: state.checkin,
+      checkOutDate: state.checkout,
+      adults: state.adults || 2,
+      children: state.children || 0,
+      currencyCode: currency,
+      rooms: [{ roomTypeId: room!.id, ratePlanId: plan.id }],
+      extras: extrasSel.map((x) => ({ extraId: x.id, quantity: x.qty })),
+      promoCode: state.promo || undefined,
+    })
+      .then((result) => {
+        if (reqId !== quoteReqId.current) return;
+        if (result.raw.valid) {
+          setQuoteState({ quote: result.quote, loading: false, error: '' });
+        } else {
+          setQuoteState({
+            quote: null,
+            loading: false,
+            error: result.raw.message || 'Invalid request — try adjusting dates or extras.',
+          });
+        }
+      })
+      .catch(() => {
+        if (reqId !== quoteReqId.current) return;
+        setQuoteState({
+          quote: null,
+          loading: false,
+          error: 'Could not calculate price — please try again.',
+        });
+      });
+  }, [plan, validStay, state.checkin, state.checkout, state.adults, state.children, currency, room, state.rooms, state.promo, extrasSel, resolved?.property.id]);
+
+  const quote = quoteState.quote;
+  const quoteLoading = !quote && !quoteState.error;
+  const quoteError = quoteState.error;
 
   /* BOOK-7 idempotency key + D-4 hold chip; both once per mount. */
   useEffect(() => {
@@ -475,6 +495,12 @@ export default function BookingFlow({
                       highlight
                       note="Billed in MAD at your bank's exchange rate."
                     />
+                  ) : quoteLoading ? (
+                    <p className="text-navy/40 text-xs">Calculating price…</p>
+                  ) : quoteError ? (
+                    <p className="text-clay text-xs" role="alert">
+                      {quoteError}
+                    </p>
                   ) : null}
                 </div>
               </div>

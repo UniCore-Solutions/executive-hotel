@@ -11,8 +11,6 @@ const SERVER_GRAPHQL_URL =
 export const GRAPHQL_API_URL =
   typeof window === 'undefined' ? SERVER_GRAPHQL_URL : BROWSER_GRAPHQL_URL;
 
-export const useGraphql = process.env.NEXT_PUBLIC_USE_MOCK_SERVICES !== 'true';
-
 export class GraphqlClientError extends Error {
   constructor(message: string) {
     super(message);
@@ -32,7 +30,7 @@ export async function gqlRequest<TResult, TVariables>(
   const res = await fetch(GRAPHQL_API_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ query: print(document), variables }),
+    body: JSON.stringify({ query: typeof document === 'string' ? document : print(document), variables }),
     // Server-side: never cache. Build-time prerendering with an unreachable
     // backend would otherwise bake fallback content into static HTML forever.
     cache: 'no-store',

@@ -1,7 +1,8 @@
 'use client';
 
 /* Mobile search sheet (Airbnb-style bottom sheet) — port of sheetHTML/bindSheet
-   (common.js). Mounted once in the root layout; opened via the search pill. */
+   (common.js). Mounted once in the root layout; opened via the search pill or
+   the mobile bottom bar. Now includes a destination selector on the homepage. */
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
@@ -11,12 +12,24 @@ import { fmtShort, stateToQuery } from '@/lib/dates';
 import { recordSearch } from '@/services/activity';
 import { PROPERTY } from '@/data';
 import Calendar from '@/components/search/Calendar';
+import DestinationPicker from '@/components/search/DestinationPicker';
 import { Button } from '@/components/ui/button';
+import { usePathname } from 'next/navigation';
 
 export default function SearchSheet() {
   const router = useRouter();
-  const { state, setDate, setGuests, setChildrenAges, setPromo, errors, sheetOpen, closeSheet } =
-    useSearch();
+  const pathname = usePathname();
+  const {
+    state,
+    setDate,
+    setGuests,
+    setChildrenAges,
+    setPromo,
+    errors,
+    sheetOpen,
+    closeSheet,
+    sheetStep,
+  } = useSearch();
   const { t } = useLang();
   const { toast } = useToast();
   const [calOpen, setCalOpen] = useState(false);
@@ -26,11 +39,19 @@ export default function SearchSheet() {
 
   const open = sheetOpen && slideOpen;
 
+  /* Determine if we're on the homepage (destination should be shown). */
+  const isHome = pathname === '/';
+  /* Determine if we're on the hotel page (don't show destination). */
+  const isHotelPage = pathname === '/hotel';
+  /* On hotel/room pages, hotel is already known — don't show destination. */
+  const showDestination = isHome;
+
   useEffect(() => {
     if (sheetOpen) {
       document.body.style.overflow = 'hidden';
       const t = setTimeout(() => {
         setCalOpen(false);
+        setPromoInput(state.promo);
         setEverOpened(true);
       }, 0);
       const raf = requestAnimationFrame(() => setSlideOpen(true));
@@ -56,16 +77,30 @@ export default function SearchSheet() {
     return () => document.removeEventListener('keydown', onKey);
   }, [open, closeSheet]);
 
+  /* Auto-open the calendar when opened to the dates step. */
+  useEffect(() => {
+    if (sheetOpen && (sheetStep === 'dates' || sheetStep === 'destination')) {
+      const id = requestAnimationFrame(() => setCalOpen(sheetStep === 'dates'));
+      return () => cancelAnimationFrame(id);
+    }
+    if (sheetOpen && sheetStep === 'summary') {
+      const id = requestAnimationFrame(() => setCalOpen(false));
+      return () => cancelAnimationFrame(id);
+    }
+  }, [sheetOpen, sheetStep]);
+
   const pick = (day: Date) => {
-    if (!state.checkin || (state.checkin && state.checkout && +day <= +state.checkin)) {
+    if (!state.checkin) {
       setDate(day, null);
     } else if (!state.checkout) {
       setDate(
         +day <= +state.checkin ? day : state.checkin,
         +day <= +state.checkin ? state.checkin : day
       );
-    } else if (+day < +state.checkout) {
-      setDate(state.checkin, day);
+    } else if (+day < +state.checkin || +day > +state.checkout) {
+      setDate(day, null);
+    } else if (+day === +state.checkin || +day === +state.checkout) {
+      setDate(state.checkin, null);
     } else {
       setDate(state.checkin, day);
     }
@@ -80,6 +115,12 @@ export default function SearchSheet() {
     setPromo(promoInput, true);
     closeSheet();
     recordSearch(state);
+
+    /* On homepage with a destination selected, navigate to the hotel page. */
+    if (isHome && state.destination) {
+      router.push(`/hotel?hotelid=${state.destination}${stateToQuery(state)}`);
+      return;
+    }
     router.push(`/search${stateToQuery({ ...state, promo: promoInput.trim().toUpperCase() })}`);
   };
 
@@ -105,8 +146,10 @@ export default function SearchSheet() {
       aria-label="Search availability"
       className={`fixed inset-x-0 bottom-0 z-[70] max-h-[92vh] overflow-y-auto rounded-t-3xl bg-white shadow-2xl transition-transform duration-300 ${open ? '' : 'pointer-events-none translate-y-full'}`}
     >
-      <div className="border-navy/10 sticky top-0 flex items-center justify-between rounded-t-3xl border-b bg-white/95 px-5 py-3 backdrop-blur">
-        <p className="text-navy text-sm font-bold tracking-widest uppercase">Edit search</p>
+      <div className="border-navy/10 sticky top-0 z-10 flex items-center justify-between rounded-t-3xl border-b bg-white/95 px-5 py-3 backdrop-blur">
+        <p className="text-navy text-sm font-bold tracking-widest uppercase">
+          {isHome ? 'Search' : 'Edit search'}
+        </p>
         <Button
           type="button"
           id="sheet-close"
@@ -120,30 +163,38 @@ export default function SearchSheet() {
         </Button>
       </div>
       <div className="space-y-5 p-5">
-        <div className="bg-navy-dark flex items-center gap-3 rounded-2xl px-4 py-3 text-white">
-          <span className="bg-gold/15 border-gold/30 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border">
-            <svg
-              className="text-gold-light h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.8"
-                d="M17.7 8.5a5.7 5.7 0 1 0-11.4 0c0 4.6 5.7 10.5 5.7 10.5s5.7-5.9 5.7-10.5ZM12 10.7a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z"
-              />
-            </svg>
-          </span>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold">
-              {PROPERTY.name} · {PROPERTY.city}
-            </p>
-            <p className="truncate text-[11px] text-white/60">72 Rue Oued Sebou, {PROPERTY.area}</p>
+        {/* Destination — only on homepage */}
+        {showDestination && <DestinationPicker onSelect={() => closeSheet()} />}
+
+        {/* Hotel context — on hotel/room pages, show which hotel is selected */}
+        {isHotelPage && (
+          <div className="bg-navy-dark flex items-center gap-3 rounded-2xl px-4 py-3 text-white">
+            <span className="bg-gold/15 border-gold/30 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border">
+              <svg
+                className="text-gold-light h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.8"
+                  d="M17.7 8.5a5.7 5.7 0 1 0-11.4 0c0 4.6 5.7 10.5 5.7 10.5s5.7-5.9 5.7-10.5ZM12 10.7a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z"
+                />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">
+                {PROPERTY.name} · {PROPERTY.city}
+              </p>
+              <p className="truncate text-[11px] text-white/60">
+                72 Rue Oued Sebou, {PROPERTY.area}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         <div>
           <p className="text-navy/45 mb-2 text-[11px] font-semibold tracking-[0.14em] uppercase">
@@ -293,7 +344,7 @@ export default function SearchSheet() {
           size="lg"
           className="shadow-navy/25 w-full rounded-2xl py-4 text-sm"
         >
-          {t('searchRooms')}
+          {isHome && state.destination ? 'View hotel' : t('searchRooms')}
         </Button>
         <p className="text-navy/45 text-center text-[11px]">
           Free cancellation on most rates · No payment needed to check availability

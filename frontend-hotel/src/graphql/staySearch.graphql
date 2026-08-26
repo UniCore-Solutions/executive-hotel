@@ -1,0 +1,45 @@
+query StaySearch($input: StaySearchInput!) {
+  staySearch(input: $input) {
+    hotelId
+    hotelName
+    status
+    capacityFits
+    roomType {
+      id
+      hotelId
+      hotelName
+      currencyCode
+      name
+      description
+      maxAdults
+      maxChildren
+      bedConfiguration
+      sizeSqm
+      viewType
+      status
+      amenities {
+        id
+        name
+        category
+      }
+      media {
+        id
+        url
+        altText
+        isPrimary
+      }
+      pricePerNight
+    }
+    rates {
+      roomTypeId
+      ratePlanId
+      ratePlanCode
+      ratePlanName
+      mealPlan
+      pricePerNight
+      currencyCode
+      cancellationPolicy
+      isRefundable
+    }
+  }
+}

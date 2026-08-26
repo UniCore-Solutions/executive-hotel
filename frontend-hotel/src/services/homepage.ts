@@ -1,8 +1,8 @@
 /** Homepage curated sections — sourced from the backend homepage query.
-    Falls back to empty sections when mock mode is on or the backend is
-    unreachable (the page then renders its fixture sections instead). */
+    Returns empty sections when the backend is unreachable (the page then
+    renders its fixture sections instead). */
 import { HomepageDocument, type HomepageQuery } from '@/graphql/generated/graphql';
-import { gqlRequest, useGraphql } from './graphqlClient';
+import { gqlRequest } from './graphqlClient';
 
 export type HomepageHotel = HomepageQuery['homepage']['featuredHotels'][number];
 export type HomepageRoomType = HomepageQuery['homepage']['featuredRoomTypes'][number];
@@ -24,7 +24,6 @@ export const EMPTY_HOMEPAGE: HomepageData = {
 };
 
 export async function getHomepage(): Promise<HomepageData> {
-  if (!useGraphql) return EMPTY_HOMEPAGE;
   try {
     const { homepage } = await gqlRequest(HomepageDocument, {});
     return {

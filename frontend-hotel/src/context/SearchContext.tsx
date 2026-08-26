@@ -32,6 +32,7 @@ export interface SearchContextValue {
   setChildrenAges: (ages: number[]) => void;
   setPromo: (promo: string, sync?: boolean) => void;
   setCurrency: (cur: CurrencyCode) => void;
+  setDestination: (dest: string, name?: string) => void;
   reset: () => void;
   syncUrl: (extra?: Record<string, string>) => void;
   nights: () => number;
@@ -42,6 +43,9 @@ export interface SearchContextValue {
   sheetOpen: boolean;
   openSheet: () => void;
   closeSheet: () => void;
+  /** Which search sheet step to open to (null = default). */
+  sheetStep: string | null;
+  openSheetTo: (step: string) => void;
 }
 
 const SearchContext = createContext<SearchContextValue | null>(null);
@@ -67,6 +71,7 @@ function SearchFallback({ children }: { children: ReactNode }) {
       setChildrenAges: () => {},
       setPromo: () => {},
       setCurrency: () => {},
+      setDestination: () => {},
       reset: () => {},
       syncUrl: () => {},
       nights: () => 0,
@@ -77,6 +82,8 @@ function SearchFallback({ children }: { children: ReactNode }) {
       sheetOpen: false,
       openSheet: () => {},
       closeSheet: () => {},
+      sheetStep: null,
+      openSheetTo: () => {},
     }),
     [state]
   );
@@ -95,6 +102,7 @@ function SearchUrlProvider({ children }: { children: ReactNode }) {
     )
   );
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetStep, setSheetStep] = useState<string | null>(null);
   const stateRef = useRef(state);
 
   /* keep the latest state available to sync helpers without extra renders */
@@ -175,6 +183,13 @@ function SearchUrlProvider({ children }: { children: ReactNode }) {
     [pathname, router, withFacets]
   );
 
+  const setDestination = useCallback(
+    (dest: string, name?: string) => {
+      setStateInternal((s) => ({ ...s, destination: dest, destinationName: name }));
+    },
+    []
+  );
+
   const reset = useCallback(() => {
     setStateInternal(getDefaultState());
   }, []);
@@ -186,6 +201,11 @@ function SearchUrlProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const openSheetTo = useCallback((step: string) => {
+    setSheetStep(step);
+    setSheetOpen(true);
+  }, []);
+
   const value = useMemo<SearchContextValue>(
     () => ({
       state,
@@ -195,6 +215,7 @@ function SearchUrlProvider({ children }: { children: ReactNode }) {
       setChildrenAges,
       setPromo,
       setCurrency,
+      setDestination,
       reset,
       syncUrl,
       nights: () => nightsBetween(state.checkin, state.checkout),
@@ -203,8 +224,16 @@ function SearchUrlProvider({ children }: { children: ReactNode }) {
       totalGuests: () => totalGuests(state),
       errors: () => validateState(state),
       sheetOpen,
-      openSheet: () => setSheetOpen(true),
-      closeSheet: () => setSheetOpen(false),
+      openSheet: () => {
+        setSheetStep(null);
+        setSheetOpen(true);
+      },
+      closeSheet: () => {
+        setSheetOpen(false);
+        setSheetStep(null);
+      },
+      sheetStep,
+      openSheetTo,
     }),
     [
       state,
@@ -214,9 +243,12 @@ function SearchUrlProvider({ children }: { children: ReactNode }) {
       setChildrenAges,
       setPromo,
       setCurrency,
+      setDestination,
       reset,
       syncUrl,
       sheetOpen,
+      sheetStep,
+      openSheetTo,
     ]
   );
 

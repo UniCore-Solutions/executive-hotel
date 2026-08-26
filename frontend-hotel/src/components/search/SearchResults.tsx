@@ -12,7 +12,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
 import { useCurrency } from '@/hooks/useCurrency';
-import { dateLabel, guestsLabel, nightsBetween, validateState } from '@/lib/dates';
+import { dateLabel, guestsLabel, nightsBetween, readStateFromURL, validateState } from '@/lib/dates';
 import { image, IMG_FALLBACK, filterEntries } from '@/services/availability';
 import { searchStay } from '@/services/catalog';
 import { validatePromo } from '@/services/pricing';
@@ -66,7 +66,7 @@ export default function SearchResults() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [entries, setEntries] = useState<SearchResultEntry[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [mode, setMode] = useState<SortMode>('recommended');
   const [noMatchMsg, setNoMatchMsg] = useState('');
   const [filters, setFilters] = useState<SearchFilters>(() =>
@@ -78,29 +78,43 @@ export default function SearchResults() {
   const validationMsg = validateState(state).join(' ');
   const invalid = validationMsg.length > 0;
 
+  /* Fetch ONLY the committed search (URL), never live edits: the Search bar
+     writes context immediately while typing, but only "Search" pushes to the
+     URL — so this effect fires exactly once per click. Facet/promo/currency
+     params are excluded so they never re-trigger a search. */
+  const stayKey = ['checkin', 'checkout', 'adults', 'children', 'rooms', 'destination']
+    .map((k) => searchParams?.get(k) ?? '')
+    .join('|');
+  /* Loading is derived: any committed-search change immediately re-renders the
+     skeleton without touching state inside the effect. */
+  const loading = stayKey !== loadedKey;
   useEffect(() => {
-    if (invalid) return;
+    const p = new URLSearchParams();
+    stayKey
+      .split('|')
+      .forEach((v, i) => v && p.set(['checkin', 'checkout', 'adults', 'children', 'rooms', 'destination'][i]!, v));
+    const committed = readStateFromURL(p);
+    if (validateState(committed).length) return;
     let alive = true;
-    searchStay(undefined, {
-      checkin: state.checkin,
-      checkout: state.checkout,
-      adults: state.adults,
-      children: state.children,
-      rooms: state.rooms,
+    searchStay(committed.destination || undefined, {
+      checkin: committed.checkin,
+      checkout: committed.checkout,
+      adults: committed.adults,
+      children: committed.children,
+      rooms: committed.rooms,
     }).then((list) => {
       if (!alive) return;
       setEntries(list);
+      setLoadedKey(stayKey);
       if (!list.length)
         setNoMatchMsg(
           'We have no rooms matching those dates at the moment. Try adjusting your dates or guest numbers.'
         );
-      setLoading(false);
     });
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.checkin, state.checkout, state.adults, state.children, state.rooms]);
+  }, [stayKey]);
 
   /* keep facets in sync with the URL (refresh, back/forward, deep links) */
   const paramsKey = searchParams?.toString() ?? '';

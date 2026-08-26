@@ -1,30 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-  availabilityFor,
-  filterEntries,
-  fitsGuests,
-  getStay,
-  getStayRoom,
-  plansFor,
-  searchRooms,
-} from '@/services/availability';
+import { demandFor, filterEntries, fitsGuests } from '@/services/availability';
 import { emptyFilters } from '@/lib/filters';
 import { PROPERTY } from '@/data';
-
-const CI = new Date(2026, 8, 12);
-
-describe('availabilityFor', () => {
-  it('is deterministic per room+date and falls in the 0–100 band', () => {
-    const a = availabilityFor(PROPERTY.rooms[0]!, '2026-09-12');
-    expect(a).toBe(availabilityFor(PROPERTY.rooms[0]!, '2026-09-12'));
-    expect(['available', 'soldout', 'few']).toContain(a);
-  });
-
-  it('hard-soldout rooms stay soldout', () => {
-    const soldout = { ...PROPERTY.rooms[0]!, availability: 'soldout' as const };
-    expect(availabilityFor(soldout, '2026-09-12')).toBe('soldout');
-  });
-});
 
 describe('fitsGuests', () => {
   it('matches capacity rules', () => {
@@ -35,37 +12,12 @@ describe('fitsGuests', () => {
   });
 });
 
-describe('searchRooms', () => {
-  it('returns only fitting, non-soldout rooms with plans and demand', async () => {
-    const entries = await searchRooms({ checkin: CI, adults: 2, children: 0 });
-    expect(entries.length).toBeGreaterThan(0);
-    for (const e of entries) {
-      expect(e.availability).toBeDefined();
-      expect(e.plans.length).toBeGreaterThan(0);
-      expect(e.demand).toBeGreaterThanOrEqual(0);
-      expect(e.demand).toBeLessThan(1000);
-      expect(fitsGuests(e.room, 2, 0)).toBe(true);
-    }
-  });
-
-  it('large parties shrink the result set', async () => {
-    const big = await searchRooms({ checkin: CI, adults: 6, children: 3 });
-    expect(big.length).toBe(0);
-  });
-});
-
-describe('getStayRoom', () => {
-  it('returns the room, plans, fit flag and siblings', async () => {
-    const out = await getStayRoom('', 'executive-suite', { checkin: CI, adults: 2, children: 1 });
-    expect(out?.room.id).toBe('executive-suite');
-    expect(out?.fits).toBe(true);
-    expect(out?.siblingRooms.length).toBe(2);
-    expect(out?.siblingRooms.every((s) => s.room.id !== 'executive-suite')).toBe(true);
-    expect(out?.plans.some((p) => p.id === 'executive-suite::hb')).toBe(true);
-  });
-
-  it('returns null for unknown rooms', async () => {
-    expect(await getStayRoom('', 'nope', {})).toBeNull();
+describe('demandFor', () => {
+  it('returns a stable integer 0–999', () => {
+    const d = demandFor(PROPERTY.rooms[0]!);
+    expect(d).toBeGreaterThanOrEqual(0);
+    expect(d).toBeLessThan(1000);
+    expect(demandFor(PROPERTY.rooms[0]!)).toBe(d);
   });
 });
 
@@ -73,8 +25,18 @@ describe('filterEntries', () => {
   const rooms = PROPERTY.rooms;
   const entries = rooms.map((room) => ({
     room,
-    availability: availabilityFor(room, '2026-09-12'),
-    plans: plansFor(room),
+    availability: 'available' as const,
+    plans: [
+      {
+        id: `${room.id}::bb`,
+        name: 'Bed & Breakfast',
+        mealPlan: 'Breakfast included',
+        price: room.pricePerNight,
+        cancellationPolicy: room.cancellationPolicy,
+        benefits: [],
+        freeCancellation: true,
+      },
+    ],
     demand: 0,
   }));
 
@@ -87,26 +49,11 @@ describe('filterEntries', () => {
     expect(suites.map((e) => e.room.id)).toEqual(['executive-suite']);
   });
 
-  it('filters by meal plan (half board exists only for rooms >= 950)', () => {
-    const hb = filterEntries(entries, { ...emptyFilters(), plans: ['hb'] });
-    expect(hb.map((e) => e.room.id).sort()).toEqual(['executive-suite', 'superior-double-or-twin']);
-  });
-
-  it('filters by refundability via any plan', () => {
-    const free = filterEntries(entries, { ...emptyFilters(), refund: ['free'] });
-    const nonrefund = filterEntries(entries, { ...emptyFilters(), refund: ['nonrefund'] });
-    expect(free.map((e) => e.room.id)).toEqual(entries.map((e) => e.room.id));
-    expect(nonrefund.map((e) => e.room.id)).toEqual(entries.map((e) => e.room.id));
-  });
-
   it('filters by price bracket on the lowest plan price', () => {
     const cheap = filterEntries(entries, { ...emptyFilters(), price: ['under-1000'] });
-    expect(cheap.map((e) => e.room.id).sort()).toEqual([
-      'double-or-twin',
-      'superior-double-or-twin',
-    ]);
+    expect(cheap.map((e) => e.room.id).sort()).toEqual(['double-or-twin']);
     const top = filterEntries(entries, { ...emptyFilters(), price: ['1500-plus'] });
-    expect(top.map((e) => e.room.id)).toEqual([]);
+    expect(top.map((e) => e.room.id)).toEqual(['executive-suite']);
   });
 
   it('filters by amenity (terrace is suite-only)', () => {
@@ -130,22 +77,5 @@ describe('filterEntries', () => {
       price: ['under-1000'],
     });
     expect(out).toEqual([]);
-  });
-});
-
-describe('getStay / plansFor', () => {
-  it('getStay lists every room with availability', async () => {
-    const out = await getStay('', { checkin: CI, adults: 2, children: 0 });
-    expect(out?.hotel.id).toBe('executive-boutique-rabat');
-    expect(out?.rooms.length).toBe(3);
-  });
-
-  it('plan ids follow room::suffix convention', () => {
-    const ids = plansFor(PROPERTY.rooms[0]!).map((p) => p.id);
-    expect(ids).toEqual([
-      'superior-double-or-twin::bb',
-      'superior-double-or-twin::ro',
-      'superior-double-or-twin::hb',
-    ]);
   });
 });

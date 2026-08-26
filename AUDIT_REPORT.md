@@ -1,496 +1,580 @@
-# Hotel Collection Platform — Complete Audit Report
+# Full Frontend Mock Data & API Integration Audit
 
-> **Scope:** Full-platform architecture audit + dedicated frontend mock-data audit
-> **Date:** August 24, 2026 · **Method:** Static analysis of the actual codebase (no services started, no code modified)
-> **Repositories:** `backend-hotel/` · `frontend-hotel/` · `backoffice-hotel/` · `database/`
-
----
-
-## Table of Contents
-
-- [Part I — Platform Audit](#part-i--platform-audit)
-  - [A. Project Overview](#a-project-overview)
-  - [B. Technology Stack](#b-technology-stack)
-  - [C. Architecture (as-built)](#c-architecture-as-built)
-  - [D. Module Map](#d-module-map)
-  - [E. Data Model](#e-data-model)
-  - [F. API Map](#f-api-map)
-  - [G. Main Business Flows](#g-main-business-flows)
-  - [H. Feature Status Matrix](#h-feature-status-matrix)
-  - [I. Problems Found](#i-problems-found)
-  - [J. Technical Debt](#j-technical-debt)
-  - [K. Documentation Gaps](#k-documentation-gaps)
-  - [L. Recommended Next Steps](#l-recommended-next-steps)
-- [Part II — Frontend Mock-Data Audit](#part-ii--frontend-mock-data-audit)
-  - [1. Method](#1-method)
-  - [2. The Root of All Mock Data](#2-the-root-of-all-mock-data-srcdataindexts)
-  - [3. Data-Source Traces per Feature](#3-data-source-traces-per-feature)
-  - [4. Complete Mock-Data Inventory](#4-complete-mock-data-inventory)
-  - [5. Special-Attention Areas — Verdicts](#5-special-attention-areas--verdicts)
-  - [6. Final Tallies & Migration Order](#6-final-tallies--migration-order)
-- [Consolidated Roadmap](#consolidated-roadmap)
+**Date:** 2026-08-26
+**Scope:** `frontend-hotel/` (guest), `backoffice-hotel/` (admin), `backend-hotel/` (API)
 
 ---
 
-# Part I — Platform Audit
+## Executive Summary
 
-## A. Project Overview
+The **backoffice-hotel** is **100% integrated** with the real backend — zero mocks, zero localStorage for business data, every screen reads/writes through live GraphQL.
 
-A multi-hotel booking platform ("Hotel Collection") in a **non-git monorepo** with four projects:
+The **frontend-hotel** (guest-facing) is in a **dual-mode architecture**. A toggle (`NEXT_PUBLIC_USE_MOCK_SERVICES`) gates whether services call the real GraphQL backend or fall back to static fixtures and localStorage. In production mode, several services do attempt real API calls but **silently fall back to mock data** on failure. The most critical gaps are:
 
-| Project | What it actually is |
-|---|---|
-| `backend-hotel/` | Spring Boot 4.1 / Java 21 API: catalog, availability, pricing/quotes, reservations, billing, reviews, identity/RBAC, media, notifications, platform content, audit. GraphQL primary + small REST split. Kafka transactional outbox. |
-| `frontend-hotel/` | Next.js 16 guest frontend. **Hybrid**: real GraphQL for catalog/availability/rates/homepage; localStorage mocks for auth, booking creation, payment, pricing math. |
-| `backoffice-hotel/` | Next.js 16 admin console. Fully real: BFF proxy → backend GraphQL, httpOnly cookie session, react-query. |
-| `database/` | Two SQL files: Oracle-dialect legacy baseline (`collection-schema.sql`) and the PostgreSQL design (`collection-schema-postgresql.sql`, "locked source of truth" implemented by Flyway V1–V20). |
+- **Authentication** — fully mocked (localStorage)
+- **Reservations** — fully mocked (localStorage)
+- **Payment** — fully mocked (in-memory)
+- **Pricing/Availability** — client-side calculation from static fixtures
+- **Cancellation** — local policy evaluation from static room data
 
----
-
-## B. Technology Stack (verified)
-
-| Layer | Technology |
-|---|---|
-| Backend runtime | Java 21, Spring Boot **4.1.0** (`pom.xml:8`) |
-| Persistence | Spring Data JPA/Hibernate (`ddl-auto: validate`), Flyway V1–V20, PostgreSQL 16 |
-| Security | Spring Security, stateless JWT (jjwt 0.11.5), BCrypt(12), fail-fast JWT secret |
-| API | Spring for GraphQL + extended scalars (query depth limit 15), REST splits (`/api/v1/auth`, `/api/v1/reservations`, `/api/v1/media`) |
-| Messaging | Spring Kafka + transactional outbox (`EventOutbox` → `OutboxRelay` → `KafkaOutboxPublisher`) |
-| Testing (backend) | JUnit 5, Testcontainers (postgres 16.4, kafka 3.9.1), ArchUnit 1.4.1 — ~131 tests in 15 classes |
-| Frontends | Next.js ^16.3.0, React ^19.2.8, TypeScript ~5.9 strict, Tailwind v4, Radix UI |
-| Data fetching | `frontend-hotel`: raw fetch GraphQL client + graphql-codegen client-preset · `backoffice-hotel`: graphql-request v7 + TanStack Query v5 behind a BFF route |
-| Testing (frontends) | Vitest + Testing Library; Playwright E2E |
-| Infrastructure | `docker-compose.yml` only (PostgreSQL + Kafka). **No Dockerfile, no CI/CD, no IaC anywhere** |
+The backend has **comprehensive APIs** for all of these (99 operations), but the guest frontend either doesn't call them or falls back to mocks when they fail.
 
 ---
 
-## C. Architecture (as-built)
+## 1. Repository Structure
 
-### Backend — layered monolith, NOT the documented hexagonal modular monolith
+| Project | Framework | Purpose | Integration Status |
+|---------|-----------|---------|-------------------|
+| `backend-hotel/` | Spring Boot + GraphQL | Hotel management API | **Complete** (99 operations) |
+| `backoffice-hotel/` | Next.js 16 | Admin console | **100% integrated** |
+| `frontend-hotel/` | Next.js (App Router) | Guest-facing hotel website | **~40% integrated** (dual-mode with mock fallbacks) |
 
-Actual package layout under `com.hotelcollection.hotel`:
+---
+
+## 2. Backend API Inventory (99 Operations)
+
+### REST Endpoints (10)
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| POST | `/api/v1/auth/login` | Public | Guest login |
+| POST | `/api/v1/auth/register` | Public | Guest registration |
+| POST | `/api/v1/reservations` | Public | Create reservation |
+| POST | `/api/v1/reservations/{ref}/cancel` | Public | Cancel reservation |
+| POST | `/api/v1/reservations/{ref}/invoice` | Public | Issue invoice |
+| POST | `/api/v1/payments` | JWT | Create payment |
+| POST | `/api/v1/payments/{id}/capture` | JWT | Capture payment |
+| POST | `/api/v1/media/upload` | JWT | Upload media |
+| DELETE | `/api/v1/media/{id}` | JWT | Delete media |
+| POST | `/api/v1/hotels/{id}/reviews` | JWT | Create review |
+
+### GraphQL Queries (34)
+
+| Operation | Auth | Purpose |
+|-----------|------|---------|
+| `me` | JWT | Current user |
+| `hotels` | Public | Search hotels |
+| `hotel(id)` | Public | Single hotel |
+| `hotelDetails(id)` | Public | Hotel + experiences + restaurants + FAQs + reviews |
+| `roomType(id)` | Public | Single room type |
+| `roomTypes(hotelId)` | Public | All room types |
+| `experiences(hotelId)` | Public | Hotel experiences |
+| `restaurants(hotelId)` | Public | Hotel restaurants |
+| `extras(hotelId)` | Public | Bookable extras |
+| `faqs(hotelId)` | Public | Hotel FAQs |
+| `platform(slug)` | Public | Platform identity + content |
+| `homepage` | Public | Curated homepage sections |
+| `availability` | Public | Room availability |
+| `staySearch` | Public | Composed search |
+| `offers` | Public | Active promotions |
+| `rates` | Public | Nightly rates |
+| `quote` | Public | Server-side pricing |
+| `myReservations` | JWT | Guest's bookings |
+| `reservation` | Public | Lookup by ref+email |
+| `reviews` | Public | Paged hotel reviews |
+| `adminDashboard` | Staff | Dashboard stats |
+| `adminHotel` | Staff | Hotel workspace |
+| `adminHotels` | Staff | Hotel list |
+| `adminAmenities` | Staff | Amenity catalog |
+| `adminGuests` | Staff | Hotel guests |
+| `adminReservations` | Staff | Hotel reservations |
+| `adminPayments` | Staff | Hotel payments |
+| `adminInvoices` | Staff | Hotel invoices |
+| `adminPromotions` | Staff | Hotel promotions |
+| `adminReviews` | Staff | Hotel reviews |
+| `adminUsers` | Staff | Platform users |
+| `adminRoles` | Staff | Platform roles |
+| `adminNotifications` | Staff | Hotel notifications |
+| `adminAuditLogs` | Staff | Audit log |
+
+### GraphQL Mutations (33)
+
+| Operation | Auth | Purpose |
+|-----------|------|---------|
+| `login` | Public | Guest login |
+| `register` | Public | Guest registration |
+| `createUser` | Staff | Create staff user |
+| `assignRole` | Staff | Assign role |
+| `revokeRole` | Staff | Revoke role |
+| `createReservation` | Public | Create booking |
+| `cancelReservation` | Public | Cancel booking |
+| `adminCancelReservation` | Staff | Admin cancel |
+| `createPayment` | JWT | Create payment |
+| `capturePayment` | JWT | Capture payment |
+| `issueInvoice` | Public | Generate invoice |
+| `createReview` | JWT | Create review |
+| `moderateReview` | Staff | Approve/reject review |
+| `updateAvailability` | Staff | Update inventory (deprecated) |
+| `updateAvailabilityRange` | Staff | Update inventory by range |
+| `createHotel` | Staff | Create hotel |
+| `updateHotel` | Staff | Update hotel |
+| `setHotelAmenities` | Staff | Set hotel amenities |
+| `setHotelMedia` | Staff | Set hotel media |
+| `createRoomType` | Staff | Create room type |
+| `updateRoomType` | Staff | Update room type |
+| `setRoomTypeAmenities` | Staff | Set room type amenities |
+| `setRoomTypeMedia` | Staff | Set room type media |
+| `createRoom` | Staff | Create room |
+| `updateRoom` | Staff | Update room |
+| `createRatePlan` | Staff | Create rate plan |
+| `updateRatePlan` | Staff | Update rate plan |
+| `linkRoomTypeRatePlan` | Staff | Link room type to rate plan |
+| `unlinkRoomTypeRatePlan` | Staff | Unlink room type from rate plan |
+| `setRatePlanPrices` | Staff | Set date-range prices |
+| `createPromotion` | Staff | Create promotion |
+| `updatePromotion` | Staff | Update promotion |
+| `setPromotionStatus` | Staff | Activate/deactivate promotion |
+
+### Batch Field Resolvers (10) + Single Entity Resolvers (9)
+
+---
+
+## 3. Backoffice-Hotel Audit: 100% Integrated
+
+### Classification: ALL A (Fully Integrated)
+
+| Page / Feature | Route | Data Source | Backend API | Status |
+|----------------|-------|-------------|-------------|--------|
+| Login | `/login` | GraphQL mutation | `LoginDocument` | **REAL** |
+| Dashboard | `/dashboard` | GraphQL query | `AdminDashboardDocument` | **REAL** |
+| Hotels List | `/hotels` | GraphQL query | `AdminHotelsDocument` | **REAL** |
+| New Hotel | `/hotels/new` | GraphQL mutation | `CreateHotelDocument` | **REAL** |
+| Hotel Overview | `/hotels/[id]` | GraphQL query+mutation | `AdminHotelWorkspaceDocument` | **REAL** |
+| Room Types | `/hotels/[id]` (tab) | GraphQL query+mutation | `AdminHotelWorkspaceDocument` + mutations | **REAL** |
+| Rooms | `/hotels/[id]` (tab) | GraphQL query+mutation | `AdminHotelWorkspaceDocument` + mutations | **REAL** |
+| Rate Plans | `/hotels/[id]` (tab) | GraphQL query+mutation | `AdminHotelWorkspaceDocument` + mutations | **REAL** |
+| Availability | `/hotels/[id]` (tab) | GraphQL query+mutation | `AdminHotelWorkspaceDocument` + mutations | **REAL** |
+| Reservations | `/reservations` | GraphQL query+mutation | `AdminReservationsDocument` | **REAL** |
+| Guests | `/guests` | GraphQL query | `AdminGuestsDocument` | **REAL** |
+| Payments | `/payments` | GraphQL query | `AdminPaymentsDocument` | **REAL** |
+| Invoices | `/invoices` | GraphQL query | `AdminInvoicesDocument` | **REAL** |
+| Promotions | `/promotions` | GraphQL query+mutation | `AdminPromotionsDocument` + mutations | **REAL** |
+| Reviews | `/reviews` | GraphQL query+mutation | `AdminReviewsDocument` | **REAL** |
+| Users & Roles | `/users` | GraphQL query+mutation | `AdminUsersDocument` + mutations | **REAL** |
+| Notifications | `/notifications` | GraphQL query | `AdminNotificationsDocument` | **REAL** |
+| Audit Log | `/audit` | GraphQL query | `AdminAuditLogsDocument` | **REAL** |
+
+**Only non-API data:** localStorage for hotel scope selection (`bo_active_hotel`) — UI convenience only.
+
+---
+
+## 4. Frontend-Hotel Service-by-Service Audit
+
+### 4.1 Services With Real API Calls (Dual-Mode)
+
+These services attempt real GraphQL calls but **fall back to mock/static data** on failure.
+
+| Service | File | Real API? | Fallback Target | Fallback Type |
+|---------|------|-----------|-----------------|---------------|
+| `catalog.ts` | `src/services/catalog.ts` | YES (8 queries) | `DATA.*` fixtures + `availability.ts` mocks | **MOCK FALLBACK** |
+| `homepage.ts` | `src/services/homepage.ts` | YES (1 query) | `EMPTY_HOMEPAGE` (empty arrays) | **SAFE FALLBACK** |
+| `hotelList.ts` | `src/services/hotelList.ts` | YES (1 query) | `HOTEL_LIST_FALLBACK` (single fixture hotel) | **MOCK FALLBACK** |
+| `extras.ts` | `src/services/extras.ts` | YES (1 query) | `DATA.EXTRAS` (5 static extras) | **MOCK FALLBACK** |
+| `platform.ts` | `src/services/platform.ts` | YES (1 query) | `EMPTY_PLATFORM_CONTENT` (nulls) | **SAFE FALLBACK** |
+| `pricingHydration.ts` | `src/services/pricingHydration.ts` | YES (bootstrap) | Silently swallows errors | **SILENT FAILURE** |
+
+#### catalog.ts — Detailed Fallback Map
+
+| Function | Real API | Fallback |
+|----------|----------|----------|
+| `getRoomTypes()` | `HotelRoomTypesDocument` | `DATA.PROPERTY.rooms` |
+| `getOffers()` | `HotelOffersDocument` | `DATA.OFFERS` |
+| `getReviews()` | `HotelReviewsDocument` | `DATA.PROPERTY.reviews` |
+| `getExperiences()` | `HotelExperiencesDocument` | `DATA.PROPERTY.experiences` |
+| `searchStay()` | `StaySearchDocument` | `mockSearchRooms()` from `availability.ts` |
+| `getStay()` | Composed batch query | `mockGetStay()` from `availability.ts` |
+| `getStayRoom()` | Composed batch query | `mockGetStayRoom()` from `availability.ts` |
+| `getProperty()` | `HotelByIdDocument` | `mockGetProperty()` from `availability.ts` |
+| `getHotelById()` | `HotelByIdDocument` | `DATA.PROPERTY` |
+
+### 4.2 Pure Mock Services (No API Calls)
+
+| Service | File | Data Source | Type |
+|---------|------|-------------|------|
+| `availability.ts` | `src/services/availability.ts` | `DATA.*` fixtures + hash-based pseudo-random | **MOCK** |
+| `pricing.ts` | `src/services/pricing.ts` | `DATA.OFFERS` + `DATA.EXTRAS` defaults | **MOCK** |
+| `cancellation.ts` | `src/services/cancellation.ts` | `DATA.PROPERTY.rooms` for policy lookup | **MOCK** |
+| `siteSearch.ts` | `src/services/siteSearch.ts` | `DATA.PROPERTY.rooms/offers/faq/etc.` | **STATIC** |
+| `payment.ts` | `src/services/payment.ts` | In-memory (no persistence) | **MOCK** |
+
+### 4.3 localStorage Services
+
+| Service | File | localStorage Keys | Purpose | Type |
+|---------|------|-------------------|---------|------|
+| `auth.ts` | `src/services/auth.ts` | `rc_session_v1`, `rc_users_v1` | Mock auth with seeded demo user | **MOCK** |
+| `reservations.ts` | `src/services/reservations.ts` | `rc_reservations_v1`, `rc_session_v1`, `rc_booking_done` | Mock reservation CRUD | **MOCK** |
+| `consent.ts` | `src/services/consent.ts` | `rc_consent_v1` | GDPR cookie consent | **LOCAL STORAGE** |
+| `newsletter.ts` | `src/services/newsletter.ts` | `rc_newsletter_v1` | Mock email subscription | **MOCK** |
+| `activity.ts` | `src/services/activity.ts` | `rc_recent_searches_v1`, `rc_recent_rooms_v1` | Browsing history | **LOCAL STORAGE** |
+
+### 4.4 Infrastructure
+
+| Service | File | Purpose |
+|---------|------|---------|
+| `graphqlClient.ts` | `src/services/graphqlClient.ts` | GraphQL HTTP client + `useGraphql` toggle |
+
+---
+
+## 5. Frontend-Hotel Page-by-Page Audit
+
+| Route | Page | Key Data | Source | Status | Backend API Exists? | Mock Data? | LocalStorage? | Action Needed |
+|-------|------|----------|--------|--------|---------------------|------------|---------------|---------------|
+| `/` | Homepage | Platform hero | GraphQL `PlatformBySlug` | **PARTIAL** | Yes | Fallback: empty | No | None (safe fallback) |
+| `/` | Homepage | Featured hotels/rooms | GraphQL `Homepage` | **PARTIAL** | Yes | Fallback: empty | No | None (safe fallback) |
+| `/` | Homepage | Facilities, static sections | `DATA.PROPERTY` | **STATIC** | N/A | Yes (static) | No | None (intentional) |
+| `/` | Homepage | Recent activity | `rc_recent_*` localStorage | **LOCAL STORAGE** | N/A | No | Yes | Acceptable (UX) |
+| `/hotel` | Hotel Detail | Hotel info + rooms | GraphQL `HotelById` | **PARTIAL** | Yes | Fallback: `DATA.PROPERTY` | No | None (safe fallback) |
+| `/hotel` | Hotel Detail | Experiences | GraphQL `HotelExperiences` | **PARTIAL** | Yes | Fallback: `DATA.PROPERTY.experiences` | No | None (safe fallback) |
+| `/hotel` | Hotel Detail | Reviews | GraphQL `HotelReviews` | **PARTIAL** | Yes | Fallback: `DATA.PROPERTY.reviews` | No | None (safe fallback) |
+| `/hotel` | Hotel Detail | Policies, FAQ | `DATA.PROPERTY` | **STATIC** | Yes (`faqs` query exists) | Yes (static) | No | **Integrate faqs query** |
+| `/search` | Search Results | Availability + pricing | `searchStay()` GraphQL | **PARTIAL** | Yes | Fallback: `mockSearchRooms()` | No | **Critical: mock fallback hides failures** |
+| `/search` | Search Results | Rate plans | `rates()` GraphQL | **PARTIAL** | Yes | Fallback: `computePlanPricing()` local | No | **Critical: local pricing calculation** |
+| `/booking` | Booking Flow | Price breakdown | `compute()` local | **MOCK** | Yes (`quote` query exists) | Yes | No | **Integrate `quote` query** |
+| `/booking` | Booking Flow | Payment | `charge()` mock | **MOCK** | Yes (REST + GraphQL payments) | Yes | No | **Integrate payment API** |
+| `/booking` | Booking Flow | Create reservation | `createReservation()` localStorage | **MOCK** | Yes (REST + GraphQL) | Yes | Yes | **Integrate reservation API** |
+| `/confirmation` | Confirmation | Reservation details | `byRef()` localStorage | **MOCK** | Yes (`reservation` query) | Yes | Yes | **Integrate reservation lookup** |
+| `/reservation` | Reservation Lookup | Reservation by ref+email | `byRef()` localStorage | **MOCK** | Yes (`reservation` query) | Yes | Yes | **Integrate reservation lookup** |
+| `/checkin` | Online Check-In | Reservation + update | `byRef()` + `setCheckedIn()` localStorage | **MOCK** | Partial (no check-in API) | Yes | Yes | **Needs backend check-in API** |
+| `/account` | Guest Account | Login/Register | Mock auth localStorage | **MOCK** | Yes (`login`/`register` mutations) | Yes | Yes | **Integrate auth API** |
+| `/account` | Guest Account | Reservations list | `byEmail()` localStorage | **MOCK** | Yes (`myReservations` query) | Yes | Yes | **Integrate reservations list** |
+| `/offers` | Offers | Promotion list | `DATA.OFFERS` static | **STATIC** | Yes (`offers` query) | Yes | No | **Integrate offers query** |
+| `/contact` | Contact | Contact form | Hardcoded | **STATIC** | No | N/A | No | None (intentional) |
+| `/faq` | FAQ | FAQ list | `DATA.PROPERTY.faq` | **STATIC** | Yes (`faqs` query) | Yes | No | **Integrate faqs query** |
+| `/index-2` | Alternate Homepage | Hotel data | `DATA.PROPERTY` | **STATIC** | N/A | Yes (static) | No | None (design variant) |
+| `/terms` | Terms | Legal text | Hardcoded JSX | **STATIC** | N/A | N/A | No | None |
+| `/privacy` | Privacy | Legal text | Hardcoded JSX | **STATIC** | N/A | N/A | No | None |
+| `/cookies` | Cookies | Legal text + consent | Hardcoded + localStorage | **STATIC + LOCAL** | N/A | N/A | Yes | None (UX) |
+| `/cancellation-policy` | Cancellation Policy | Legal text | Hardcoded JSX | **STATIC** | N/A | N/A | No | None |
+
+---
+
+## 6. Silent Mock Fallbacks (High Priority)
+
+Every dual-mode service follows this pattern:
 
 ```
-controller/    16 classes: 12 *GraphQLController + REST (Auth, Reservation, Invoice, Payment, Media)
-service/       28 use-case interfaces
-service/impl/  29 @Service implementations
-repository/    36 Spring Data JPA repositories (incl. pessimistic-lock & upsert queries)
-entity/        55 JPA entities/enums (UUID PKs via GenerationType.UUID)
-dto/           per-domain records (inputs/outputs)
-mapper/        RateMapper only
-security/      SecurityConfig, JwtService, JwtAuthFilter, AuthRateLimitFilter, TraceIdFilter,
-               CurrentUser(CurrentUserAccessor)
-exception/     DomainException / ValidationException / TechnicalException, ErrorCode enum,
-               GlobalExceptionHandler (REST) + GraphqlExceptionHandler (GraphQL)
-util/          MoneyUtil, CancellationPolicy, ReferenceGenerator, Validation
-config/ storage/
+if (!useGraphql) → return mock data
+try { return await gqlRequest(...) }
+catch { return mock data }  // ← SILENT FALLBACK
 ```
 
-Key facts:
+### Occurrences
 
-- Dependency direction is clean and **enforced by ArchUnit** (`ModuleArchitectureTest.java:27–76`): controllers → service interfaces only; repositories/service.impls never accessed outside services; ≤11 constructor dependencies.
-- That same test **forbids** hexagonal packages and documents *"Layered architecture (ADR-009)"* — but **no ADR-009 file exists**, and all docs still describe the ADR-008 hexagonal modular monolith. Biggest doc-vs-reality gap in the repo.
-- Cross-aggregate access goes through injected service interfaces; **6 `@Lazy` circular-dependency workarounds** exist (`BookingServiceImpl`, `PricingServiceImpl`, `InventoryServiceImpl`, `RateQueryServiceImpl`, `ReviewServiceImpl`, `AuditServiceImpl`) — evidence of service-layer coupling cycles ArchUnit cannot see.
-- Eventing: transactional outbox publishing facts (`booking.confirmed`, `booking.cancelled`). **No consumers exist in this repo** — events are produced and relayed only.
-- Vendor abstraction partial: `MediaStorageProvider ← LocalFilesystemMediaStorageProvider`. **PaymentProvider / EmailProvider interfaces do not exist** despite docs claiming otherwise.
-
-### Frontends
-
-- **frontend-hotel**: App Router, server components for static pages, client components for interactivity; URL-as-state via `SearchContext`; contexts Search/Toast/Modal/Session; service layer with silent mock fallbacks.
-- **backoffice-hotel**: BFF pattern — `(backoffice)/layout.tsx` server guard redirects to `/login` without a valid cookie; `/api/graphql` route proxies to the backend with the Bearer token from httpOnly cookie `bo_session`; client pages use react-query over typed GraphQL documents; hotel-scope switcher context.
-
----
-
-## D. Module Map (backend)
-
-| Package | Responsibility |
-|---|---|
-| `controller` | GraphQL resolvers (catalog, rate, availability, reservation, review, identity, billing, admin, platform, homepage, audit, notification) + REST splits |
-| `service` / `impl` | Use cases: `BookingServiceImpl` (idempotent server-priced create, penalty cancel), `PricingServiceImpl` (quote engine: nightly rate, promos, tax_fee_types, extras), `AvailabilityServiceImpl` (read model), `InventoryServiceImpl` (lock&sell/release per night), `AuthServiceImpl`, catalog/rate/billing/identity admin services, dashboard aggregation |
-| `repository` | Spring Data JPA incl. custom SQL: `ensureRow` upsert, `lockByRoomTypeIdsAndRange` (pessimistic locks), `findByIdForUpdate` |
-| `entity` | 55 tables mapped; UUID identities |
-| `security` | Stateless JWT chain; hotel-scoped RBAC claims (`roles`, `hotels`) |
-| `exception` | Unified taxonomy: NOT_FOUND / FORBIDDEN / CONFLICT / VALIDATION / UNAUTHORIZED / RATE_LIMITED / INTERNAL_ERROR / SERVICE_UNAVAILABLE |
+| Service | Function | API Called | Fallback Data | Risk |
+|---------|----------|-----------|---------------|------|
+| `catalog.ts` | `getRoomTypes()` | `HotelRoomTypesDocument` | `DATA.PROPERTY.rooms` (3 static rooms) | **HIGH** — wrong room data shown |
+| `catalog.ts` | `getOffers()` | `HotelOffersDocument` | `DATA.OFFERS` (5 hardcoded promos) | **HIGH** — wrong promos shown |
+| `catalog.ts` | `getReviews()` | `HotelReviewsDocument` | `DATA.PROPERTY.reviews` (5 hardcoded reviews) | **MEDIUM** — stale reviews |
+| `catalog.ts` | `getExperiences()` | `HotelExperiencesDocument` | `DATA.PROPERTY.experiences` (4 hardcoded) | **MEDIUM** — wrong experiences |
+| `catalog.ts` | `searchStay()` | `StaySearchDocument` | `mockSearchRooms()` — hash-based fake availability | **CRITICAL** — fake availability |
+| `catalog.ts` | `getStay()` | Batch query | `mockGetStay()` | **CRITICAL** — fake stay data |
+| `catalog.ts` | `getStayRoom()` | Batch query | `mockGetStayRoom()` | **CRITICAL** — fake room data |
+| `catalog.ts` | `getProperty()` | `HotelByIdDocument` | `mockGetProperty()` | **HIGH** — wrong hotel data |
+| `catalog.ts` | `getHotelById()` | `HotelByIdDocument` | `DATA.PROPERTY` | **HIGH** — wrong hotel data |
+| `hotelList.ts` | `getHotels()` | Inline GraphQL | `HOTEL_LIST_FALLBACK` (1 fixture hotel) | **HIGH** — wrong hotel list |
+| `extras.ts` | `getExtras()` | `HotelExtrasDocument` | `DATA.EXTRAS` (5 hardcoded) | **MEDIUM** — wrong extras |
+| `homepage.ts` | `getHomepage()` | `HomepageDocument` | `EMPTY_HOMEPAGE` | **LOW** — safe (empty) |
+| `platform.ts` | `getPlatformContent()` | `PlatformBySlugDocument` | `EMPTY_PLATFORM_CONTENT` | **LOW** — safe (empty) |
+| `pricingHydration.ts` | `hydrate()` | Hotels + offers + extras | Silent `catch(() => {})` | **HIGH** — pricing uses stale fixtures |
 
 ---
 
-## E. Data Model
+## 7. Frontend vs Backend Contract Comparison
 
-From Flyway V1–V20 (matches `database/collection-schema-postgresql.sql`):
+### 7.1 APIs That Exist But Are NOT Integrated in Guest Frontend
 
-- **Main entities**: platforms, hotels, room_types, rooms, amenities (+join), experiences, restaurants, faqs, extras, media, rate_plans, room_type_rate_plans (offered pairs), rate_plan_prices, rate_restrictions, promotions, tax_fee_types, availability (sparse), guests, reservations (+rooms/guests/extras/charges/status_history/cancellations), payments, payment_transactions, invoices(+items), check_ins, reviews, notification_templates, notifications, users/roles/permissions/user_roles, event_outbox, audit_logs, countries/currencies/languages.
-- **Keys**: UUID PKs everywhere since **V20** (metadata-driven BIGINT→UUID conversion; app generates values).
-- **Cross-hotel integrity (C1)**: parents expose `UNIQUE(hotel_id, id)`; children carry composite FKs on `(hotel_id, id)` — an entity of Hotel A can never reference Hotel B.
-- **Constraints** (rich): reservations totals identity CHECK (extras-aware after V15/V16), date ordering CHECKs, `total_price = unit_price * quantity`, price > 0, star rating 1–7, lat/long ranges, status enum CHECKs, promotion windows.
-- **Exclusion constraint (C2)**: overlapping price ranges impossible via GiST daterange on rate_plan_prices (V4).
-- **Trigger (V18)**: prevents reducing `room_types.total_inventory` below already-sold nights.
-- **Money**: NUMERIC(10,2) everywhere (C10). **Time**: DATE for stay dates, TIMESTAMPTZ for instants (C11).
-- **Notable uniques**: `lower(email)` on users, reservation reference, reservation idempotency_key, one primary image per media owner (partial uniques), platform-scoped roles (partial unique).
-- **Soft delete**: none — status columns instead. Audit fields `created_at/updated_at` on domain tables.
-- **DB vs JPA drift**: none found; `ddl-auto: validate` green in Testcontainers integration tests.
+| Backend API | Backend Query/Mutation | Guest Frontend Usage | Status |
+|-------------|----------------------|---------------------|--------|
+| `login` mutation | GraphQL | `auth.ts` uses localStorage mock | **NOT INTEGRATED** |
+| `register` mutation | GraphQL | `auth.ts` uses localStorage mock | **NOT INTEGRATED** |
+| `me` query | GraphQL | Not used (no real auth) | **NOT INTEGRATED** |
+| `myReservations` query | GraphQL | `reservations.ts` uses localStorage | **NOT INTEGRATED** |
+| `reservation` query | GraphQL | `reservations.ts` uses localStorage | **NOT INTEGRATED** |
+| `createReservation` mutation | GraphQL | `reservations.ts` writes to localStorage | **NOT INTEGRATED** |
+| `cancelReservation` mutation | GraphQL | `reservations.ts` updates localStorage | **NOT INTEGRATED** |
+| `quote` query | GraphQL | `pricing.ts` computes locally | **NOT INTEGRATED** |
+| `createPayment` mutation | GraphQL | `payment.ts` simulates locally | **NOT INTEGRATED** |
+| `capturePayment` mutation | GraphQL | Not used | **NOT INTEGRATED** |
+| `issueInvoice` mutation | GraphQL | Not used | **NOT INTEGRATED** |
+| `createReview` mutation | GraphQL | Not used | **NOT INTEGRATED** |
+| `faqs` query | GraphQL | `DATA.PROPERTY.faq` static | **NOT INTEGRATED** |
+| `restaurants` query | GraphQL | `DATA.PROPERTY.restaurants` static | **NOT INTEGRATED** |
+| `offers` query | GraphQL | `DATA.OFFERS` static (partially hydrated) | **PARTIALLY INTEGRATED** |
+| `hotelDetails` query | GraphQL | Not used (uses `hotel` + separate queries) | **NOT INTEGRATED** |
+| `staySearch` query | GraphQL | `catalog.ts` calls but falls back to mock | **PARTIALLY INTEGRATED** |
+| `availability` query | GraphQL | Not used directly (via `staySearch`) | **INDIRECT** |
+| `rates` query | GraphQL | Not used directly (via `staySearch`) | **INDIRECT** |
+| `POST /api/v1/auth/login` | REST | Not used | **NOT INTEGRATED** |
+| `POST /api/v1/auth/register` | REST | Not used | **NOT INTEGRATED** |
+| `POST /api/v1/reservations` | REST | Not used | **NOT INTEGRATED** |
+| `POST /api/v1/reservations/*/cancel` | REST | Not used | **NOT INTEGRATED** |
+| `POST /api/v1/reservations/*/invoice` | REST | Not used | **NOT INTEGRATED** |
+| `POST /api/v1/payments` | REST | Not used | **NOT INTEGRATED** |
+| `POST /api/v1/hotels/*/reviews` | REST | Not used | **NOT INTEGRATED** |
 
----
+### 7.2 APIs That Do NOT Exist Yet
 
-## F. API Map
-
-### GraphQL (`POST /graphql`, schema split per module under `src/main/resources/graphql/`)
-
-| Module | Queries | Mutations |
-|---|---|---|
-| catalog | `hotels(search/page/sort)`, `hotel`, `hotelDetails`, `roomType(s)`, `experiences/restaurants/faqs/extras` | — |
-| homepage | `homepage` (featured hotels/roomTypes/experiences/reviews) | — |
-| availability | `availability(stay)` → available/few/soldout + capacityFits | `updateAvailabilityRange` (+ deprecated row version) |
-| rate | `offers`, `rates`, `quote` | rate plan CRUD, link/unlink room types, setRatePlanPrices, promotions CRUD/status |
-| reservation | `myReservations`, `reservation(ref+email)`, `adminReservations`, `adminGuests` | `createReservation` (idempotencyKey!), `cancelReservation`, `adminCancelReservation` |
-| identity | `me`, `adminUsers`, `adminRoles` | `login`, `register`, createUser, assignRole, revokeRole |
-| billing | `adminPayments`, `adminInvoices` | createPayment, capturePayment, issueInvoice |
-| review | `reviews`, `adminReviews` | createReview, moderateReview |
-| admin / audit / notification / platform | dashboard, adminHotels CRUD/workspace, auditLogs, notifications, content blocks, amenities | platform content mutations |
-
-Security model: `/graphql` is anonymously reachable; **authorization enforced inside services** (e.g., `requireStaffAccess`, `BookingServiceImpl:513`, checks `super_admin` or hotel membership from JWT claims).
-
-### REST
-
-- `/api/v1/auth/login|register` — public, rate-limited
-- `/api/v1/reservations` POST (`Idempotency-Key` header; 201 vs 200 replay) and `/{reference}/cancel`
-- `/api/v1/media/**`, `/api/v1/invoices/**`, `/api/v1/payments/**`
-- `/actuator/health`, `/actuator/prometheus`
-
----
-
-## G. Main Business Flows (traced end-to-end)
-
-**G1. Hotel retrieval & details — REAL, full stack**
-`services/catalog.ts getProperty/getStayRoom` → `hotel`/`hotelDetails` queries → `CatalogGraphQLController` → `CatalogQueryServiceImpl` → `HotelRepository`; draft hotels → NOT_FOUND (`CatalogGraphQLController:114`). BatchMappings batch media/amenities/ratings.
-
-**G2. Availability search — REAL**
-Frontend parallel `availability` + `rates` + `roomTypes` → `AvailabilityServiceImpl.check` → sparse `availability` rows (missing row = fully free) → available/few/soldout + capacityFits.
-
-**G3. Quote/pricing — SPLIT-BRAIN**
-- Backend: `RateGraphQLController.quote` → `PricingServiceImpl.quote` (single nightly rate covering check-in, promo validation, tax_fee_types engine, extras models, totals identity) — DB-tested.
-- Frontend: `BookingFlow.tsx:150` computes quotes **client-side** with the ported fixture engine (`pricing.ts`: flat 12% tax, fixture offers, hardcoded FX). The backend `quote` is **never called by the guest UI**.
-
-**G4. Reservation creation — MOCK on guest side**
-`BookingFlow.tsx:232–276`: fake `charge()` → `reservations.create()` writes **localStorage** with a locally generated `RC-XXXXXX` ref. The backend flow (`BookingServiceImpl.create`: idempotency dedupe incl. race handling, server re-pricing, capacity checks, pessimistic night locks, guest find-or-create, snapshot lines/extras/charges, status history, outbox event) is exposed via GraphQL **and** REST but has **no caller in either frontend** except tests/Postman.
-
-**G5. Guest authentication — MOCK**
-`services/auth.ts` = localStorage user store incl. seeded demo user (`demo@hotelcollection.com` / `demo1234`, plaintext). The backend's real auth (BCrypt, anti-enumeration, JWT, guest provisioning) is used **only by backoffice-hotel**.
-
-**G6. Back-office operations — REAL**
-Login via BFF route → JWT into httpOnly cookie → layout guard validates via `me`. All admin screens (hotels CRUD + tabs, reservations list/detail/adminCancel, guests, promotions, payments, invoices, reviews moderation, users/roles, notifications, audit logs, dashboard) call real GraphQL through the proxy; backend re-checks staff access on every call.
+| Frontend Need | Required Data | Suggested API | Backend Module | Reason |
+|---------------|--------------|---------------|----------------|--------|
+| Online Check-In | Check-in submission (passport, arrival time) | `POST /api/v1/reservations/{ref}/checkin` or mutation | Reservation | Guest frontend has `/checkin` page but no backend API |
+| Newsletter Subscription | Email subscription | `subscribeToNewsletter` mutation | Missing | `newsletter.ts` is pure localStorage mock |
+| Contact Form Submission | Contact message | `submitContactForm` mutation or email service | Missing | Contact page has no backend |
 
 ---
 
-## H. Feature Status Matrix
+## 8. Client-Side Business Logic
 
-Legend: ✅ done · 🟡 partial · ❌ missing · *(mock)* = simulated client-side
-
-| Feature | Backend | Frontend (guest) | Backoffice | Database | Tests | Status |
-|---|---|---|---|---|---|---|
-| Hotels catalog/search | ✅ | ✅ (reads backend) | ✅ CRUD | ✅ | ✅ | Done |
-| Room types / rooms | ✅ | ✅ read-only | ✅ CRUD | ✅ V3+V18 trigger | ✅ | Done |
-| Availability | ✅ sparse model | ✅ reads backend | ✅ editor | ✅ V5/V12/V18 | ✅ | Done |
-| Rates/plans/prices | ✅ | ✅ reads backend | ✅ manage | ✅ V4+C2 | ✅ | Done |
-| Promotions | ✅ engine (stay_x_pay_y rejected) | 🟡 fixture-based validation | ✅ manage | ✅ | ✅ | Partial |
-| Quote | ✅ authoritative | ❌ local math instead | n/a | ✅ | ✅ | Split-brain |
-| Reservations | ✅ idempotent, priced, locked | ❌ *(mock)* localStorage | ✅ list/cancel | ✅ V6 | ✅ | BE done; FE mock |
-| Payments | ✅ create/capture (mock provider) | ❌ *(fake charge)* | ✅ lists | ✅ V7 | ✅ | BE done; FE mock |
-| Invoices | ✅ issue/list | ❌ | ✅ list | ✅ | ✅ | Done (BE+BO) |
-| Reviews | ✅ moderation + proof-of-stay | ✅ read approved | ✅ moderate | ✅ V8 | ✅ | Done |
-| Users / RBAC | ✅ hotel-scoped | ❌ *(mock auth)* | ✅ manage | ✅ V2 | ✅ | Done (BE+BO) |
-| Authentication | ✅ JWT | ❌ *(localStorage)* | ✅ real (cookie BFF) | ✅ | ✅ | Guest FE mock |
-| Media | ✅ REST upload + provider | consumes URLs | 🟡 URL fields | ✅ V3 C4 | ✅ | Mostly done |
-| Notifications | ✅ templates + outbound (outbox) | ❌ | ✅ list | ✅ V8 | 🟡 | BE/BO done |
-| Check-in/out | ❌ table exists, no endpoint | ❌ fake flow | ❌ | ✅ table | ❌ | Missing (documented gap) |
-| Password reset / refresh / logout | ❌ | ❌ | ❌ | — | — | Missing (ADR-007 accepted) |
-| Homepage / platform content | ✅ | ✅ | ✅ blocks | ✅ V13/V14/V19 | ✅ | Done |
-| Audit log | ✅ | n/a | ✅ viewer | ✅ | 🟡 | Done |
-
-Test inventory: backend ~131 tests (unit + ArchUnit + Testcontainers); frontend-hotel 11 vitest files (~119 cases) + 13 Playwright specs; backoffice 1 vitest file (~10 cases) + 3 Playwright specs.
+| Calculation | File | Backend Equivalent | Divergence Risk |
+|-------------|------|-------------------|-----------------|
+| Price breakdown (subtotal, tax 12%, extras, total) | `pricing.ts` `compute()` | `quote` query | **HIGH** — local tax/fee calculation may differ from backend |
+| Promo code validation | `pricing.ts` `validatePromo()` | `quote` query with `promoCode` | **HIGH** — local rules vs backend rules |
+| Discount calculation (percent, night-based) | `pricing.ts` `promoDiscount()` | `quote` query | **HIGH** — local math vs backend engine |
+| Room availability (hash-based pseudo-random) | `availability.ts` `availabilityFor()` | `availability`/`staySearch` queries | **CRITICAL** — deterministic fake vs real inventory |
+| Rate plan generation (BB/RO/HB multipliers) | `availability.ts` `plansFor()` | `rates` query | **CRITICAL** — fake plans vs real rate plans |
+| Cancellation fee evaluation | `cancellation.ts` | Backend cancellation penalty engine | **HIGH** — local regex parsing vs backend rules |
+| FX conversion (MAD → EUR/USD/GBP) | `catalog.ts` `toBaseMad()` | Backend pricing (currency-aware) | **MEDIUM** — hardcoded rates vs live rates |
 
 ---
 
-## I. Problems Found
+## 9. Authentication & Authorization Audit
 
-### CRITICAL
+### Guest Frontend (`frontend-hotel`)
 
-1. **Guest booking never reaches the backend** — `BookingFlow.tsx` stores reservations in localStorage while a complete, concurrency-safe backend booking flow sits unused. Real inventory is not decremented by guest bookings; two systems disagree about bookings.
-2. **Silent fallback to mock data on any backend error** — every frontend read seam (`catalog.ts` etc.) catches errors and returns fixtures/homepage-empty. When the API is down, guests see plausible fake hotels/prices with no signal; it also masks outages and can render *fixture rooms under a real backend hotel id*.
+| Aspect | Status | Details |
+|--------|--------|---------|
+| Login | **MOCK** | localStorage `rc_session_v1`, seeded demo user `demo@hotelcollection.com`/`demo1234` |
+| Register | **MOCK** | localStorage `rc_users_v1`, simulated delay |
+| Logout | **MOCK** | Clears localStorage |
+| Session persistence | **MOCK** | `rc_session_v1` in localStorage |
+| Password reset | **MOCK** | Always returns success message |
+| Protected routes | **NONE** | No route guards — all pages accessible without auth |
+| Role-based access | **NONE** | No roles concept in guest frontend |
 
-### HIGH
+### Backoffice (`backoffice-hotel`)
 
-3. **Guest auth fully mocked**, including a seeded plaintext password (`demo1234`) in shipped source (`auth.ts:41`).
-4. **Client-side money math decides what guests see/pay** — flat 12% tax, hardcoded FX env defaults, fixture promos — guaranteed divergence from the backend's authoritative engine.
-5. **Documentation describes a non-existent architecture** (AGENTS.md / README.md / architecture.md = ADR-008 hexagonal monolith, "16 modules", "V1–V18", "109 tests"; reality = layered layout, V1–V20, ~131 tests, no ADR-009 file).
-
-### MEDIUM
-
-6. **6 `@Lazy` circular service dependencies** — layering violated at the dependency-graph level.
-7. **Promo rules incompletely enforced** in `applyPromo`: ignores booking window, maxUsageTotal, maxUsagePerGuest, applicableDaysOfWeek (columns exist, no runtime effect).
-8. **GraphQL exposes money as `Float!`** throughout — binary float at the currency boundary.
-9. **Enum mismatch**: `catalog.ts:153` tests `discountType === 'NIGHT'`, backend emits only `percentage|fixed_amount|stay_x_pay_y` → dead branch; discount always mapped as percent.
-10. **Hardcoded display cancellation policy** (`"Free cancellation up to 2 days before check-in"`) regardless of fetched plan refundability.
-11. **Back-office unit-test coverage ≈ nil** (1 file); correctness rests on 3 E2E specs.
-12. **No CI/CD, no Dockerfile, no deployment artifact** anywhere.
-13. **In-memory sort caps** (500 candidates) for PRICE_ASC/RATING_DESC search.
-14. **Reference lookup brute-force window**: public `reservation(ref+email)` and cancel are unthrottled.
-15. **Weak password policy** (min 6 chars) and no refresh/revocation (60-min tokens).
-
-### LOW
-
-16. Root-level debug debris: `backoffice-hotel/debug2..6.mjs`, `debug-e2e.mjs` with hardcoded demo credentials.
-17. Shared dev seed credentials (`admin123`) documented in seed files.
-18. EAGER collections + SUBSELECT fetch on `Reservation` aggregate (+4 queries/load).
-19. Single-class `mapper/` package; mapping style inconsistent elsewhere.
-20. FX display conversion rounding artifacts; static rates.
-21. No query-complexity/cost limiting beyond depth 15.
-22. Deprecated `updateAvailability` mutation still live (properly marked).
+| Aspect | Status | Details |
+|--------|--------|---------|
+| Login | **REAL** | GraphQL `login` mutation, JWT in httpOnly cookie |
+| Session check | **REAL** | `GET /api/auth/me` → backend `me` query |
+| Logout | **REAL** | Clears httpOnly cookie |
+| Protected routes | **REAL** | Layout redirects to `/login` if no valid token |
+| Role-based access | **REAL** | Sidebar conditionally shows Users/Audit for `super_admin` |
+| Hotel scoping | **REAL** | All queries scoped to selected hotel |
 
 ---
 
-## J. Technical Debt
+## 10. Final Classification
 
-- **Dual pricing engines + dual booking stores** (backend truth vs frontend prototype) — dominant debt; the whole migration matrix exists for this and is half-done.
-- Service-layer coupling cycles (@Lazy) awaiting decomposition into module boundaries the docs already describe.
-- Doc rot concentrated on newest decisions (layered refactor, V19/V20, test counts).
-- Mock seams without kill switches: reads have a flag (`NEXT_PUBLIC_USE_MOCK_SERVICES`), writes have **no backend path at all**.
-- Test asymmetry: backend strong, guest frontend medium (fixture-heavy), backoffice minimal unit coverage.
+### A — Fully Integrated
 
----
+| Feature | Project |
+|---------|---------|
+| All backoffice pages (14 screens) | `backoffice-hotel` |
+| Hotel search (when backend available) | `frontend-hotel` (catalog.ts) |
+| Hotel detail (when backend available) | `frontend-hotel` (catalog.ts) |
+| Homepage sections (when backend available) | `frontend-hotel` (homepage.ts) |
+| Platform identity (when backend available) | `frontend-hotel` (platform.ts) |
+| Hotel list (when backend available) | `frontend-hotel` (hotelList.ts) |
+| Extras (when backend available) | `frontend-hotel` (extras.ts) |
 
-## K. Documentation Gaps
+### B — Partially Integrated
 
-**Accurate:** `docs/api/frontend-contract.md` delta matrix (mostly), `docs/security/security.md`, error-code taxonomy docs, `database/collection-schema-postgresql.sql` header, `DATA_FLOW.md` (accurately describes the *mock* rules), backoffice implementation report (matches code).
+| Feature | Project | Issue |
+|---------|---------|-------|
+| Stay search | `frontend-hotel` | Calls real API but falls back to mock availability/pricing |
+| Offers/promotions | `frontend-hotel` | Hydrated from backend at startup but falls back to static `DATA.OFFERS` |
+| Pricing | `frontend-hotel` | Hydration bridges backend offers/extras into local pricing engine, but calculation is client-side |
 
-**Outdated/wrong:**
-- `README.md` + `AGENTS.md` (hexagonal modular monolith, 16 modules, V1–V18, 109 tests — all stale post-refactor).
-- `docs/architecture/architecture.md` still ADR-008; **ADR-009 cited by code does not exist**.
-- `BACKEND_FINAL_AUDIT.md` predates layered refactor + V19/V20 (useful history, wrongly indexed as current).
-- `frontend-contract.md` header claims "zero network calls" — now false (reads integrated).
-- Migration-count references vs actual V20; `DATABASE_SCHEMA*.md` in frontend-hotel docs.
+### C — Mocked (No Real Backend Connection)
 
-**Undocumented:** V19 featured flags, V20 UUID strategy rationale, backoffice BFF/session design, frontend mock-fallback semantics.
+| Feature | Project | Mock Type |
+|---------|---------|-----------|
+| Authentication | `frontend-hotel` | localStorage |
+| Reservation creation | `frontend-hotel` | localStorage |
+| Reservation lookup | `frontend-hotel` | localStorage |
+| Reservation management | `frontend-hotel` | localStorage |
+| Online check-in | `frontend-hotel` | localStorage |
+| Payment processing | `frontend-hotel` | In-memory simulation |
+| Cancellation evaluation | `frontend-hotel` | Local regex parsing |
+| Newsletter subscription | `frontend-hotel` | localStorage |
+| Contact form | `frontend-hotel` | No submission at all |
 
----
+### D — Missing Backend Capability
 
-## L. Recommended Next Steps (priority order — do not implement yet)
+| Feature | Project | Missing API |
+|---------|---------|-------------|
+| Online check-in | `frontend-hotel` | Check-in mutation/endpoint |
+| Newsletter subscription | `frontend-hotel` | Subscription mutation |
+| Contact form | `frontend-hotel` | Contact form endpoint |
 
-1. Decide & document the booking integration strategy; wire guest booking to `createReservation`.
-2. Kill loud-vs-silent mock fallbacks (banner/telemetry minimum).
-3. Route guest pricing through backend `quote` before payment.
-4. Switch guest auth to real endpoints; remove seeded plaintext credentials.
-5. Docs reconciliation pass (write ADR-009, update README/AGENTS/architecture/test counts/migrations).
-6. Enforce remaining promo rules (booking window, usage caps, day-of-week) + usage ledger.
-7. Break the 6 `@Lazy` cycles; add ArchUnit rule banning new ones.
-8. Add CI + Dockerfiles.
-9. Replace Float money in GraphQL schema.
-10. Fix small correctness items ('NIGHT' branch, hardcoded policy string, throttle ref lookup, password policy).
-11. Clean root debug scripts; consolidate seed strategy.
-12. Add backoffice unit tests + contract tests pinning frontend ops to schema.
+### E — Static / Intentional
 
-> **Verification note:** runtime behavior was not exercised; everything above is static analysis plus each project's own suites as evidence. Kafka downstream consumers have no implementation in this repo — nothing downstream was found to verify.
-
----
-
----
-
-# Part II — Frontend Mock-Data Audit
-
-> Question answered: *"What frontend data is still fake, where does it come from, and what real API should replace it?"*
-
-## 1. Method
-
-Searched `frontend-hotel/src` (and `backoffice-hotel/src` as control) for: `mock`, `dummy`, `fake`, `demo`, `sample`, `seed`, `TODO/FIXME`, `localStorage`, `sessionStorage`, `useState([...])`, hardcoded arrays/objects/URLs, `@/data` imports, `.json` fixtures, generated GraphQL documents vs mutations.
-
-Findings: **no `.json` fixture files**; all static data lives in TS. Backoffice is clean (one legitimate UI-preference localStorage key). All mocking in the guest app concentrates in one fixture module + 10 service modules + 28 consuming files.
-
----
-
-## 2. The Root of All Mock Data: `src/data/index.ts`
-
-Single fixture store (641 lines), ported 1:1 from the old static HTML site (`data/index.ts:1`):
-
-| Export | Content | Fake? |
-|---|---|---|
-| `PROPERTY` (`:32`) | Full hotel "Executive Boutique Hotel Rabat": rating **4.4**, reviewCount **967**, address, amenities, facilities, restaurants, policies, experiences ×4, FAQ ×3 topics, gallery ×10, reviews ×5, images ×4 | Yes |
-| `PROPERTY.rooms[3]` (`:327–441`) | `superior-double-or-twin` 1050 MAD · `double-or-twin` 910 · `executive-suite` 1550 — capacity/bed/size/policies/images each | Yes |
-| `DEMO_RESERVATIONS[2]` (`:444`) | `RC-DEMO1` Adam Benali suite 6944 MAD · `RC-DEMO2` Claire Marchetti w/ SUMMER2026 | Yes |
-| `OFFERS[5]` (`:503`) | SUMMER2026 −10% · STAY4PAY3 night-free · BESTRATE −15% · CORP10 −8% · WELCOME5 −5%, with windows | Yes |
-| `EXTRAS[5]` (`:587`) | shuttle 250 · late-checkout 300 · baby-cot 150 · meeting-room 400 · laundry 50 | Yes |
-| `BK` / `TRIP` / `img` (`:4–30`) | Hardcoded external image URLs (bstatic/tripcdn/unsplash) + `IMG_FALLBACK` | Static assets |
-
-Consumed by **28 files** (see inventory).
+| Feature | Project |
+|---------|---------|
+| Terms, Privacy, Cookies, Cancellation Policy pages | `frontend-hotel` |
+| Contact page (hardcoded info) | `frontend-hotel` |
+| Static UI constants (amenity icons, country lists) | Both |
+| FAQ page content | `frontend-hotel` (but backend API exists) |
+| Hotel facilities/policies display | `frontend-hotel` |
+| Google Fonts, logos, brand assets | Both |
 
 ---
 
-## 3. Data-Source Traces per Feature
+## 11. Priority Implementation List
 
-```text
-Homepage (/)
-   ↓ app/page.tsx (server component)
-   ├─ getPlatformContent() → platform.ts → GraphQL platformBySlug ──► REAL (fallback null)
-   ├─ getHomepage()        → homepage.ts  → GraphQL homepage      ──► REAL (fallback EMPTY)
-   ├─ hero stats (rating 4.4 / 967 reviews / room count / check-in)
-   │      └─ const P = PROPERTY (page.tsx:71)                     ──► MOCK (src/data)
-   ├─ hero text/image when backend empty → literal strings        ──► MOCK literals
-   └─ Rooms/Experiences sections: homepage.* → platform.* → PROPERTY ──► 3-tier, ends MOCK
+### P0 — Critical (Blocks Real Application Usage)
 
-Hotel page (/hotel)
-   ├─ ?hotelid=<uuid> → HotelDetail → getHotelById/getStay/getExperiences/getReviews
-   │      └─ GraphQL hotel/availability/rates/roomTypes/…         ──► REAL
-   │      ⚠ any fetch error → falls back to DATA fixtures          ──► E-type hazard
-   └─ no param → HotelLegacyPage (page.tsx:96 const P = PROPERTY) ──► 100% MOCK
+| Priority | Feature | Current State | Required Integration | Backend Ready? | Reason |
+|----------|---------|---------------|---------------------|----------------|--------|
+| P0-1 | Guest Authentication | localStorage mock | GraphQL `login`/`register` mutations + JWT | **YES** | No real user identity; everything downstream depends on this |
+| P0-2 | Reservation Creation | localStorage mock | GraphQL `createReservation` mutation or REST `POST /reservations` | **YES** | Core business flow — bookings don't persist to backend |
+| P0-3 | Reservation Lookup | localStorage mock | GraphQL `reservation` query (ref+email) | **YES** | Guests can't find real reservations |
+| P0-4 | Payment Processing | In-memory mock | GraphQL `createPayment`/`capturePayment` or REST `POST /payments` | **YES** | No real payment processing |
+| P0-5 | Pricing Engine | Client-side calculation | GraphQL `quote` query | **YES** | Local pricing may diverge from backend; backend is authoritative |
+| P0-6 | Availability | Hash-based pseudo-random | GraphQL `staySearch`/`availability` queries | **YES** | Fake availability — rooms shown as available when they aren't |
 
-Room detail (/room/[roomId] → /hotel?roomId=…)
-   └─ RoomDetails → getStayRoom() (GraphQL, mock fallback)
-      + pricing.compute() client engine + EXTRAS + plans from rates ──► HYBRID
+### P1 — High (Important Business Features)
 
-Search (/search) → SearchResults.tsx:84 searchStay(undefined,…)
-   └─ GraphQL Hotels + availability + rates per active hotel      ──► REAL (mock fallback)
+| Priority | Feature | Current State | Required Integration | Backend Ready? | Reason |
+|----------|---------|---------------|---------------------|----------------|--------|
+| P1-1 | Cancel Reservation | localStorage mock | GraphQL `cancelReservation` mutation | **YES** | Cancellation fees calculated locally, may differ from backend |
+| P1-2 | Reservation Management | localStorage mock | GraphQL `myReservations` query | **YES** | Authenticated guests can't see their real bookings |
+| P1-3 | Guest Account Reservations | localStorage mock | GraphQL `myReservations` query | **YES** | Account page shows fake reservation list |
+| P1-4 | Remove Silent Fallbacks | All dual-mode services | Throw errors instead of returning mock data in production | **YES** | Mock fallbacks hide real backend failures |
+| P1-5 | Rate Plans | Local calculation via multipliers | GraphQL `rates` query | **YES** | Fake rate plans (BB/RO/HB) with hardcoded multipliers |
 
-Offers (/offers) → OffersGrid.tsx: OFFERS array + validatePromo   ──► MOCK (backend offers() unused)
+### P2 — Medium (Enhances User Experience)
 
-Booking (/booking) → BookingFlow.tsx
-   ├─ quote: pricing.compute() — 12% tax, DATA.OFFERS, DATA.EXTRAS ──► MOCK ENGINE
-   ├─ payment: payment.charge() — setTimeout + digit rules         ──► FAKE
-   └─ creation: reservations.create() → localStorage              ──► LOCAL ONLY
-      (no mutation documents exist in src/graphql/ — queries only)
+| Priority | Feature | Current State | Required Integration | Backend Ready? | Reason |
+|----------|---------|---------------|---------------------|----------------|--------|
+| P2-1 | Offers/Promotions | Static fixtures (partially hydrated) | GraphQL `offers` query (always use backend) | **YES** | Hydration is fragile; static fallback shows wrong promos |
+| P2-2 | Reviews | Static fallback | GraphQL `reviews` query (always use backend) | **YES** | Stale reviews when backend unavailable |
+| P2-3 | Experiences | Static fallback | GraphQL `experiences` query | **YES** | Wrong experiences when backend unavailable |
+| P2-4 | FAQs | Static `DATA.PROPERTY.faq` | GraphQL `faqs` query | **YES** | Content managed in backend not reflected |
+| P2-5 | Restaurants | Static `DATA.PROPERTY.restaurants` | GraphQL `restaurants` query | **YES** | Content managed in backend not reflected |
+| P2-6 | Online Check-In | localStorage mock | Backend check-in API | **NO** | Needs new backend endpoint |
+| P2-7 | Invoice Generation | Not used | GraphQL `issueInvoice` mutation | **YES** | Backend supports it, frontend doesn't use it |
+| P2-8 | Review Submission | Not used | GraphQL `createReview` mutation | **YES** | Backend supports it, frontend doesn't use it |
 
-My Reservation (/reservation) → ReservationFlow.tsx → localStorage ──► LOCAL ONLY
-Check-in (/checkin)           → CheckinFlow.tsx  → localStorage   ──► LOCAL ONLY
-Account (/account)            → AccountFlow.tsx auth.* + LS users ──► LOCAL ONLY
-Guests & dates (all pages)    → URL params via SearchContext       ──► UI STATE (not mock)
+### P3 — Low (Nice-to-Have)
+
+| Priority | Feature | Current State | Required Integration | Backend Ready? | Reason |
+|----------|---------|---------------|---------------------|----------------|--------|
+| P3-1 | Newsletter | localStorage mock | Backend subscription API | **NO** | Needs new backend endpoint |
+| P3-2 | Contact Form | No submission | Backend contact endpoint | **NO** | Needs new backend endpoint |
+| P3-3 | FX Rates | Hardcoded conversion rates | Live FX rate API | **NO** | Nice-to-have for multi-currency display |
+| P3-4 | Guest Auth Session Persistence | localStorage | JWT-based session like backoffice | **YES** | Could share auth pattern with backoffice |
+| P3-5 | HotelList codegen fix | Raw query string bypass | Fix codegen to include `HotelListDocument` | **YES** | Code quality — dead generated code |
+
+---
+
+## 12. Recommended Implementation Order
+
+Based on business impact and dependencies:
+
+1. **Guest Authentication** (P0-1) — Foundation for all user-specific features
+2. **Reservation Creation** (P0-2) — Core business flow
+3. **Payment Processing** (P0-4) — Required for real bookings
+4. **Pricing Engine** (P0-5) — Backend is authoritative for prices
+5. **Availability** (P0-6) — Must reflect real inventory
+6. **Reservation Lookup** (P0-3) — Guests need to find their bookings
+7. **Remove Silent Mock Fallbacks** (P1-4) — Prevent hidden failures in production
+8. **Cancel Reservation** (P1-1) — Important for guest self-service
+9. **Reservation Management** (P1-2, P1-3) — Account page shows real bookings
+10. **Rate Plans** (P1-5) — Real rate plans from backend
+11. **Offers/Promotions** (P2-1) — Always use backend data
+12. **Reviews, Experiences, FAQs, Restaurants** (P2-2 through P2-5) — Content from backend
+13. **Online Check-In** (P2-6) — Requires new backend API
+14. **Invoice & Review Submission** (P2-7, P2-8) — Already supported by backend
+15. **Newsletter & Contact** (P3-1, P3-2) — Low priority
+
+---
+
+## 13. Architecture Notes
+
+### Guest Frontend Dual-Mode Toggle
+
+The toggle is controlled by `NEXT_PUBLIC_USE_MOCK_SERVICES`:
+
+```typescript
+// src/services/graphqlClient.ts
+export const useGraphql = process.env.NEXT_PUBLIC_USE_MOCK_SERVICES !== 'true';
+```
+
+When `useGraphql = true` (production):
+- Services attempt real GraphQL calls
+- On failure, they silently fall back to mock data
+
+When `useGraphql = false` (development/prototype):
+- Services immediately return static fixture data
+- No network calls are made
+
+**Recommendation for production:** Remove the mock fallback path entirely. When the backend is unavailable, show an error to the user rather than silently serving stale/wrong data.
+
+### Key Data Flow (Current State)
+
+```
+Guest Frontend                    Backend
+─────────────                    ───────
+catalog.ts ──GraphQL──→ ✅ (when available)
+                         ↓ (on failure)
+                    DATA.* fixtures ← static TypeScript objects
+
+reservations.ts ──→ localStorage (no backend call)
+auth.ts ──→ localStorage (no backend call)
+payment.ts ──→ in-memory simulation (no backend call)
+pricing.ts ──→ local calculation (no backend call)
+availability.ts ──→ hash-based pseudo-random (no backend call)
+```
+
+### Key Data Flow (Target State)
+
+```
+Guest Frontend                    Backend
+─────────────                    ───────
+auth.ts ──GraphQL──→ login/register mutations → JWT
+reservations.ts ──GraphQL──→ createReservation/cancelReservation mutations
+payment.ts ──GraphQL──→ createPayment/capturePayment mutations
+pricing.ts ──GraphQL──→ quote query (server-side pricing)
+availability.ts ──GraphQL──→ staySearch/availability queries
+catalog.ts ──GraphQL──→ hotel/roomTypes/offers/reviews/experiences queries
 ```
 
 ---
 
-## 4. Complete Mock-Data Inventory
+## 14. Files Referenced
 
-Classification: **A** pure mock · **B** hardcoded UI content (intentional) · **C** local demo state · **D** localStorage persistence · **E** API-with-fake-fallback · **F** real API.
+### Frontend-Hotel Services
+- `src/services/graphqlClient.ts` — GraphQL client + mock toggle
+- `src/services/catalog.ts` — Main backend-first service (8 queries + fallbacks)
+- `src/services/homepage.ts` — Homepage query (safe fallback)
+- `src/services/hotelList.ts` — Hotel list query (mock fallback)
+- `src/services/extras.ts` — Extras query (mock fallback)
+- `src/services/platform.ts` — Platform query (safe fallback)
+- `src/services/pricingHydration.ts` — Startup hydration bridge
+- `src/services/pricing.ts` — Client-side pricing engine
+- `src/services/availability.ts` — Mock availability + rate plans
+- `src/services/reservations.ts` — localStorage reservation CRUD
+- `src/services/auth.ts` — Mock auth with localStorage
+- `src/services/payment.ts` — In-memory payment simulation
+- `src/services/cancellation.ts` — Local cancellation policy evaluation
+- `src/services/consent.ts` — localStorage GDPR consent
+- `src/services/newsletter.ts` — localStorage newsletter mock
+- `src/services/activity.ts` — localStorage browsing history
+- `src/services/siteSearch.ts` — Static fixture text search
 
-| # | Feature/Page | File(s) | Data | Current Source | Real API Available? | Class | What Needs To Change |
-|---|---|---|---|---|---|---|---|
-| 1 | Homepage hero stats | `app/page.tsx:71` | Rating 4.4, 967 reviews, room count, check-in time | `PROPERTY` fixture | ✅ `homepage` + `hotel(id)` fields | A | Use backend aggregates |
-| 2 | Homepage hero fallback | `app/page.tsx:88–117` | Literal eyebrow/title/subtitle/image | Hardcoded strings | ✅ `platformBySlug` HeroBlock | B/E | Placeholder-only, not content |
-| 3 | Homepage rooms grid | `components/home/RoomsGrid.tsx:90` | 3 fixture rooms + prices | `PROPERTY.rooms` | ✅ `homepage.featuredRoomTypes` used first | A (tier-3) | Label fallback or remove |
-| 4 | Homepage experiences | `app/page.tsx:255+`, `DiscoverSection.tsx` | Rabat attractions | `PROPERTY.experiences` | ✅ homepage/platform blocks | A (tier-3) | Same |
-| 5 | `/index-2` variant page | `app/index-2/page.tsx` | Entire page | Fixture | ✅ same APIs | B | Migrate or retire |
-| 6 | Hotel legacy page | `app/hotel/page.tsx:96` | Full hotel content + inline hero URL | `PROPERTY` | ✅ `hotelDetails(hotelId)` | A | Needs default-hotel-id strategy |
-| 7 | Hotel uuid-mode fallbacks | `services/catalog.ts:97,131,152,168,196,214,230` | On ANY error → fixture hotel/rooms/offers/reviews rendered under real hotel id | Mock fallback in every accessor | ✅ n/a | **E** | Fail loudly; never swap entity identity |
-| 8 | Room types | `catalog.ts mapRoomTypeToRoom:87–106` | Correct field mapping | Real + mapping | ✅ `roomTypes(hotelId)` | F | — |
-| 9 | Room prices/FX | `catalog.ts:31–37,103` | Hardcoded FX env defaults (EUR .091/USD .100/GBP .078) → "base MAD" | Real price, fake FX layer | 🟡 currencies table exists; no FX endpoint | B | Serve FX from backend or drop conversion |
-| 10 | Cancellation text | `catalog.ts:101` | Always "Free cancellation up to 2 days…" | Hardcoded | ✅ `isRefundable`/policy fetched but ignored | A | Map from RoomRateOption |
-| 11 | Availability badge | `RoomDetails.tsx:130` et al. | Real statuses | Backend `availability` | ✅ | F | — |
-| 12 | Availability mock seam | `services/availability.ts:52–57` | Hash-based sold-out/few (FNV of roomId+date) | Local algorithm | ✅ | A | Delete after #7 fixed |
-| 13 | Rate-plan mock seam | `services/availability.ts:15–49 plansFor()` | bb/ro/hb derived base×0.85/×1.12 | Local algorithm | ✅ `rates(input)` | A | Same |
-| 14 | Search results | `components/search/SearchResults.tsx:84` | Per-hotel live availability across active hotels | Backend | ✅ | F | — |
-| 15 | Demand score | `availability.ts:60–62 demandFor()` | `hashStr(room.id)%1000` | Local algorithm | ❌ **Backend API missing** (no demand field) | A | Server-side sort/relevance or drop |
-| 16 | Search facets | `lib/filters.ts`, `filterEntries` | Client-side filtering over mostly-real data | Client logic | ✅ data real | B | Move server-side later |
-| 17 | Dates/guest counts | `context/SearchContext`, `lib/dates.ts` | checkin/checkout/adults/children/rooms/ages | URL state (by design) | n/a | B | Keep |
-| 18 | Offers listing | `components/offers/OffersGrid.tsx:8,38` | 5 promo codes/windows/conditions | `OFFERS` fixture | ✅ `offers(hotelId)` exists; `getOffers()` implemented but **uncalled** | A | Render backend offers |
-| 19 | Promo validation | `services/pricing.ts:13–67 validatePromo()` | Validity vs fixture codes | Local engine | ✅ enforced in `PricingServiceImpl.applyPromo` | A | Call `quote(promoCode)` |
-| 20 | Quote math | `BookingFlow.tsx:150` → `pricing.compute():82–124` | subtotal/discount/**12% tax**/extras/original total | Client engine | ✅ `quote(input)` (math proven identical) | A | Replace before payment step |
-| 21 | Extras catalog | `data/index.ts:587`, `lib/extras.ts:2` | 5 extras w/ prices | `EXTRAS` fixture | ✅ `extras(hotelId)` exists, unused | A | Fetch + map pricing_model |
-| 22 | Reservation storage | `services/reservations.ts` (whole) | Create/find/update/checkIn, local `RC-XXXXXX` refs | localStorage `rc_reservations_v1` | ✅ `createReservation`/`reservation(ref,email)`/`myReservations` | **D** | Swap store for API calls |
-| 23 | Demo reservations | `data/index.ts:444–501`, `seedStore()` | RC-DEMO1/2 seeded into every visitor | Fixture seed | ✅ | C | Remove after cutover |
-| 24 | Booking idempotency | `reservations.ts bookingKey` | `bk-*` key + done marker | localStorage `rc_booking_done` | ✅ backend UNIQUE + replay | D | Pass UUID to mutation |
-| 25 | Login/Register | `services/auth.ts:46–77`, `SessionContext.tsx` | Users w/ plaintext passwords; session `{email,name}` | localStorage `rc_users_v1`/`rc_session_v1` | ✅ REST auth + `login/register/me` | **D** | Use endpoints; httpOnly cookie (proven in BO) |
-| 26 | Seeded demo account | `auth.ts:41` | `demo@hotelcollection.com` / `demo1234` | Hardcoded credential | ✅ n/a | A/C | Delete (security-relevant) |
-| 27 | Password reset | `auth.ts:80–88` | Fake success "(mock)" | Simulated | ❌ **Backend API missing** | A | New flow needed (email dependency) |
-| 28 | Session shape | Session `{email,name}` | No roles/token concept | Local type | ✅ backend `Me{roles,hotelIds}` | A | Extend at swap time |
-| 29 | Payment | `services/payment.ts charge()` | setTimeout + card-ending rules | Fake gateway | 🟡 `createPayment/capturePayment` exist (auth required); **guest anonymous pay flow + gateway = Backend API missing** | A | Product decision needed |
-| 30 | Check-in | `CheckinFlow.tsx:39,81` | Status flip in LS | localStorage | ❌ **Backend API missing** (`check_ins` table exists, no endpoint) | D | New mutation needed |
-| 31 | Confirmation email | `ConfirmationFlow.tsx:156` | "Email is not available in this prototype" | Simulated | 🟡 notification module exists; **no guest-email trigger API** | B | Wire consumer or new use case |
-| 32 | Newsletter | `services/newsletter.ts` | Subscribers in LS | localStorage `rc_newsletter_v1` | ❌ **Backend API missing** | D | New endpoint required |
-| 33 | Cookie consent | `services/consent.ts` | Consent state | localStorage `rc_consent_v1` | ❌ none (typical client-side) | D/B | Legitimately local |
-| 34 | Recent activity | `services/activity.ts`, `RecentActivity.tsx:38–40` | Anonymous history | localStorage ×2 | ❌ none — documented intentional (D-26) | D | Intentionally local — keep |
-| 35 | Language | `hooks/useLang.ts:16` | en/fr/ar preference | localStorage `rc_lang` | n/a | B | Keep |
-| 36 | Site brand/address | `Header.tsx:36–37,80`, `Footer.tsx:120–122`, `SearchSheet.tsx:142–144` | Name/tagline/"72 Rue Oued Sebou"/hours | `PROPERTY` constants (brand overridden by platform API when present) | ✅ partial: platform identity; hotel address via query | A/B | Resolve hotel/platform in layout |
-| 37 | FAQ page | `app/faq/faq-client.tsx` | Topics/answers | `PROPERTY.faq` | ✅ `faqs(hotelId)` unused here | A | Fetch hotel FAQs |
-| 38 | Legacy/homepage reviews | `data/index.ts:279–325` | 5 named reviews | Fixture | ✅ `reviews(hotelId)` wired in HotelDetail only | A | Route through backend |
-| 39 | Gallery/images | `BK/TRIP/img`, `IMG_FALLBACK` | External CDN URLs | Static | ✅ backend `media`; mappings already use `media[].url` in real mode | B | Move imagery into media tables |
-| 40 | Site search service | `services/siteSearch.ts` | Searches fixture content | Fixture | ✅ `hotels(query)` exists; content search missing | A (**DEAD CODE** — no importers) | Delete or wire |
-| 41 | Restaurants/facilities/policies | `HotelLegacyPage`; `mapHotelToProperty` leaves them `[]` (`catalog.ts:225–232`) | Fixture-only sections | `PROPERTY` | 🟡 `restaurants(hotelId)` exists; facilities/policies **Backend API missing** (only `hotels.config` JSONB) | A/E | Model server-side if dynamic desired |
-| 42 | Backoffice data | `backoffice-hotel/src/**` | All admin features | **Real** via BFF (`app/api/graphql/route.ts`) | ✅ | **F** | — |
-| 43 | Backoffice hotel switcher | `context/HotelScopeContext.tsx:43–57` | Selected hotel id | localStorage pref fed by real `adminHotels` | n/a | B | Intentional — keep |
+### Frontend-Hotel Data
+- `src/data/index.ts` — All static fixtures (PROPERTY, ROOMS, OFFERS, EXTRAS, DEMO_RESERVATIONS)
 
----
+### Frontend-Hotel GraphQL
+- `src/graphql/hotel.graphql` — 7 queries
+- `src/graphql/homepage.graphql` — 1 query
+- `src/graphql/platform.graphql` — 1 query
+- `src/graphql/staySearch.graphql` — 1 query
+- `src/graphql/extras.graphql` — 1 query
+- `src/graphql/hotelList.graphql` — 1 query (dead — not in codegen output)
+- `src/graphql/roomType.graphql` — 2 queries
 
-## 5. Special-Attention Areas — Verdicts
-
-| Area | Verdict |
-|---|---|
-| Homepage hotel listings | **Real** (`homepage.featuredHotels`), silent empty-fallback |
-| Room types | **Real** in uuid-mode; fixture on legacy surfaces |
-| Room prices | **Real amounts**; fake FX layer + hardcoded policy text (#9/#10) |
-| Availability | **Real**; hash-fake only in mock seam/fallback |
-| Search results | **Real** across all active hotels |
-| Dates / guest count | **URL state** — correct by design |
-| Experiences | **Real** (hotel/platform/homepage), fixture tier-3 |
-| Offers | **MOCK end-to-end** on `/offers`; backend query exists, unused |
-| Reviews | **Real** on HotelDetail; fixture on legacy surfaces |
-| Hotel details | Split: legacy 100% fixture; uuid-mode real |
-| Images/media | Mixed: backend media in real mode; CDN URLs elsewhere |
-| Reservations | **100% localStorage** — biggest gap |
-| Authentication/user data | **100% localStorage**, seeded plaintext demo creds |
-| Admin/back-office | **Fully real** — no business mocks |
-
----
-
-## 6. Final Tallies & Migration Order
-
-**1. Total mock-data locations found: 43**
-- Pure mocks / local engines (A): **19**
-- Intentional static UI content (B): **11**
-- Local demo state (C): **2**
-- localStorage persistence (D): **8** (3 business + newsletter + 3 by-design prefs + consent)
-- Real-API-with-silent-fake-fallback (E): **1 systemic pattern** + hero literals
-- Real API (F): search, availability reads, rates reads, hotel(uuid), homepage, platform, reviews(detail), entire backoffice
-
-**2. Pages/features still on mock:** `/offers`, `/booking` (quote+payment+create), `/reservation`, `/checkin`, `/account`, `/hotel` without `?hotelid`, `/index-2`, homepage hero-stats + tier-3 sections, header/footer identity, FAQ page, site-search (dead).
-
-**3. Files containing mock data: 28** (frontend-hotel)
-Core: `src/data/index.ts` · `src/services/{availability, pricing, cancellation, reservations, auth, payment, newsletter, consent, activity, siteSearch}.ts` · `src/lib/extras.ts`
-Consumers: `app/{page, index-2/page, hotel/page, room/[roomId]/page, faq/faq-client}.tsx` · `components/home/{RoomsGrid, DiscoverSection, RecentActivity}.tsx` · `components/layout/{Header, Footer, SearchSheet}.tsx` · `components/offers/OffersGrid.tsx` · `components/hotel/HotelRoomGate.tsx` · `components/room/RoomDetails.tsx` · `components/booking/{BookingFlow, ReservationFlow, ConfirmationFlow, CheckinFlow}.tsx` · `components/account/AccountFlow.tsx`
-
-**4. Mocks with backend API ready today (~24 items — no backend work needed):** reservations CRUD/cancel/lookup, quote, promo validation, offers listing, extras catalog, FAQs, restaurants, login/register/session, media/images, reviews, hotel identity/address, server-side sorting alternative.
-
-**5. Mocks requiring NEW backend APIs:** password-reset flow · guest anonymous payment initiation + real gateway · self-service check-in mutation · newsletter subscription · guest confirmation-email trigger · facilities/policies content model · demand/popularity score.
-
-**6. Intentionally static (keep):** URL-as-stay-state · language preference · consent store · recent-activity history (product decision D-26) · legal/static pages · icon sets · hero fallback *as placeholder only* · backoffice hotel-switcher preference.
-
-**7. Recommended migration order:**
-
-1. **Stop silent fallbacks** (`catalog.ts` catches returning `DATA`) — smallest change, removes wrong-entity rendering risk.
-2. **Reservations → backend** (`createReservation` + `reservation(ref,email)` + `cancelReservation`); delete demo seeds after cutover.
-3. **Quote → backend** before showing "Pay"; promo validation comes free.
-4. **Auth → backend** endpoints with httpOnly cookie (copy backoffice pattern); delete seeded demo credentials.
-5. **Offers / extras / FAQ pages → existing read queries** (pure swaps).
-6. **Payment**: decide product flow (account-required capture exists today vs. new guest-payment endpoint + provider integration).
-7. **New-backend items last** (newsletter, check-in, password reset, policies model) — each needs schema/API/product decisions.
-
----
-
----
-
-# Consolidated Roadmap (both audits merged, priority order)
-
-| # | Action | Source | Effort | Impact |
-|---|---|---|---|---|
-| 1 | Remove silent mock fallbacks in frontend read seams | Mock audit #7 / CRIT-2 | S | Prevents fake data shown as real |
-| 2 | Wire guest booking → `createReservation` (REST or GraphQL), delete localStorage store + seeds | CRIT-1 / Mock #22–24 | M | Core product becomes real |
-| 3 | Guest quote → backend `quote` before payment | HIGH-4 / Mock #19–20 | M | Single pricing truth |
-| 4 | Guest auth → real endpoints + httpOnly cookie; delete `demo1234` seed | HIGH-3 / Mock #25–28 | M | Security |
-| 5 | Write ADR-009 (layered arch); update README/AGENTS/architecture.md/migration counts/test numbers | HIGH-5 / K | S | Agent/dev correctness |
-| 6 | Offers/extras/FAQ pages → existing queries; fix 'NIGHT' dead branch + hardcoded policy text | MED-9/10 / Mock #18/10 | S | Consistency |
-| 7 | Enforce remaining promo rules + usage ledger | MED-7 | M | Revenue correctness |
-| 8 | Break 6 `@Lazy` cycles; ArchUnit rule banning new ones | MED-6 | M | Long-term maintainability |
-| 9 | CI/CD + Dockerfiles for all three apps | MED-12 | M | Delivery safety |
-| 10 | Float money → decimal/string convention in GraphQL schema | MED-8 | S/M | Financial integrity |
-| 11 | Throttle ref+email lookup; stronger password policy | MED-14/15 | S | Security hardening |
-| 12 | New backend features (newsletter, check-in, reset, guest payment, policies model) | Mock #27/29/30/32/41 | L each | Product completeness |
-| 13 | Clean debug scripts; consolidate seeding; backoffice unit tests; contract tests | LOW-16 / MED-11 | S | Hygiene |
-
----
-
-*End of report. Generated from static verification of the codebase on 2026-08-24; no code was modified during the audit.*
+### Backend
+- `backend-hotel/src/main/java/` — Spring Boot controllers (REST + GraphQL)
+- 99 total operations documented in Section 2

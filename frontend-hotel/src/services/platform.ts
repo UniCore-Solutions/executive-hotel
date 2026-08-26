@@ -1,7 +1,7 @@
-/** Platform identity + hero content — Phase 1 & 2 of the client-platform index.
-    Falls back to the static fixture when mock mode is on or the backend is unreachable. */
+/** Platform identity + hero content — sourced from the backend platform query.
+    Returns empty content when the backend is unreachable. */
 import { PlatformBySlugDocument, type PlatformBySlugQuery } from '@/graphql/generated/graphql';
-import { gqlRequest, useGraphql } from './graphqlClient';
+import { gqlRequest } from './graphqlClient';
 
 export const PLATFORM_SLUG =
   process.env.NEXT_PUBLIC_PLATFORM_SLUG ?? 'the-hotel-collection';
@@ -47,7 +47,6 @@ export const EMPTY_PLATFORM_CONTENT: PlatformContent = {
 };
 
 async function fetchPlatform(): Promise<PlatformBySlugQuery['platform'] | null> {
-  if (!useGraphql) return null;
   try {
     const { platform } = await gqlRequest(PlatformBySlugDocument, { slug: PLATFORM_SLUG });
     return platform ?? null;

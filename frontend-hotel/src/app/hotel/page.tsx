@@ -102,7 +102,7 @@ function HotelLegacyPage() {
     <>
       <HeaderTheme theme="dark" />
       {/* hero */}
-      <section data-hero className="relative h-[64vh] min-h-[420px] overflow-hidden">
+      <section data-hero className="relative h-[56vh] min-h-[340px] overflow-hidden sm:h-[64vh] sm:min-h-[420px]">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="https://cf.bstatic.com/xdata/images/hotel/max1024x768/576912115.jpg?k=3a21a2147228c930cc1321494aac9d1bfe1af6c8c4e5c7fe51758a348f2b78b3&o="
@@ -325,7 +325,7 @@ function HotelLegacyPage() {
       </section>
 
       {/* reviews (nav target) */}
-      <section id="reviews" className="bg-paper border-navy/10 border-y">
+      <section id="reviews" className="bg-paper border-navy/10 border-y overflow-x-clip">
         <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>

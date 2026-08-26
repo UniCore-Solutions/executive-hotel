@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { Suspense } from 'react';
 import { Cormorant_Garamond, Fraunces, Inter } from 'next/font/google';
 import { SearchProvider } from '@/context/SearchContext';
 import { ToastProvider } from '@/context/ToastContext';
@@ -7,6 +8,7 @@ import { SessionProvider } from '@/context/SessionContext';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import SearchSheet from '@/components/layout/SearchSheet';
+import MobileBottomBar from '@/components/layout/MobileBottomBar';
 import ConsentManager from '@/components/layout/ConsentManager';
 import { getPlatformContent } from '@/services/platform';
 import './globals.css';
@@ -62,6 +64,7 @@ export const viewport: Viewport = {
   themeColor: '#0d1c29',
   width: 'device-width',
   initialScale: 1,
+  viewportFit: 'cover',
 };
 
 const jsonLd = {
@@ -95,6 +98,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <main>{children}</main>
                 <Footer platform={platform.identity} />
                 <SearchSheet />
+                <Suspense fallback={null}>
+                  <MobileBottomBar />
+                </Suspense>
                 <ConsentManager />
               </ModalProvider>
             </ToastProvider>

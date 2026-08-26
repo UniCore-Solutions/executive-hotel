@@ -129,6 +129,7 @@ export function getDefaultState(): SearchState {
     rooms: 1,
     promo: '',
     currency: 'MAD',
+    destination: '',
   };
 }
 
@@ -176,6 +177,11 @@ export function readStateFromURL(searchParams: URLSearchParams): SearchState {
     state.currency = cur.toUpperCase() as CurrencyCode;
   }
 
+  const dest = searchParams.get('destination');
+  if (dest) state.destination = dest.trim();
+  const destName = searchParams.get('destinationName');
+  if (destName) state.destinationName = destName.trim();
+
   return state;
 }
 
@@ -192,6 +198,10 @@ export function stateToParams(state: SearchState, extra?: Record<string, string>
   params.set('rooms', String(state.rooms));
   if (state.promo) params.set('promo', state.promo);
   if (state.currency !== 'MAD') params.set('cur', state.currency);
+  if (state.destination) {
+    params.set('destination', state.destination);
+    if (state.destinationName) params.set('destinationName', state.destinationName);
+  }
   if (extra) {
     for (const [k, v] of Object.entries(extra)) {
       if (v !== undefined && v !== null && v !== '') params.set(k, String(v));

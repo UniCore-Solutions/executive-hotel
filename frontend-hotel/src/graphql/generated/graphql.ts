@@ -40,6 +40,28 @@ export type PlatformStatus = 'active' | 'draft' | 'inactive';
 
 export type PromotionStatus = 'active' | 'expired' | 'inactive';
 
+export type QuoteExtraInput = {
+  extraId: string | number;
+  quantity: number;
+};
+
+export type QuoteInput = {
+  adults: number;
+  checkInDate: string;
+  checkOutDate: string;
+  children: number;
+  currencyCode: string;
+  extras?: Array<QuoteExtraInput> | null | undefined;
+  hotelId: string | number;
+  promoCode?: string | null | undefined;
+  rooms: Array<QuoteRoomInput>;
+};
+
+export type QuoteRoomInput = {
+  ratePlanId: string | number;
+  roomTypeId: string | number;
+};
+
 export type RatesInput = {
   adults: number;
   checkInDate: string;
@@ -50,6 +72,15 @@ export type RatesInput = {
 };
 
 export type RoomTypeStatus = 'active' | 'draft' | 'inactive';
+
+export type StaySearchInput = {
+  adults: number;
+  checkInDate: string;
+  checkOutDate: string;
+  children: number;
+  hotelId?: string | number | null | undefined;
+  rooms: number;
+};
 
 export type HotelExtrasQueryVariables = Exact<{
   hotelId: string | number;
@@ -282,6 +313,30 @@ export type StayRatesQuery = {
   }>;
 };
 
+export type HotelListQueryVariables = Exact<{
+  input?: HotelSearchInput | null | undefined;
+}>;
+
+export type HotelListQuery = {
+  hotels: {
+    total: number;
+    items: Array<{
+      id: string;
+      name: string;
+      brand: string | null;
+      city: string | null;
+      countryCode: string | null;
+      starRating: number | null;
+      status: HotelStatus;
+      averageRating: number | null;
+      fromPricePerNight: number | null;
+      defaultCurrency: string;
+      description: string | null;
+      media: Array<{ url: string; altText: string | null }>;
+    }>;
+  };
+};
+
 export type PlatformBySlugQueryVariables = Exact<{
   slug: string;
 }>;
@@ -344,6 +399,31 @@ export type PlatformBySlugQuery = {
   };
 };
 
+export type QuoteQueryVariables = Exact<{
+  input: QuoteInput;
+}>;
+
+export type QuoteQuery = {
+  quote: {
+    currencyCode: string;
+    subtotalAmount: number;
+    discountAmount: number;
+    taxAmount: number;
+    feeAmount: number;
+    totalAmount: number;
+    originalTotal: number;
+    valid: boolean;
+    message: string | null;
+    lines: Array<{
+      roomTypeId: string;
+      ratePlanId: string;
+      ratePerNight: number;
+      nights: number;
+      subtotalAmount: number;
+    }>;
+  };
+};
+
 export type RoomTypeByIdQueryVariables = Exact<{
   id: string | number;
 }>;
@@ -403,6 +483,47 @@ export type HotelsQuery = {
       }>;
     }>;
   };
+};
+
+export type StaySearchQueryVariables = Exact<{
+  input: StaySearchInput;
+}>;
+
+export type StaySearchQuery = {
+  staySearch: Array<{
+    hotelId: string;
+    hotelName: string;
+    status: AvailabilityStatus;
+    capacityFits: boolean;
+    roomType: {
+      id: string;
+      hotelId: string;
+      hotelName: string | null;
+      currencyCode: string | null;
+      name: string;
+      description: string | null;
+      maxAdults: number;
+      maxChildren: number;
+      bedConfiguration: string | null;
+      sizeSqm: number | null;
+      viewType: string | null;
+      status: RoomTypeStatus;
+      pricePerNight: number | null;
+      amenities: Array<{ id: string; name: string; category: string | null }>;
+      media: Array<{ id: string; url: string; altText: string | null; isPrimary: boolean }>;
+    };
+    rates: Array<{
+      roomTypeId: string;
+      ratePlanId: string;
+      ratePlanCode: string;
+      ratePlanName: string;
+      mealPlan: string | null;
+      pricePerNight: number;
+      currencyCode: string;
+      cancellationPolicy: string | null;
+      isRefundable: boolean;
+    }>;
+  }>;
 };
 
 export const HotelExtrasDocument = {
@@ -1025,6 +1146,76 @@ export const StayRatesDocument = {
     },
   ],
 } as unknown as DocumentNode<StayRatesQuery, StayRatesQueryVariables>;
+export const HotelListDocument = {
+  kind: 'Document',
+  definitions: [
+    {
+      kind: 'OperationDefinition',
+      operation: 'query',
+      name: { kind: 'Name', value: 'HotelList' },
+      variableDefinitions: [
+        {
+          kind: 'VariableDefinition',
+          variable: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+          type: { kind: 'NamedType', name: { kind: 'Name', value: 'HotelSearchInput' } },
+        },
+      ],
+      selectionSet: {
+        kind: 'SelectionSet',
+        selections: [
+          {
+            kind: 'Field',
+            name: { kind: 'Name', value: 'hotels' },
+            arguments: [
+              {
+                kind: 'Argument',
+                name: { kind: 'Name', value: 'input' },
+                value: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+              },
+            ],
+            selectionSet: {
+              kind: 'SelectionSet',
+              selections: [
+                { kind: 'Field', name: { kind: 'Name', value: 'total' } },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'items' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'name' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'brand' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'city' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'countryCode' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'starRating' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'status' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'averageRating' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'fromPricePerNight' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'defaultCurrency' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'description' } },
+                      {
+                        kind: 'Field',
+                        name: { kind: 'Name', value: 'media' },
+                        selectionSet: {
+                          kind: 'SelectionSet',
+                          selections: [
+                            { kind: 'Field', name: { kind: 'Name', value: 'url' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'altText' } },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<HotelListQuery, HotelListQueryVariables>;
 export const PlatformBySlugDocument = {
   kind: 'Document',
   definitions: [
@@ -1205,6 +1396,70 @@ export const PlatformBySlugDocument = {
     },
   ],
 } as unknown as DocumentNode<PlatformBySlugQuery, PlatformBySlugQueryVariables>;
+export const QuoteDocument = {
+  kind: 'Document',
+  definitions: [
+    {
+      kind: 'OperationDefinition',
+      operation: 'query',
+      name: { kind: 'Name', value: 'Quote' },
+      variableDefinitions: [
+        {
+          kind: 'VariableDefinition',
+          variable: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+          type: {
+            kind: 'NonNullType',
+            type: { kind: 'NamedType', name: { kind: 'Name', value: 'QuoteInput' } },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: 'SelectionSet',
+        selections: [
+          {
+            kind: 'Field',
+            name: { kind: 'Name', value: 'quote' },
+            arguments: [
+              {
+                kind: 'Argument',
+                name: { kind: 'Name', value: 'input' },
+                value: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+              },
+            ],
+            selectionSet: {
+              kind: 'SelectionSet',
+              selections: [
+                { kind: 'Field', name: { kind: 'Name', value: 'currencyCode' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'subtotalAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'discountAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'taxAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'feeAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'totalAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'originalTotal' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'valid' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'message' } },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'lines' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'roomTypeId' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'ratePlanId' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'ratePerNight' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'nights' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'subtotalAmount' } },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<QuoteQuery, QuoteQueryVariables>;
 export const RoomTypeByIdDocument = {
   kind: 'Document',
   definitions: [
@@ -1375,3 +1630,113 @@ export const HotelsDocument = {
     },
   ],
 } as unknown as DocumentNode<HotelsQuery, HotelsQueryVariables>;
+export const StaySearchDocument = {
+  kind: 'Document',
+  definitions: [
+    {
+      kind: 'OperationDefinition',
+      operation: 'query',
+      name: { kind: 'Name', value: 'StaySearch' },
+      variableDefinitions: [
+        {
+          kind: 'VariableDefinition',
+          variable: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+          type: {
+            kind: 'NonNullType',
+            type: { kind: 'NamedType', name: { kind: 'Name', value: 'StaySearchInput' } },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: 'SelectionSet',
+        selections: [
+          {
+            kind: 'Field',
+            name: { kind: 'Name', value: 'staySearch' },
+            arguments: [
+              {
+                kind: 'Argument',
+                name: { kind: 'Name', value: 'input' },
+                value: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+              },
+            ],
+            selectionSet: {
+              kind: 'SelectionSet',
+              selections: [
+                { kind: 'Field', name: { kind: 'Name', value: 'hotelId' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'hotelName' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'status' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'capacityFits' } },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'roomType' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'hotelId' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'hotelName' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'currencyCode' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'name' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'description' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'maxAdults' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'maxChildren' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'bedConfiguration' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'sizeSqm' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'viewType' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'status' } },
+                      {
+                        kind: 'Field',
+                        name: { kind: 'Name', value: 'amenities' },
+                        selectionSet: {
+                          kind: 'SelectionSet',
+                          selections: [
+                            { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'name' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'category' } },
+                          ],
+                        },
+                      },
+                      {
+                        kind: 'Field',
+                        name: { kind: 'Name', value: 'media' },
+                        selectionSet: {
+                          kind: 'SelectionSet',
+                          selections: [
+                            { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'url' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'altText' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'isPrimary' } },
+                          ],
+                        },
+                      },
+                      { kind: 'Field', name: { kind: 'Name', value: 'pricePerNight' } },
+                    ],
+                  },
+                },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'rates' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'roomTypeId' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'ratePlanId' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'ratePlanCode' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'ratePlanName' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'mealPlan' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'pricePerNight' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'currencyCode' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'cancellationPolicy' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'isRefundable' } },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<StaySearchQuery, StaySearchQueryVariables>;
