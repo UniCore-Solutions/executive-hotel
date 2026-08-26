@@ -53,10 +53,6 @@ fi
 code="$(http_status "http://localhost:${FRONTEND_PORT:-3000}/" 15)"
 case "$code" in 2*|3*) record ok "frontend" "HTTP ${code}" ;; *) record fail "frontend" "HTTP ${code}" ;; esac
 
-# --- Backoffice -----------------------------------------------------------------
-code="$(http_status "http://localhost:${BACKOFFICE_PORT:-3101}/login" 15)"
-case "$code" in 2*|3*) record ok "backoffice" "HTTP ${code}" ;; *) record fail "backoffice" "HTTP ${code}" ;; esac
-
 if (( failures > 0 )); then
   die "${failures} health check(s) failed"
 fi

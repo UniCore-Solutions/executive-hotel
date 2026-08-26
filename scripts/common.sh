@@ -56,7 +56,7 @@ dc() {
   esac
 }
 
-APP_IMAGES=(hotel-platform/backend:local hotel-platform/frontend:local hotel-platform/backoffice:local)
+APP_IMAGES=(hotel-platform/backend:local hotel-platform/frontend:local)
 
 images_built() {
   local img

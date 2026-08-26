@@ -143,6 +143,7 @@ services:
     restart: unless-stopped
 
   backoffice:
+    profiles: ["backoffice"]
     build:
       context: ./backoffice-hotel
       target: runner

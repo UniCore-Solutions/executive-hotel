@@ -26,6 +26,7 @@ services:
       - fe_next_cache:/app/.next
 
   backoffice:
+    profiles: ["backoffice"]
     build:
       target: development
     command: ["npm", "run", "dev"]

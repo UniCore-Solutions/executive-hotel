@@ -8,7 +8,7 @@ require_docker
 load_env
 
 args=(build)
-targets=(backend frontend backoffice)
+targets=(backend frontend)
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-cache) args+=(--no-cache) ;;

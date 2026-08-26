@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the full platform: PostgreSQL + Kafka + backend + frontend + backoffice.
+# Start the full platform: PostgreSQL + Kafka + backend + frontend.
 # Usage:
 #   ./scripts/start.sh            # production-shaped images (default)
 #   ./scripts/start.sh --dev      # bind-mounted sources, dev servers (hot iteration)
@@ -58,7 +58,6 @@ wait_healthy backend  hotel-backend           300  || failed=1
 (( failed )) && die "Core services failed to become healthy — check ./scripts/logs.sh backend"
 
 wait_healthy frontend   hotel-frontend    90 || true
-wait_healthy backoffice hotel-backoffice 90 || true
 
 # ---------------------------------------------------------------- seeding ----
 if [[ "$mode" == "prod" ]] || [[ "${SEED_ON_START:-true}" != "true" ]] || (( no_seed_flag )); then
@@ -73,14 +72,12 @@ else
 fi
 
 frontend_port="${FRONTEND_PORT:-3000}"
-backoffice_port="${BACKOFFICE_PORT:-3101}"
 backend_port="${BACKEND_PORT:-8180}"
 
 cat <<EOF
 
 ${B}Platform is up.${RST}
   Guest frontend : ${GREEN}http://localhost:${frontend_port}${RST}
-  Back-office    : ${GREEN}http://localhost:${backoffice_port}/login${RST}
   Backend API    : http://localhost:${backend_port}/graphql
   GraphiQL       : http://localhost:${backend_port}/graphiql (dev profile only)
   Health         : ./scripts/health.sh
