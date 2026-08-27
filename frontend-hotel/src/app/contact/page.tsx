@@ -4,9 +4,9 @@ import HeaderTheme from '@/components/layout/HeaderTheme';
 import ContactForm from './contact-form';
 
 export const metadata: Metadata = {
-  title: 'Contact — Executive Boutique Hotel Rabat',
+  title: 'Contact — Executive Hotel',
   description:
-    'Contact Executive Boutique Hotel Rabat — questions before you arrive, transfers, special requests. We answer within a few hours.',
+    'Contact Executive Hotel — questions before you arrive, transfers, special requests. We answer within a few hours.',
 };
 
 export default function ContactPage() {

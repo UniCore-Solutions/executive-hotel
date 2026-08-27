@@ -205,10 +205,11 @@ class RestApiIntegrationTest {
 		String reference = objectMapper.readTree(created.body()).get("reference").asText();
 		String reservationId = objectMapper.readTree(created.body()).get("id").asText();
 
-		// anonymous payment → 401 UNAUTHORIZED
+		// anonymous payment, no guest-email proof → 401 UNAUTHORIZED
 		HttpResponse<String> anon = post("/api/v1/payments",
 				Map.of("reservationId", UUID.fromString(reservationId), "amount", 1000.0,
-						"currencyCode", TestFixtures.CURRENCY, "provider", "mock"),
+						"currencyCode", TestFixtures.CURRENCY, "provider", "mock",
+						"idempotencyKey", "rest-pay-anon-" + System.nanoTime()),
 				null);
 		assertThat(anon.statusCode()).isEqualTo(401);
 		assertThat(objectMapper.readTree(anon.body()).get("code").asText())
@@ -218,7 +219,8 @@ class RestApiIntegrationTest {
 		String staff = staffToken();
 		HttpResponse<String> paid = post("/api/v1/payments",
 				Map.of("reservationId", UUID.fromString(reservationId), "amount", 1000.0,
-						"currencyCode", TestFixtures.CURRENCY, "provider", "mock"),
+						"currencyCode", TestFixtures.CURRENCY, "provider", "mock",
+						"idempotencyKey", "rest-pay-staff-" + System.nanoTime()),
 				staff);
 		assertThat(paid.statusCode()).isEqualTo(201);
 		String paymentId = objectMapper.readTree(paid.body()).get("id").asText();

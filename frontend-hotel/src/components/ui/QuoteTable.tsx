@@ -39,7 +39,20 @@ export function QuoteTable({
       true,
     ]);
   }
-  if (b.extrasTotal > 0) rows.push(['Extras & services', '', fmt(b.extrasTotal), false]);
+  if (b.extrasTotal > 0) {
+    if (b.extras?.length) {
+      for (const x of b.extras) {
+        rows.push([
+          x.name,
+          `${x.quantity} × ${fmt(x.unitPrice)}`,
+          fmt(x.totalPrice),
+          false,
+        ]);
+      }
+    } else {
+      rows.push(['Extras & services', '', fmt(b.extrasTotal), false]);
+    }
+  }
   rows.push([taxLabel, '', fmt(b.taxes), false]);
 
   const totalRow = highlight ? (

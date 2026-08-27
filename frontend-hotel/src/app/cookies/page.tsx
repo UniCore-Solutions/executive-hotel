@@ -3,7 +3,7 @@ import HeaderTheme from '@/components/layout/HeaderTheme';
 import CookiesPanel from '@/components/layout/CookiesPanel';
 
 export const metadata: Metadata = {
-  title: 'Cookie policy — Executive Boutique Hotel Rabat',
+  title: 'Cookie policy — Executive Hotel',
 };
 
 export default function CookiesPage() {

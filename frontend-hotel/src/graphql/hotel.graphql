@@ -36,6 +36,96 @@ query HotelById($id: ID!) {
   }
 }
 
+query HotelDetails($id: ID!) {
+  hotelDetails(id: $id) {
+    hotel {
+      id
+      name
+      brand
+      description
+      hotelType
+      addressLine1
+      addressLine2
+      city
+      countryCode
+      latitude
+      longitude
+      phone
+      email
+      starRating
+      checkInTime
+      checkOutTime
+      defaultCurrency
+      status
+      averageRating
+      amenities {
+        id
+        name
+        icon
+        category
+      }
+      media {
+        id
+        url
+        altText
+        category
+        isPrimary
+        sortOrder
+      }
+    }
+    experiences {
+      id
+      name
+      description
+      category
+      durationMinutes
+      priceAmount
+      currencyCode
+      location
+      sortOrder
+    }
+    restaurants {
+      id
+      name
+      description
+      cuisineType
+      openingHours
+      location
+      sortOrder
+    }
+    faqs {
+      id
+      question
+      answer
+      category
+      sortOrder
+    }
+    policies {
+      id
+      name
+      value
+      icon
+      sortOrder
+    }
+    reviews {
+      total
+      page
+      size
+      items {
+        id
+        authorName
+        rating
+        title
+        comment
+        responseText
+        createdAt
+      }
+    }
+    reviewsCount
+    averageRating
+  }
+}
+
 query HotelRoomTypes($hotelId: ID!) {
   roomTypes(hotelId: $hotelId) {
     id

@@ -154,6 +154,13 @@ public class CatalogQueryServiceImpl implements CatalogQueryService {
 
 	@Override
 	@Transactional(readOnly = true)
+	public RoomType getRoomTypeBySlug(String slug) {
+		return roomTypeRepository.findBySlug(slug)
+				.orElseThrow(() -> DomainException.notFound("room type not found"));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
 	public Map<UUID, RoomType> roomTypesByIds(Collection<UUID> ids) {
 		Map<UUID, RoomType> map = new HashMap<>();
 		for (RoomType rt : roomTypeRepository.findAllById(ids)) {
@@ -311,7 +318,7 @@ public class CatalogQueryServiceImpl implements CatalogQueryService {
 						.collect(Collectors.groupingBy(Room::getRoomTypeId));
 		return roomTypes.stream()
 				.map(rt -> new AdminRoomTypeView(rt.getId(), rt.getHotelId(), rt.getName(),
-						rt.getDescription(), rt.getMaxAdults() == null ? null
+						rt.getSlug(), rt.getDescription(), rt.getMaxAdults() == null ? null
 								: rt.getMaxAdults().intValue(),
 						rt.getMaxChildren() == null ? null : rt.getMaxChildren().intValue(),
 						rt.getTotalInventory(),

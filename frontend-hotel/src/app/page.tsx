@@ -20,11 +20,11 @@ const HERO_FALLBACK_IMAGE =
   'https://cf.bstatic.com/xdata/images/hotel/max1024x768/572984359.jpg?k=c319f2502790e9a3a12181017bfb98066f040aebf48c6f02f4665c04a5aad074&o=';
 
 export const metadata: Metadata = {
-  title: 'Executive Boutique Hotel Rabat — 4★ in the Agdal district',
+  title: 'Executive Hotel — 4★ in the Agdal district',
   description:
-    'Executive Boutique Hotel Rabat — 4-star rooms with free Wi-Fi in the Agdal district, a restaurant serving French, Mediterranean and Moroccan cuisine, a free buffet breakfast and free private parking.',
+    'Executive Hotel — 4-star rooms with free Wi-Fi in the Agdal district, a restaurant serving French, Mediterranean and Moroccan cuisine, a free buffet breakfast and free private parking.',
   openGraph: {
-    title: 'Executive Boutique Hotel Rabat — Agdal',
+    title: 'Executive Hotel — Agdal',
     description:
       "4-star comfort in Rabat's Agdal district — free Wi-Fi, free parking, a restaurant serving French, Mediterranean and Moroccan cuisine, and a free buffet breakfast.",
   },
@@ -90,7 +90,7 @@ export default async function HomePage() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={hero?.imageUrl ?? HERO_FALLBACK_IMAGE}
-          alt={hero?.imageAlt ?? 'Lobby with a wooden feature wall at Executive Boutique Hotel Rabat'}
+          alt={hero?.imageAlt ?? 'Lobby with a wooden feature wall at Executive Hotel'}
           className="absolute inset-0 h-full w-full object-cover"
         />
         <div className="from-navy-dark/70 via-navy-dark/40 to-navy-dark/25 absolute inset-0 bg-gradient-to-t" />
@@ -483,7 +483,7 @@ export default async function HomePage() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="https://cf.bstatic.com/xdata/images/hotel/max1024x768/576912113.jpg?k=e4a8439005872a2f65d93838b01e518ee5386fcf62eceaf457b1d91023f99a68&o="
-              alt="Lobby waiting area with chairs and tables at Executive Boutique Hotel Rabat"
+              alt="Lobby waiting area with chairs and tables at Executive Hotel"
               loading="lazy"
               className="h-[320px] w-full object-cover lg:h-[400px]"
             />

@@ -2,6 +2,7 @@
     Errors propagate to callers (no silent mock fallbacks). */
 import {
   HotelByIdDocument,
+  HotelDetailsDocument,
   HotelExperiencesDocument,
   HotelOffersDocument,
   HotelReviewsDocument,
@@ -11,6 +12,7 @@ import {
   StayRatesDocument,
   StaySearchDocument,
   type HotelByIdQuery,
+  type HotelDetailsQuery,
   type HotelExperiencesQuery,
   type HotelOffersQuery,
   type HotelReviewsQuery,
@@ -207,6 +209,7 @@ export function ratePlansForRoom(roomId: string, rates: BackendRate[]): RatePlan
     .filter((r) => r.roomTypeId === roomId)
     .map((r) => ({
       id: `${roomId}::${r.ratePlanCode.toLowerCase()}`,
+      backendRatePlanId: r.ratePlanId,
       name: r.ratePlanName,
       mealPlan: r.mealPlan ?? '',
       price: toBaseMad(r.pricePerNight, r.currencyCode),
@@ -458,4 +461,37 @@ export async function getProperty(id?: string): Promise<Property | null> {
 export async function getHotelById(id: string) {
   const { hotel } = await gqlRequest(HotelByIdDocument, { id });
   return hotel;
+}
+
+type BackendHotelDetails = NonNullable<HotelDetailsQuery['hotelDetails']>;
+
+export interface HotelDetailsResult {
+  hotel: BackendHotelDetails['hotel'];
+  experiences: Experience[];
+  restaurants: BackendHotelDetails['restaurants'];
+  faqs: BackendHotelDetails['faqs'];
+  policies: BackendHotelDetails['policies'];
+  reviews: Review[];
+  reviewsCount: number;
+  averageRating: number | null;
+}
+
+/** The hotel page's single aggregation query — hotel, experiences, restaurants,
+    faqs and reviews in one round trip, replacing what used to be four separate
+    calls (getHotelById + getExperiences + getReviews, with a fourth for
+    restaurants/faqs that was never actually made — see Task 7 in
+    docs/investigations/TASK2-TASK3-CURRENCY-AND-ATOMICITY.md). */
+export async function getHotelDetails(id: string): Promise<HotelDetailsResult | null> {
+  const { hotelDetails } = await gqlRequest(HotelDetailsDocument, { id });
+  if (!hotelDetails) return null;
+  return {
+    hotel: hotelDetails.hotel,
+    experiences: hotelDetails.experiences.map(mapExperienceToExperience),
+    restaurants: hotelDetails.restaurants,
+    faqs: hotelDetails.faqs,
+    policies: hotelDetails.policies,
+    reviews: hotelDetails.reviews.items.map(mapReviewToReview),
+    reviewsCount: hotelDetails.reviewsCount,
+    averageRating: hotelDetails.averageRating ?? null,
+  };
 }

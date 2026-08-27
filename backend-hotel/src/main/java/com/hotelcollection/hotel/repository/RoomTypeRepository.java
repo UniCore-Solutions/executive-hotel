@@ -27,6 +27,11 @@ public interface RoomTypeRepository extends JpaRepository<RoomType, UUID> {
 	List<RoomType> findByHotelId(@Param("hotelId") UUID hotelId);
 
 	@EntityGraph(attributePaths = "amenities")
+	Optional<RoomType> findBySlug(@Param("slug") String slug);
+
+	boolean existsByHotelIdAndSlug(@Param("hotelId") UUID hotelId, @Param("slug") String slug);
+
+	@EntityGraph(attributePaths = "amenities")
 	@Query("select rt from RoomType rt where rt.id = :id")
 	Optional<RoomType> findByIdWithAmenities(@Param("id") UUID id);
 

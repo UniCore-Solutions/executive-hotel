@@ -3,7 +3,7 @@ import Link from 'next/link';
 import HeaderTheme from '@/components/layout/HeaderTheme';
 
 export const metadata: Metadata = {
-  title: 'Cancellation policy — Executive Boutique Hotel Rabat',
+  title: 'Cancellation policy — Executive Hotel',
 };
 
 export default function CancellationPolicyPage() {

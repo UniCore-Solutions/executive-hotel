@@ -4,7 +4,7 @@ import { PlatformBySlugDocument, type PlatformBySlugQuery } from '@/graphql/gene
 import { gqlRequest } from './graphqlClient';
 
 export const PLATFORM_SLUG =
-  process.env.NEXT_PUBLIC_PLATFORM_SLUG ?? 'the-hotel-collection';
+  process.env.NEXT_PUBLIC_PLATFORM_SLUG ?? 'executive-hotel';
 
 export interface PlatformIdentity {
   name: string;

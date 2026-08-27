@@ -3,9 +3,9 @@ import HeaderTheme from '@/components/layout/HeaderTheme';
 import AccountFlow from '@/components/account/AccountFlow';
 
 export const metadata: Metadata = {
-  title: 'Guest account — Executive Boutique Hotel Rabat',
+  title: 'Guest account — Executive Hotel',
   description:
-    'Sign in to your Executive Boutique Hotel Rabat guest account to manage bookings and preferences.',
+    'Sign in to your Executive Hotel guest account to manage bookings and preferences.',
 };
 
 export default function AccountPage() {

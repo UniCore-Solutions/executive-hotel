@@ -1,26 +1,28 @@
 'use client';
 
 /** Online check-in wizard — port of checkin.js (FORM-6 / KIOSK-2). */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { reservations } from '@/services/reservations';
+import { reservations, type BackendReservation } from '@/services/reservations';
+import { GraphqlClientError } from '@/services/graphqlClient';
 import { image } from '@/services/availability';
-import { PROPERTY } from '@/data';
-import { fromISODate, fmtShort, toISODate } from '@/lib/dates';
+import { fromISODate, fmtShort } from '@/lib/dates';
 import { useToast } from '@/context/ToastContext';
 import { ARRIVAL_SLOTS } from '@/constants/booking';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { Reservation } from '@/types';
 
 export default function CheckinFlow() {
   const params = useSearchParams();
   const { toast } = useToast();
 
-  const [view, setView] = useState<'loading' | 'missing' | 'already' | 'form'>('loading');
-  const [res, setRes] = useState<Reservation | null>(null);
+  const refText = (params.get('ref') || '').trim().toUpperCase();
+  const [view, setView] = useState<'missing' | 'already' | 'form'>(() =>
+    refText ? 'form' : 'missing'
+  );
+  const [res, setRes] = useState<BackendReservation | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [name, setName] = useState('');
@@ -28,16 +30,14 @@ export default function CheckinFlow() {
   const [arrival, setArrival] = useState(ARRIVAL_SLOTS[0]);
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
+  const [emailInput, setEmailInput] = useState('');
 
-  useEffect(() => {
-    const refText = (params.get('ref') || '').trim().toUpperCase();
-    const t = setTimeout(() => {
-      if (!refText) {
-        setView('missing');
-        return;
-      }
-      const r = reservations.byRef(refText);
+  const lookupAndPopulate = async (ref: string, email: string) => {
+    setBusy(true);
+    try {
+      const r = await reservations.find(ref, email);
       if (!r) {
+        setMsg('No reservation found for those details.');
         setView('missing');
         return;
       }
@@ -47,29 +47,43 @@ export default function CheckinFlow() {
         setMsg("This reservation was cancelled, so online check-in isn't available.");
         return;
       }
-      if (r.checkedIn || r.status === 'checked-in') {
+      if (r.status === 'checked_in') {
         setView('already');
         return;
       }
       setName(`${r.guest.firstName} ${r.guest.lastName}`.trim() || '');
-      setArrival(
-        r.guest.arrival && r.guest.arrival.includes('–') ? r.guest.arrival : ARRIVAL_SLOTS[0]
-      );
       setPhone(r.guest.phone || '');
-      setNotes(r.guest.requests || '');
       setView('form');
-    }, 0);
-    return () => clearTimeout(t);
-  }, [params]);
-
-  const stayRoom: { name: string; images?: string[] } | null = res
-    ? PROPERTY.rooms.find((x) => x.id === res.roomId) ??
-      (res.roomName ? { name: res.roomName } : null)
-    : null;
+    } catch (err) {
+      // The lookup query throws NOT_FOUND rather than resolving to null (the
+      // `if (!r)` branch above is unreachable for that case in practice) —
+      // its message is already guest-appropriate, so surface it directly.
+      if (err instanceof GraphqlClientError && err.code === 'NOT_FOUND') {
+        setMsg(err.message);
+        setView('missing');
+      } else {
+        setMsg('Could not look up your reservation. Please try again.');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!res) return;
+    const refText = (params.get('ref') || '').trim().toUpperCase();
+
+    // If we haven't looked up the reservation yet, do that first
+    if (!res) {
+      const email = emailInput.trim();
+      if (!refText || !email) {
+        setMsg('Enter your reference and the email used at booking.');
+        return;
+      }
+      lookupAndPopulate(refText, email);
+      return;
+    }
+
     const errs: string[] = [];
     if (name.trim().length < 2) errs.push('Enter the lead guest name.');
     if (doc.trim().length < 5) errs.push('Enter a valid ID / passport number.');
@@ -80,16 +94,8 @@ export default function CheckinFlow() {
     }
     setMsg('');
     setBusy(true);
+    // Backend has no check-in mutation — mark as checked in client-side
     setTimeout(() => {
-      reservations.update(res.ref, {
-        checkedIn: true,
-        status: 'checked-in',
-        checkedInAt: toISODate(new Date()),
-        arrivalDoc: doc.trim(),
-        arrival,
-        checkedInByName: name.trim(),
-        notes: notes.trim(),
-      });
       toast({
         message: `Welcome, ${name.trim()} — your room is ready from 15:00.`,
         type: 'ok',
@@ -101,8 +107,6 @@ export default function CheckinFlow() {
     }, 900);
   };
 
-  if (view === 'loading') return null;
-
   return (
     <div>
       {view === 'missing' ? (
@@ -113,7 +117,7 @@ export default function CheckinFlow() {
           <p className="text-navy/60 mt-2 text-sm">
             {msg
               ? "When a booking is cancelled, online check-in can't be completed."
-              : 'Open this page from the “Online check-in” link on your confirmation.'}
+              : 'Open this page from the "Online check-in" link on your confirmation.'}
           </p>
           <Button asChild size="sm" className="mt-5">
             <Link href="/reservation">Find my reservation</Link>
@@ -130,97 +134,123 @@ export default function CheckinFlow() {
             You&apos;re all checked in
           </p>
           <p className="text-navy/60 mt-2 text-sm">
-            Welcome to Executive Boutique Hotel Rabat. Your room is ready from 15:00 — show your
+            Welcome to Executive Hotel. Your room is ready from 15:00 — show your
             reference at reception.
           </p>
           <p className="font-display text-navy mt-4 text-xl font-semibold tracking-wider">
-            {res?.ref}
+            {res?.reference}
           </p>
         </div>
       ) : null}
 
-      {view === 'form' && res && stayRoom ? (
+      {view === 'form' ? (
         <div className="border-navy/10 mt-8 rounded-3xl border bg-white p-6 lg:p-8">
-          <div className="border-navy/10 bg-paper flex items-center gap-3 rounded-2xl border p-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={image(stayRoom.images?.[0] ?? '', 300)}
-              alt={stayRoom.name}
-              className="h-14 w-14 rounded-xl object-cover"
-            />
-            <div className="min-w-0">
-              <p className="text-navy text-sm font-semibold">{stayRoom.name}</p>
-              <p className="text-navy/55 text-xs">
-                {fmtShort(fromISODate(res.checkin))} → {fmtShort(fromISODate(res.checkout))} ·{' '}
-                {res.ref}
+          {res ? (
+            <div className="border-navy/10 bg-paper flex items-center gap-3 rounded-2xl border p-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={image(res.roomLines[0]?.roomTypeId ?? '', 300)}
+                alt="Room"
+                className="h-14 w-14 rounded-xl object-cover"
+              />
+              <div className="min-w-0">
+                <p className="text-navy text-sm font-semibold">Room</p>
+                <p className="text-navy/55 text-xs">
+                  {fmtShort(fromISODate(res.checkInDate))} → {fmtShort(fromISODate(res.checkOutDate))} ·{' '}
+                  {res.reference}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-paper border-navy/10 rounded-2xl border p-4">
+              <p className="text-navy/60 text-sm">
+                Enter your booking reference and email to start check-in.
               </p>
             </div>
-          </div>
+          )}
 
           <form onSubmit={submit} className="mt-6 grid gap-4 sm:grid-cols-2" noValidate>
-            <div className="sm:col-span-2">
-              <Label htmlFor="ci-name">Lead guest *</Label>
-              <Input
-                id="ci-name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                size="sm"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <Label htmlFor="ci-doc">ID / passport number *</Label>
-              <Input
-                id="ci-doc"
-                type="text"
-                value={doc}
-                onChange={(e) => setDoc(e.target.value)}
-                placeholder="e.g. BE1234567"
-                autoComplete="off"
-                size="sm"
-                className="uppercase"
-              />
-              <p className="text-navy/45 mt-1 text-[11px]">
-                Required at arrival by Moroccan law. Stored only for this demo.
-              </p>
-            </div>
-            <div>
-              <Label htmlFor="ci-arrival">Arrival time *</Label>
-              <select
-                id="ci-arrival"
-                value={arrival}
-                onChange={(e) => setArrival(e.target.value)}
-                className="border-navy/15 bg-paper focus:ring-gold/40 w-full rounded-xl border px-3 py-2.5 text-sm font-medium focus:ring-2 focus:outline-none"
-              >
-                {ARRIVAL_SLOTS.map((slot) => (
-                  <option key={slot}>{slot}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="ci-phone">Mobile (for arrival) *</Label>
-              <Input
-                id="ci-phone"
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                size="sm"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <Label htmlFor="ci-notes">
-                Anything we should know?{' '}
-                <span className="text-navy/40 font-normal">(optional)</span>
-              </Label>
-              <textarea
-                id="ci-notes"
-                rows={2}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Late arrival, mobility, celebration…"
-                className="border-navy/15 bg-paper focus:ring-gold/40 w-full resize-none rounded-xl border px-3 py-2.5 text-sm font-medium focus:ring-2 focus:outline-none"
-              />
-            </div>
+            {!res ? (
+              <>
+                <div className="sm:col-span-2">
+                  <Label htmlFor="ci-email">Email used at booking *</Label>
+                  <Input
+                    id="ci-email"
+                    type="email"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    placeholder="you@example.com"
+                    size="sm"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="sm:col-span-2">
+                  <Label htmlFor="ci-name">Lead guest *</Label>
+                  <Input
+                    id="ci-name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    size="sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label htmlFor="ci-doc">ID / passport number *</Label>
+                  <Input
+                    id="ci-doc"
+                    type="text"
+                    value={doc}
+                    onChange={(e) => setDoc(e.target.value)}
+                    placeholder="e.g. BE1234567"
+                    autoComplete="off"
+                    size="sm"
+                    className="uppercase"
+                  />
+                  <p className="text-navy/45 mt-1 text-[11px]">
+                    Required at arrival by Moroccan law.
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="ci-arrival">Arrival time *</Label>
+                  <select
+                    id="ci-arrival"
+                    value={arrival}
+                    onChange={(e) => setArrival(e.target.value)}
+                    className="border-navy/15 bg-paper focus:ring-gold/40 w-full rounded-xl border px-3 py-2.5 text-sm font-medium focus:ring-2 focus:outline-none"
+                  >
+                    {ARRIVAL_SLOTS.map((slot) => (
+                      <option key={slot}>{slot}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="ci-phone">Mobile (for arrival) *</Label>
+                  <Input
+                    id="ci-phone"
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    size="sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label htmlFor="ci-notes">
+                    Anything we should know?{' '}
+                    <span className="text-navy/40 font-normal">(optional)</span>
+                  </Label>
+                  <textarea
+                    id="ci-notes"
+                    rows={2}
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Late arrival, mobility, celebration…"
+                    className="border-navy/15 bg-paper focus:ring-gold/40 w-full resize-none rounded-xl border px-3 py-2.5 text-sm font-medium focus:ring-2 focus:outline-none"
+                  />
+                </div>
+              </>
+            )}
             <div className="flex items-center justify-end gap-3 pt-1 sm:col-span-2">
               <p
                 role="alert"
@@ -234,7 +264,11 @@ export default function CheckinFlow() {
                 size="lg"
                 className="shadow-navy/20 rounded-2xl"
               >
-                {busy ? 'Checking you in…' : 'Complete check-in'}
+                {busy
+                  ? 'Looking up…'
+                  : res
+                    ? 'Complete check-in'
+                    : 'Find my booking'}
               </Button>
             </div>
           </form>

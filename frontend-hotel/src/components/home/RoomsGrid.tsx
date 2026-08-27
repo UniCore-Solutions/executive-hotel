@@ -43,7 +43,7 @@ function RoomCard({ room, variant = 'home' }: { room: Room; variant?: 'home' | '
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={image(room.images[0] ?? IMG_FALLBACK, 800)}
-          alt={`${room.name} — Executive Boutique Hotel Rabat`}
+          alt={`${room.name} — Executive Hotel`}
           loading="lazy"
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />

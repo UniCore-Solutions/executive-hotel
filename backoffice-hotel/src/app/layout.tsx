@@ -13,10 +13,10 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Hotel Collection — Back Office',
+    default: 'Executive Hotel — Back Office',
     template: '%s — Back Office',
   },
-  description: 'Hotel Collection platform back office: hotels, reservations, guests and operations.',
+  description: 'Executive Hotel back office: hotels, reservations, guests and operations.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

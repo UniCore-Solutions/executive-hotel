@@ -6,9 +6,9 @@ import DiscoverSection from '@/components/home/DiscoverSection';
 import { Stars } from '@/components/ui/Stars';
 
 export const metadata: Metadata = {
-  title: 'Executive Boutique Hotel Rabat — Discover new ways to stay',
+  title: 'Executive Hotel — Discover new ways to stay',
   description:
-    'Discover new ways to stay at Executive Boutique Hotel Rabat — rooms, suites and hotel offers designed around the way you want to travel, in the Agdal district.',
+    'Discover new ways to stay at Executive Hotel — rooms, suites and hotel offers designed around the way you want to travel, in the Agdal district.',
 };
 
 const P = PROPERTY;
@@ -26,14 +26,14 @@ export default function IndexTwoPage() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={BK.bedroomBlueChairs}
-          alt="Bedroom with a bed and two blue chairs at Executive Boutique Hotel Rabat"
+          alt="Bedroom with a bed and two blue chairs at Executive Hotel"
           className="absolute inset-0 h-full w-full object-cover"
         />
         <div className="from-navy-dark/80 via-navy-dark/35 to-navy-dark/10 absolute inset-0 bg-gradient-to-b" />
 
         <div className="relative mx-auto flex w-full max-w-7xl flex-col px-4 pt-32 sm:px-6 lg:px-8 lg:pt-44">
           <p className="eyebrow text-gold-light text-[11px] font-semibold tracking-[0.3em] uppercase">
-            Executive Boutique Hotel · Agdal
+            Executive Hotel · Agdal
           </p>
           <h1 className="font-display mt-3 max-w-3xl text-3xl leading-[1.15] font-semibold text-white sm:mt-4 sm:text-5xl sm:leading-[1.05] lg:text-6xl">
             A boutique stay in the heart of Rabat.
@@ -101,14 +101,14 @@ export default function IndexTwoPage() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={BK.lobbyWaitingArea}
-              alt="Lobby waiting area with chairs and tables at Executive Boutique Hotel Rabat"
+              alt="Lobby waiting area with chairs and tables at Executive Hotel"
               loading="lazy"
               className="shadow-navy/15 aspect-[3/4] rounded-3xl object-cover shadow-xl"
             />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={BK.roomWhiteBedDressing}
-              alt="Room with a white bed and a dressing area at Executive Boutique Hotel Rabat"
+              alt="Room with a white bed and a dressing area at Executive Hotel"
               loading="lazy"
               className="shadow-navy/15 mt-8 aspect-[3/4] rounded-3xl object-cover shadow-xl"
             />

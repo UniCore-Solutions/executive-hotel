@@ -47,7 +47,7 @@ class DatabaseIntegrityIntegrationTest {
 	void flywayAppliedAllMigrations() {
 		Integer applied = jdbc.queryForObject(
 				"SELECT count(*) FROM flyway_schema_history WHERE success = TRUE", Integer.class);
-		assertThat(applied).isEqualTo(20);
+		assertThat(applied).isEqualTo(25);
 	}
 
 	@Test
@@ -56,7 +56,7 @@ class DatabaseIntegrityIntegrationTest {
 				"SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"
 						+ " AND table_name <> 'flyway_schema_history'",
 				Integer.class);
-		assertThat(tables).isEqualTo(53);
+		assertThat(tables).isEqualTo(54);
 
 		assertThat(extensionInstalled("btree_gist")).isTrue();
 		assertThat(extensionInstalled("pgcrypto")).isTrue();
@@ -403,16 +403,16 @@ class DatabaseIntegrityIntegrationTest {
 						+ " VALUES (gen_random_uuid(), 'Hotel B', 'hotel-b', 'MA', 'MAD') RETURNING id",
 				UUID.class);
 		roomType1 = jdbc.queryForObject(
-				"INSERT INTO room_types (id, hotel_id, name) OVERRIDING SYSTEM VALUE"
-						+ " VALUES (gen_random_uuid(), ?, 'Deluxe') RETURNING id",
+				"INSERT INTO room_types (id, hotel_id, name, slug) OVERRIDING SYSTEM VALUE"
+						+ " VALUES (gen_random_uuid(), ?, 'Deluxe', 'deluxe') RETURNING id",
 				UUID.class, hotel1);
 		roomType2 = jdbc.queryForObject(
-				"INSERT INTO room_types (id, hotel_id, name) OVERRIDING SYSTEM VALUE"
-						+ " VALUES (gen_random_uuid(), ?, 'Suite') RETURNING id",
+				"INSERT INTO room_types (id, hotel_id, name, slug) OVERRIDING SYSTEM VALUE"
+						+ " VALUES (gen_random_uuid(), ?, 'Suite', 'suite') RETURNING id",
 				UUID.class, hotel1);
 		roomType3 = jdbc.queryForObject(
-				"INSERT INTO room_types (id, hotel_id, name) OVERRIDING SYSTEM VALUE"
-						+ " VALUES (gen_random_uuid(), ?, 'Deluxe B') RETURNING id",
+				"INSERT INTO room_types (id, hotel_id, name, slug) OVERRIDING SYSTEM VALUE"
+						+ " VALUES (gen_random_uuid(), ?, 'Deluxe B', 'deluxe-b') RETURNING id",
 				UUID.class, hotel2);
 	}
 

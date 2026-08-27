@@ -4,9 +4,9 @@ import HeaderTheme from '@/components/layout/HeaderTheme';
 import BookingFlow from '@/components/booking/BookingFlow';
 
 export const metadata: Metadata = {
-  title: 'Booking — Executive Boutique Hotel Rabat',
+  title: 'Booking — Executive Hotel',
   description:
-    'Complete your booking at Executive Boutique Hotel Rabat — guest details and secure (simulated) payment. Free cancellation on most rates.',
+    'Complete your booking at Executive Hotel — guest details and secure (simulated) payment. Free cancellation on most rates.',
 };
 
 type BookingSearchParams = Promise<{

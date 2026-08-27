@@ -5,9 +5,9 @@ import { qrCells } from '@/lib/qr';
 describe('buildIcs', () => {
   it('produces a VEVENT with the reservation details', () => {
     const ics = buildIcs({
-      summary: 'Executive Boutique Hotel Rabat — Superior Double or Twin',
+      summary: 'Executive Hotel — Superior Double or Twin',
       location: '72 Rue Oued Sebou, Agdal, 10106 Rabat, Morocco',
-      description: 'Check in to your stay at Executive Boutique Hotel Rabat. Reference RC-ABC123.',
+      description: 'Check in to your stay at Executive Hotel. Reference RC-ABC123.',
       dtStart: '2026-09-12',
       dtStartTime: '15:00',
       dtEnd: '2026-09-16',

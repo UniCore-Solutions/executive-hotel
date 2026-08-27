@@ -22,9 +22,9 @@ type PageProps = {
 };
 
 const LEGACY_METADATA: Metadata = {
-  title: 'About the hotel — Executive Boutique Hotel Rabat',
+  title: 'About the hotel — Executive Hotel',
   description:
-    "Executive Boutique Hotel Rabat — 4-star rooms with free Wi-Fi in Rabat's Agdal district. Restaurant serving French, Mediterranean and Moroccan cuisine, free buffet breakfast and free private parking.",
+    "Executive Hotel — 4-star rooms with free Wi-Fi in Rabat's Agdal district. Restaurant serving French, Mediterranean and Moroccan cuisine, free buffet breakfast and free private parking.",
 };
 
 export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
@@ -106,7 +106,7 @@ function HotelLegacyPage() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="https://cf.bstatic.com/xdata/images/hotel/max1024x768/576912115.jpg?k=3a21a2147228c930cc1321494aac9d1bfe1af6c8c4e5c7fe51758a348f2b78b3&o="
-          alt="Living room with couches and chairs at Executive Boutique Hotel Rabat"
+          alt="Living room with couches and chairs at Executive Hotel"
           className="absolute inset-0 h-full w-full object-cover"
         />
         <div className="from-navy-dark/85 via-navy-dark/30 to-navy-dark/20 absolute inset-0 bg-gradient-to-t"></div>
@@ -161,13 +161,13 @@ function HotelLegacyPage() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="https://cf.bstatic.com/xdata/images/hotel/max1024x768/572979710.jpg?k=28183c9921918bf87bc3195a46554a65a84eafffb9d3a4f5274533e971def62a&o="
-              alt="Room with a bed, a desk and a TV at Executive Boutique Hotel Rabat"
+              alt="Room with a bed, a desk and a TV at Executive Hotel"
               className="shadow-navy/15 aspect-[3/4] rounded-3xl object-cover shadow-xl"
             />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="https://cf.bstatic.com/xdata/images/hotel/max1024x768/572984057.jpg?k=376fcf6b7d645d777fcbef5edbe1e58d5e2dd478457547702da11cf4f39bcbc3&o="
-              alt="Bedroom with a bed and two blue chairs at Executive Boutique Hotel Rabat"
+              alt="Bedroom with a bed and two blue chairs at Executive Hotel"
               className="shadow-navy/15 mt-8 aspect-[3/4] rounded-3xl object-cover shadow-xl"
             />
           </div>

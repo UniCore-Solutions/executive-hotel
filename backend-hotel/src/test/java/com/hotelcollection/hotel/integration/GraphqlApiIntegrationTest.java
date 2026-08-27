@@ -117,6 +117,30 @@ class GraphqlApiIntegrationTest {
 	}
 
 	@Test
+	void quoteWithBadPromoCodeSoftFailsWithMessageOverGraphql() throws Exception {
+		// Task 6: an unknown promo code must come back as a normal 200 response
+		// with valid:false + message (never a GraphQL error) — and the message
+		// field must resolve from Quote.promoMessage() (Quote.message() isn't a
+		// real record accessor, see RateGraphQLController#quoteMessage).
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		LocalDate checkIn = LocalDate.now().plusDays(7);
+		Map<String, Object> input = new java.util.HashMap<>(quoteInput(fx, checkIn));
+		input.put("promoCode", "DOES-NOT-EXIST");
+
+		Map<String, Object> quote = post("""
+				query($input: QuoteInput!) {
+				  quote(input: $input) { valid message totalAmount discountAmount }
+				}
+				""", Map.of("input", input), null);
+		assertThat(quote.get("errors")).isNull();
+		Map<String, Object> quoteData = (Map<String, Object>) ((Map<String, Object>) quote.get("data"))
+				.get("quote");
+		assertThat(quoteData.get("valid")).isEqualTo(false);
+		assertThat((String) quoteData.get("message")).contains("not a valid promo code");
+		assertThat(((Number) quoteData.get("discountAmount")).doubleValue()).isEqualTo(0.0);
+	}
+
+	@Test
 	void anonymousCanQuoteAndBook() throws Exception {
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
 		LocalDate checkIn = LocalDate.now().plusDays(7);
@@ -198,6 +222,50 @@ class GraphqlApiIntegrationTest {
 		Map<String, Object> me = post("{ me { email roles } }", null, token);
 		assertThat(((Map<String, Object>) ((Map<String, Object>) me.get("data")).get("me"))
 				.get("email")).isEqualTo(email);
+	}
+
+	@Test
+	void meExposesNamePhoneAndUpdateMyProfilePersistsThem() throws Exception {
+		String email = "profile-" + System.nanoTime() + "@example.com";
+		Map<String, Object> registered = post("""
+				mutation($input: RegisterInput!) {
+				  register(input: $input) { token me { id firstName lastName phone } }
+				}
+				""", Map.of("input", Map.of(
+						"firstName", "Youssef", "lastName", "Amrani",
+						"email", email, "password", "secret123")), null);
+		assertThat(registered.get("errors")).isNull();
+		Map<String, Object> registerData = (Map<String, Object>) ((Map<String, Object>) registered
+				.get("data")).get("register");
+		String token = (String) registerData.get("token");
+		Map<String, Object> registeredMe = (Map<String, Object>) registerData.get("me");
+		assertThat(registeredMe.get("firstName")).isEqualTo("Youssef");
+		assertThat(registeredMe.get("lastName")).isEqualTo("Amrani");
+		assertThat(registeredMe.get("phone")).isNull();
+
+		Map<String, Object> updated = post("""
+				mutation($input: UpdateProfileInput!) {
+				  updateMyProfile(input: $input) { firstName lastName phone }
+				}
+				""", Map.of("input", Map.of(
+						"firstName", "Youssef", "lastName", "Amrani", "phone", "+212600112233")),
+				token);
+		assertThat(updated.get("errors")).isNull();
+		Map<String, Object> updatedMe = (Map<String, Object>) ((Map<String, Object>) updated
+				.get("data")).get("updateMyProfile");
+		assertThat(updatedMe.get("phone")).isEqualTo("+212600112233");
+
+		// persisted, not just echoed: a fresh `me` query reflects it too
+		Map<String, Object> reread = post("{ me { firstName lastName phone } }", null, token);
+		Map<String, Object> rereadMe = (Map<String, Object>) ((Map<String, Object>) reread
+				.get("data")).get("me");
+		assertThat(rereadMe.get("phone")).isEqualTo("+212600112233");
+
+		// updateMyProfile requires authentication like any other mutating call
+		Map<String, Object> anon = post("""
+				mutation($input: UpdateProfileInput!) { updateMyProfile(input: $input) { id } }
+				""", Map.of("input", Map.of("phone", "+212600000000")), null);
+		assertThat(extensionsCode(anon)).isEqualTo("UNAUTHORIZED");
 	}
 
 	@Test
@@ -578,7 +646,8 @@ class GraphqlApiIntegrationTest {
 		String reservationId = (String) ((Map<String, Object>) created.get("reservation"))
 				.get("id");
 		return Map.of("reservationId", reservationId, "amount", 3360.0,
-				"currencyCode", TestFixtures.CURRENCY, "provider", "mock");
+				"currencyCode", TestFixtures.CURRENCY, "provider", "mock",
+				"idempotencyKey", "gql-pay-" + java.util.UUID.randomUUID());
 	}
 
 	private String register(String email) throws Exception {

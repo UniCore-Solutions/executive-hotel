@@ -1,8 +1,15 @@
 # Frontend ↔ Backend Contract Matrix
 
-The frontend (`../frontend-hotel`) runs on **local mocks** (zero network
-calls). This matrix maps every frontend service to its backend GraphQL
-counterpart, so the mock→API swap is a pure find-and-replace per cell.
+> **Status note (2026-08-26):** this matrix is a legacy map from the time the
+> guest frontend ran on local mocks. Since then most guest services have been
+> wired to the backend (search/catalog, quote/pricing, reservations, payment,
+> auth via REST). Audit findings and current wiring live in
+> `../../frontend-hotel/` source and `CURRENT_STATE_AUDIT.md`. Below is retained
+> to document the field-for-field mapping and the still-unsupported cells
+> (marked ❌/🟡).
+
+The matrix maps each frontend service to its backend GraphQL counterpart, so a
+mock→API swap is a pure find-and-replace per cell.
 
 Legend: ✅ implemented & tested · ⚠️ implemented, semantic delta (documented) ·
 ❌ no backend counterpart (mock-only, needs a new mutation/query) · 🟡 partial

@@ -1,8 +1,8 @@
 /** Field-level validators — exact messages/regexes ported from page scripts. */
+import { isValidPhoneNumber } from 'react-phone-number-input';
 
 export const NAME_RE = /^[A-Za-zÀ-ÿ' -]+$/;
 export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-export const PHONE_RE = /^[+\d][\d\s.-]{6,}$/;
 export const CARD_RE = /^\d{13,19}$/;
 export const CVC_RE = /^\d{3,4}$/;
 
@@ -33,8 +33,11 @@ export function validEmail(v: string): boolean {
   return EMAIL_RE.test(v);
 }
 
+/** `v` is expected to be E.164 (what PhoneField/react-phone-number-input
+    produces) — validated for real (country-aware length/format rules), not
+    just "looks like digits" (Task 11). */
 export function validPhone(v: string): boolean {
-  return PHONE_RE.test(v);
+  return !!v && isValidPhoneNumber(v);
 }
 
 export function validCard(v: string): boolean {

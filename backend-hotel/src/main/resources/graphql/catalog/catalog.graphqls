@@ -18,6 +18,7 @@ extend type Mutation {
 	updateHotel(id: ID!, input: AdminHotelInput!): Hotel!
 	setHotelAmenities(hotelId: ID!, amenityIds: [ID!]!): [Amenity!]!
 	setHotelMedia(hotelId: ID!, media: [MediaInput!]!): [Media!]!
+	setHotelPolicies(hotelId: ID!, policies: [HotelPolicyInput!]!): [HotelPolicy!]!
 	createRoomType(hotelId: ID!, input: AdminRoomTypeInput!): RoomType!
 	updateRoomType(id: ID!, input: AdminRoomTypeInput!): RoomType!
 	setRoomTypeAmenities(roomTypeId: ID!, amenityIds: [ID!]!): [Amenity!]!
@@ -82,6 +83,7 @@ type HotelDetails {
 	experiences: [Experience!]!
 	restaurants: [Restaurant!]!
 	faqs: [Faq!]!
+	policies: [HotelPolicy!]!
 	reviews: ReviewPage!
 	reviewsCount: Int!
 	averageRating: Float
@@ -100,6 +102,7 @@ type RoomType {
 	hotelName: String
 	currencyCode: String
 	name: String!
+	slug: String!
 	description: String
 	maxAdults: Int!
 	maxChildren: Int!
@@ -168,6 +171,22 @@ type Faq {
 	sortOrder: Int!
 }
 
+type HotelPolicy {
+	id: ID!
+	hotelId: ID!
+	name: String!
+	value: String!
+	icon: String
+	sortOrder: Int!
+}
+
+input HotelPolicyInput {
+	name: String!
+	value: String!
+	icon: String
+	sortOrder: Int
+}
+
 # ---------------------------------------------------------------- admin catalog
 
 type AdminHotel {
@@ -230,6 +249,7 @@ type AdminRoomType {
 	id: ID!
 	hotelId: ID!
 	name: String!
+	slug: String!
 	description: String
 	maxAdults: Int!
 	maxChildren: Int!

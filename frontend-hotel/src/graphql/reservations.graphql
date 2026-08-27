@@ -1,0 +1,208 @@
+mutation CreateReservation($input: CreateReservationInput!) {
+  createReservation(input: $input) {
+    reservation {
+      id
+      reference
+      hotelId
+      status
+      paymentStatus
+      checkInDate
+      checkOutDate
+      adults
+      children
+      currencyCode
+      subtotalAmount
+      discountAmount
+      taxAmount
+      feeAmount
+      totalAmount
+      source
+      notes
+      createdAt
+      guest {
+        id
+        firstName
+        lastName
+        email
+        phone
+        countryCode
+      }
+      roomLines {
+        id
+        roomTypeId
+        ratePlanId
+        checkInDate
+        checkOutDate
+        nights
+        ratePerNight
+        subtotalAmount
+        status
+      }
+      extras {
+        id
+        extraId
+        name
+        quantity
+        unitPrice
+        totalPrice
+      }
+      charges {
+        id
+        name
+        chargeType
+        amount
+      }
+    }
+    created
+  }
+}
+
+query MyReservations {
+  myReservations {
+    id
+    reference
+    hotelId
+    status
+    paymentStatus
+    checkInDate
+    checkOutDate
+    adults
+    children
+    currencyCode
+    subtotalAmount
+    discountAmount
+    taxAmount
+    feeAmount
+    totalAmount
+    source
+    notes
+    createdAt
+    guest {
+      id
+      firstName
+      lastName
+      email
+      phone
+      countryCode
+    }
+    roomLines {
+      id
+      roomTypeId
+      ratePlanId
+      checkInDate
+      checkOutDate
+      nights
+      ratePerNight
+      subtotalAmount
+      status
+    }
+    extras {
+      id
+      extraId
+      name
+      quantity
+      unitPrice
+      totalPrice
+    }
+    charges {
+      id
+      name
+      chargeType
+      amount
+    }
+    cancellation {
+      id
+      reason
+      reasonNote
+      isRefundable
+      penaltyAmount
+      refundAmount
+      cancelledAt
+    }
+  }
+}
+
+query ReservationLookup($input: ReservationLookupInput!) {
+  reservation(input: $input) {
+    id
+    reference
+    hotelId
+    status
+    paymentStatus
+    checkInDate
+    checkOutDate
+    adults
+    children
+    currencyCode
+    subtotalAmount
+    discountAmount
+    taxAmount
+    feeAmount
+    totalAmount
+    source
+    notes
+    createdAt
+    guest {
+      id
+      firstName
+      lastName
+      email
+      phone
+      countryCode
+    }
+    roomLines {
+      id
+      roomTypeId
+      ratePlanId
+      checkInDate
+      checkOutDate
+      nights
+      ratePerNight
+      subtotalAmount
+      status
+    }
+    extras {
+      id
+      extraId
+      name
+      quantity
+      unitPrice
+      totalPrice
+    }
+    charges {
+      id
+      name
+      chargeType
+      amount
+    }
+    cancellation {
+      id
+      reason
+      reasonNote
+      isRefundable
+      penaltyAmount
+      refundAmount
+      cancelledAt
+    }
+  }
+}
+
+mutation CancelReservation($input: CancelReservationInput!) {
+  cancelReservation(input: $input) {
+    reservation {
+      id
+      reference
+      status
+      cancellation {
+        id
+        reason
+        reasonNote
+        isRefundable
+        penaltyAmount
+        refundAmount
+        cancelledAt
+      }
+    }
+    created
+  }
+}

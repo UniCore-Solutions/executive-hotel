@@ -4,9 +4,9 @@ import HeaderTheme from '@/components/layout/HeaderTheme';
 import ConfirmationFlow from '@/components/booking/ConfirmationFlow';
 
 export const metadata: Metadata = {
-  title: 'Booking confirmed — Executive Boutique Hotel Rabat',
+  title: 'Booking confirmed — Executive Hotel',
   description:
-    'Your booking at Executive Boutique Hotel Rabat is confirmed. Manage your stay, add extras or download your details anytime.',
+    'Your booking at Executive Hotel is confirmed. Manage your stay, add extras or download your details anytime.',
 };
 
 export default function ConfirmationPage() {

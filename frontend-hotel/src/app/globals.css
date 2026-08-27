@@ -16,7 +16,6 @@
 
   --font-display: var(--font-fraunces), 'Georgia', serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-script: var(--font-cormorant), 'Georgia', serif;
 }
 
 /* shadcn/ui semantic tokens mapped to the Executive Boutique hotel palette:
@@ -237,6 +236,17 @@ div[id] {
 .animate-pop {
   animation: pop 0.18s ease both;
 }
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade {
+  animation: fade 0.18s ease both;
+}
 
 #date-picker,
 #guests-panel {
@@ -328,4 +338,31 @@ div[id] {
   .text-navy\/60 {
     color: color-mix(in srgb, var(--color-navy) 88%, white);
   }
+}
+
+/* PhoneField (react-phone-number-input) — matches the app's Input styling
+   (border-navy/15 bg-paper rounded-xl, gold focus ring). Scoped under
+   .hotel-phone-input so the library's own defaults never leak elsewhere. */
+.hotel-phone-input.PhoneInput {
+  border: 1px solid color-mix(in srgb, var(--color-navy) 15%, transparent);
+  background: var(--color-paper, #faf8f4);
+  border-radius: 0.75rem;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.hotel-phone-input.PhoneInput--focus {
+  border-color: color-mix(in srgb, var(--color-gold) 40%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-gold) 40%, transparent);
+}
+.hotel-phone-input .PhoneInputInput {
+  background: transparent;
+  border: none;
+  outline: none;
+  font: inherit;
+  color: inherit;
+}
+.hotel-phone-input .PhoneInputCountrySelect {
+  color: inherit;
 }

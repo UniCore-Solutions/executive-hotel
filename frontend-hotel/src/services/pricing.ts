@@ -18,6 +18,11 @@ export function setOffersSource(list: Offer[]): void {
   offersSource = list;
 }
 
+/** The hydrated backend offer catalog (see ensurePricingSources) — empty until hydrated. */
+export function allOffers(): Offer[] {
+  return offersSource;
+}
+
 export function validatePromo(code: string, ctx: PromoCtx, today: Date = new Date()): PromoResult {
   const c = String(code || '')
     .trim()

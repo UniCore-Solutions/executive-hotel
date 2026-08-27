@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Hotel Collection back office: Next.js admin console over the hotel-platform GraphQL API.",
+  "description": "Executive Hotel back office: Next.js admin console over the hotel-platform GraphQL API.",
   "scripts": {
     "dev": "next dev --port 3101",
     "build": "next build",

@@ -1,28 +1,28 @@
 'use client';
 
 /** Guest account — port of account.html + account.js (ACC-1/3 · ANA-1). */
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSession } from '@/context/SessionContext';
 import { useToast } from '@/context/ToastContext';
 import { useModal } from '@/context/ModalContext';
-import { reservations } from '@/services/reservations';
+import { reservations, type BackendReservation } from '@/services/reservations';
 import { image } from '@/services/availability';
-import { PROPERTY } from '@/data';
 import { fromISODate, fmtShort, nightsBetween } from '@/lib/dates';
-import { PLAN_LABELS } from '@/lib/format';
 import { useCurrency } from '@/hooks/useCurrency';
 import ConsentDialog from '@/components/layout/ConsentDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { PhoneField } from '@/components/ui/PhoneField';
+import { validPhone } from '@/lib/validation';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const NAME_RE = /^[A-Za-zÀ-ÿ' -]+$/;
 
 export default function AccountFlow() {
-  const { session, login, register, logout } = useSession();
+  const { session, login, register, logout, updateProfile } = useSession();
   const { toast } = useToast();
   const { open } = useModal();
   const { fmt } = useCurrency();
@@ -47,7 +47,62 @@ export default function AccountFlow() {
   const [regLabel, setRegLabel] = useState('Create account');
   const [regMsg, setRegMsg] = useState<{ text: string; cls: string }>({ text: '', cls: '' });
 
-  const bookings = useMemo(() => (session ? reservations.byEmail(session.email) : []), [session]);
+  const [bookings, setBookings] = useState<BackendReservation[]>([]);
+
+  useEffect(() => {
+    if (session) {
+      let alive = true;
+      reservations
+        .list()
+        .then((list) => alive && setBookings(list))
+        .catch(() => alive && setBookings([]));
+      return () => {
+        alive = false;
+      };
+    }
+  }, [session]);
+
+  const [profileFields, setProfileFields] = useState({ first: '', last: '', phone: '' });
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileMsg, setProfileMsg] = useState<{ text: string; cls: string }>({ text: '', cls: '' });
+
+  // Keep the profile form in sync with the session — it starts null while
+  // fetchSession() resolves on mount, then populates. Adjusted during render
+  // (not an effect) per https://react.dev/learn/you-might-not-need-an-effect
+  // to avoid a redundant extra render pass.
+  const [syncedSession, setSyncedSession] = useState<typeof session>(null);
+  if (session !== syncedSession) {
+    setSyncedSession(session);
+    if (session) {
+      setProfileFields({
+        first: session.firstName ?? '',
+        last: session.lastName ?? '',
+        phone: session.phone ?? '',
+      });
+    }
+  }
+
+  const doSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileMsg({ text: '', cls: '' });
+    if (profileFields.phone.trim() && !validPhone(profileFields.phone.trim())) {
+      setProfileMsg({ text: 'Enter a valid phone number.', cls: 'text-clay' });
+      return;
+    }
+    setProfileBusy(true);
+    const out = await updateProfile({
+      firstName: profileFields.first.trim() || undefined,
+      lastName: profileFields.last.trim() || undefined,
+      phone: profileFields.phone.trim(),
+    });
+    setProfileBusy(false);
+    if (!out.ok) {
+      setProfileMsg({ text: out.message ?? 'Could not save your profile.', cls: 'text-clay' });
+      return;
+    }
+    setProfileMsg({ text: 'Saved.', cls: 'text-emerald-700' });
+    toast({ message: 'Your profile has been updated.', type: 'ok', title: 'Saved' });
+  };
 
   const switchTab = (next: 'login' | 'register') => {
     setTab(next);
@@ -193,6 +248,53 @@ export default function AccountFlow() {
 
         <div className="mt-6 grid gap-6">
           <section
+            aria-labelledby="profile-title"
+            className="border-navy/10 rounded-3xl border bg-white p-5 sm:p-7"
+          >
+            <h2 id="profile-title" className="font-display text-navy text-xl font-semibold">
+              Profile
+            </h2>
+            <p className="text-navy/55 mt-1 text-sm">
+              Your name and phone prefill the guest details on every booking.
+            </p>
+            <form onSubmit={doSaveProfile} className="mt-4 grid gap-4 sm:grid-cols-2" noValidate>
+              <div>
+                <Label htmlFor="p-first">First name</Label>
+                <Input
+                  id="p-first"
+                  value={profileFields.first}
+                  onChange={(e) => setProfileFields({ ...profileFields, first: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="p-last">Last name</Label>
+                <Input
+                  id="p-last"
+                  value={profileFields.last}
+                  onChange={(e) => setProfileFields({ ...profileFields, last: e.target.value })}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <Label htmlFor="p-phone">Phone</Label>
+                <PhoneField
+                  id="p-phone"
+                  value={profileFields.phone}
+                  onChange={(phone) => setProfileFields({ ...profileFields, phone })}
+                />
+              </div>
+              <p
+                role="status"
+                className={`min-h-5 text-sm font-medium sm:col-span-2 ${profileMsg.cls || ''}`}
+              >
+                {profileMsg.text}
+              </p>
+              <Button type="submit" disabled={profileBusy} size="sm" className="sm:w-fit">
+                {profileBusy ? 'Saving…' : 'Save profile'}
+              </Button>
+            </form>
+          </section>
+
+          <section
             aria-labelledby="bk-title"
             className="border-navy/10 rounded-3xl border bg-white p-5 sm:p-7"
           >
@@ -227,46 +329,43 @@ export default function AccountFlow() {
                 </div>
               ) : (
                 bookings.map((b) => {
-                  const room: { name?: string; images?: string[] } | null =
-                    PROPERTY.rooms.find((r) => r.id === b.roomId) ??
-                    (b.roomName ? { name: b.roomName } : null);
-                  const planSuffix = String(b.planId || '').split('::')[1] || 'bb';
+                  const roomLine = b.roomLines[0];
+                  const roomImg = roomLine?.roomTypeId ?? '';
                   const status =
-                    b.checkedIn || b.status === 'checked-in'
+                    b.status === 'checked_in'
                       ? 'Checked in'
                       : b.status === 'cancelled'
                         ? 'Cancelled'
                         : 'Confirmed';
                   const nights = Math.max(
                     1,
-                    nightsBetween(fromISODate(b.checkin), fromISODate(b.checkout))
+                    nightsBetween(fromISODate(b.checkInDate), fromISODate(b.checkOutDate))
                   );
                   return (
                     <Link
-                      key={b.ref}
-                      href={`/confirmation?ref=${encodeURIComponent(b.ref)}`}
+                      key={b.reference}
+                      href={`/confirmation?ref=${encodeURIComponent(b.reference)}`}
                       className="group border-navy/10 bg-paper hover:border-navy/25 hover:shadow-navy/5 flex items-center gap-4 rounded-2xl border p-4 transition-all hover:shadow-md"
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={image(room?.images?.[0] ?? '', 300)}
-                        alt={room?.name ?? b.roomId}
+                        src={image(roomImg, 300)}
+                        alt="Room"
                         className="border-navy/10 h-16 w-16 shrink-0 rounded-xl border object-cover"
                       />
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2">
                           <span className="text-navy group-hover:text-gold-dark block text-sm font-semibold transition-colors">
-                            {room?.name ?? b.roomId}
+                            Room
                           </span>
                           <span className="text-navy/45 font-mono text-[11px] font-semibold">
-                            {b.ref}
+                            {b.reference}
                           </span>
                         </span>
                         <span className="text-navy/55 mt-0.5 block text-xs">
-                          {fmtShort(fromISODate(b.checkin))} → {fmtShort(fromISODate(b.checkout))} ·{' '}
-                          {nights} {nights === 1 ? 'night' : 'nights'} ·{' '}
-                          {PLAN_LABELS[planSuffix as 'bb'] ?? planSuffix}
-                          {b.price?.total ? ` · ${fmt(b.price.total)}` : ''}
+                          {fmtShort(fromISODate(b.checkInDate))} → {fmtShort(fromISODate(b.checkOutDate))} ·{' '}
+                          {nights} {nights === 1 ? 'night' : 'nights'}
+                          {b.totalAmount ? ` · ${fmt(b.totalAmount)}` : ''}
                         </span>
                       </span>
                       <span
@@ -590,11 +689,6 @@ export default function AccountFlow() {
             </TabsContent>
           )}
         </Tabs>
-        <div className="border-gold/25 bg-gold/[0.08] text-navy/65 mt-7 rounded-2xl border px-4 py-3 text-xs leading-relaxed">
-          <strong className="text-gold-dark">Demo account:</strong>{' '}
-          <code className="font-mono">demo@hotelcollection.com</code> /{' '}
-          <code className="font-mono">demo1234</code>
-        </div>
       </div>
     </div>
   );

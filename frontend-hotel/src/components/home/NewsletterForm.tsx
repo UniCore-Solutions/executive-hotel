@@ -26,7 +26,7 @@ export default function NewsletterForm() {
       setConsent(false);
       setBusy(false);
       toast({
-        message: 'Welcome to the collection — WELCOME5 is ready when you are.',
+        message: 'Welcome to Executive Hotel — WELCOME5 is ready when you are.',
         type: 'ok',
         title: 'Subscribed',
       });
@@ -68,7 +68,7 @@ export default function NewsletterForm() {
           className="accent-navy mt-0.5"
         />
         <span>
-          I consent to receiving the Executive Boutique Hotel Rabat newsletter by email. Unsubscribe
+          I consent to receiving the Executive Hotel newsletter by email. Unsubscribe
           any time.{' '}
           <a href="/privacy" className="underline">
             Privacy notice

@@ -21,6 +21,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
 	Optional<Payment> findByProviderAndProviderReference(String provider, String providerReference);
 
+	Optional<Payment> findByIdempotencyKey(String idempotencyKey);
+
 	/** Payments on reservations of a hotel, newest first (back-office). */
 	@Query("""
 			select p from Payment p

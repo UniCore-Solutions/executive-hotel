@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Suspense } from 'react';
-import { Cormorant_Garamond, Fraunces, Inter } from 'next/font/google';
+import { Fraunces, Inter } from 'next/font/google';
 import { SearchProvider } from '@/context/SearchContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { ModalProvider } from '@/context/ModalContext';
@@ -28,35 +28,27 @@ const fraunces = Fraunces({
   display: 'swap',
 });
 
-const cormorant = Cormorant_Garamond({
-  subsets: ['latin'],
-  weight: ['500', '600'],
-  style: ['italic'],
-  variable: '--font-cormorant',
-  display: 'swap',
-});
-
 export const metadata: Metadata = {
   /* Every page sets its full <title> exactly as the reference does — no template. */
-  title: 'Executive Boutique Hotel Rabat — 4★ in the Agdal district',
+  title: 'Executive Hotel — 4★ in the Agdal district',
   description:
-    'Executive Boutique Hotel Rabat — 4-star rooms with free Wi-Fi in the Agdal district, a restaurant serving French, Mediterranean and Moroccan cuisine, a free buffet breakfast and free private parking.',
+    'Executive Hotel — 4-star rooms with free Wi-Fi in the Agdal district, a restaurant serving French, Mediterranean and Moroccan cuisine, a free buffet breakfast and free private parking.',
   keywords: [
     'boutique hotel Rabat',
-    'Executive Boutique Hotel',
+    'Executive Hotel',
     'hotel Rabat Morocco',
     'Agdal Rabat',
     'hotel Agdal',
     '4 star hotel Rabat',
-    'Executive Boutique Hotel Rabat',
+    'Executive Hotel Rabat',
   ],
   openGraph: {
-    title: 'Executive Boutique Hotel Rabat — Agdal',
+    title: 'Executive Hotel — Agdal',
     description:
       "4-star comfort in Rabat's Agdal district — free Wi-Fi, free parking, a restaurant serving French, Mediterranean and Moroccan cuisine, and a free buffet breakfast.",
     type: 'website',
     locale: 'en_US',
-    siteName: 'Executive Boutique Hotel Rabat',
+    siteName: 'Executive Hotel',
   },
 };
 
@@ -70,7 +62,7 @@ export const viewport: Viewport = {
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Hotel',
-  name: 'Executive Boutique Hotel Rabat',
+  name: 'Executive Hotel',
   address: { '@type': 'PostalAddress', addressLocality: 'Rabat', addressCountry: 'MA' },
   starRating: { '@type': 'Rating', ratingValue: '4' },
 };
@@ -81,7 +73,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html
       lang="en"
       dir="ltr"
-      className={`${inter.variable} ${fraunces.variable} ${cormorant.variable}`}
+      className={`${inter.variable} ${fraunces.variable}`}
     >
       <head>
         <script

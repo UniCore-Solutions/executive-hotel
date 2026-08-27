@@ -1,116 +1,71 @@
-import { describe, expect, it } from 'vitest';
-import { bookingKey, reservations } from '@/services/reservations';
-import type { Reservation } from '@/types';
+import { describe, expect, it, vi } from 'vitest';
+import { bookingKey, generateIdempotencyKey } from '@/services/reservations';
 
-function monoReservation(): Reservation {
-  return {
-    ref: 'RC-UNITTEST',
-    email: 'guest@unittest.dev',
-    status: 'confirmed',
-    checkedIn: false,
-    createdAt: '2026-08-01',
-    guest: {
-      title: 'Mr',
-      firstName: 'Unit',
-      lastName: 'Test',
-      email: 'guest@unittest.dev',
-      phone: '+212 6 00 00 00 00',
-      country: 'Morocco',
-      arrival: '15:00',
-      requests: '',
-    },
-    hotelId: 'executive-boutique-rabat',
-    roomId: 'double-or-twin',
-    planId: 'double-or-twin::bb',
-    checkin: '2026-09-12',
-    checkout: '2026-09-16',
-    adults: 2,
-    children: 0,
-    rooms: 1,
-    extras: [],
-    promo: '',
-    price: {
-      perNight: 910,
-      nights: 4,
-      roomSubtotal: 3640,
-      discount: 0,
-      taxes: 437,
-      extrasTotal: 0,
-      total: 4077,
-      originalTotal: 4077,
-      currency: 'MAD',
-    },
-  };
-}
-
-describe('reservations store', () => {
-  it('seeds demo reservations once on first access', () => {
-    const list = reservations.list();
-    expect(list.some((r) => r.ref === 'RC-DEMO1')).toBe(true);
-    expect(list.some((r) => r.ref === 'RC-DEMO2')).toBe(true);
-    expect(reservations.list().length).toBe(list.length);
-  });
-
-  it('find matches ref+email case-insensitively', async () => {
-    const r = reservations.find('rc-demo1', 'DEMO@HOTELCOLLECTION.COM');
-    expect(r?.ref).toBe('RC-DEMO1');
-    expect(reservations.find('RC-DEMO1', 'wrong@mail.com')).toBeNull();
-  });
-
-  it('byRef / byEmail', () => {
-    expect(reservations.byRef('rc-demo2')?.email).toBe('guest@demo.com');
-    expect(reservations.byEmail('GUEST@demo.com').length).toBe(1);
-  });
-
-  it('create unshifts a reservation with generated RC-XXXXXX ref', () => {
-    const { ref: _omitted, ...payload } = monoReservation();
-    void _omitted;
-    const created = reservations.create(payload as never);
-    expect(created.ref).toMatch(/^RC-[A-Z2-9]{6}$/);
-    expect(created.status).toBe('confirmed');
-    expect(created.checkedIn).toBe(false);
-    expect(reservations.list()[0]?.ref).toBe(created.ref);
-  });
-
-  it('update patches and returns the row; unknown ref returns null', () => {
-    const r = reservations.update('RC-DEMO1', { status: 'cancelled' });
-    expect(r?.status).toBe('cancelled');
-    expect(reservations.byRef('RC-DEMO1')?.status).toBe('cancelled');
-    expect(reservations.update('RC-NOPE', {})).toBeNull();
-  });
-
-  it('setCheckedIn flips status and stamps date', () => {
-    const r = reservations.setCheckedIn('RC-DEMO1');
-    expect(r?.status).toBe('checked-in');
-    expect(r?.checkedIn).toBe(true);
-    expect(r?.checkedInAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+describe('generateIdempotencyKey', () => {
+  it('generates unique keys with bk- prefix', () => {
+    const k1 = generateIdempotencyKey();
+    const k2 = generateIdempotencyKey();
+    expect(k1).toMatch(/^bk-/);
+    expect(k2).toMatch(/^bk-/);
+    expect(k1).not.toBe(k2);
   });
 });
 
 describe('bookingKey', () => {
-  it('begin returns a fresh key; finish stores it under rc_booking_done', () => {
+  it('begin returns a fresh key', () => {
     const item = 'room:double-or-twin:double-or-twin::bb:2026-09-12:2026-09-16';
-    const { key, exitRef } = bookingKey.begin(item);
+    const { key } = bookingKey.begin(item);
     expect(key).toMatch(/^bk-/);
-    expect(exitRef).toBeNull();
-    bookingKey.finish('RC-UNITTEST');
-    const second = bookingKey.begin(item);
-    expect(second.exitRef).toBe('RC-UNITTEST');
   });
 
-  it('different items never exit-couple', () => {
+  it('get returns current state', () => {
     const item = 'room:x::bb:2026-01-01:2026-01-03';
     bookingKey.begin(item);
-    bookingKey.finish('RC-FIRST');
-    const other = bookingKey.begin(`${item}-other`);
-    expect(other.exitRef).toBeNull();
+    const state = bookingKey.get();
+    expect(state.item).toBe(item);
+    expect(state.finished).toBe(false);
   });
 
-  it('clearDone resets the idempotency', () => {
+  it('clearDone resets finished flag', () => {
     const item = 'room:y::bb:2026-01-01:2026-01-03';
     bookingKey.begin(item);
     bookingKey.finish('RC-Y');
     bookingKey.clearDone();
-    expect(bookingKey.begin(item).exitRef).toBeNull();
+    expect(bookingKey.get().finished).toBe(false);
+  });
+});
+
+describe('reservations.create — transaction currency boundary (Task 2)', () => {
+  it('always sends currencyCode "MAD" to createReservation, never a display currency', async () => {
+    vi.resetModules();
+    const gqlRequest = vi.fn().mockResolvedValue({
+      createReservation: {
+        reservation: { id: 'res-1', reference: 'RC-TEST01' },
+        created: true,
+      },
+    });
+    vi.doMock('@/services/graphqlClient', () => ({
+      gqlRequest: (...args: unknown[]) => gqlRequest(...args),
+      TRANSACTION_CURRENCY: 'MAD',
+    }));
+
+    const { reservations: mockedReservations } = await import('@/services/reservations');
+    await mockedReservations.create({
+      hotelId: 'hotel-1',
+      checkInDate: '2026-09-10',
+      checkOutDate: '2026-09-12',
+      adults: 2,
+      children: 0,
+      guest: { firstName: 'A', lastName: 'B', email: 'a@example.com' },
+      rooms: [{ roomTypeId: 'rt-1', ratePlanId: 'rp-1' }],
+      idempotencyKey: 'bk-test-key',
+    });
+
+    expect(gqlRequest).toHaveBeenCalledTimes(1);
+    const [, variables] = gqlRequest.mock.calls[0] as [unknown, { input: { currencyCode: string } }];
+    expect(variables.input.currencyCode).toBe('MAD');
+
+    vi.doUnmock('@/services/graphqlClient');
+    vi.resetModules();
   });
 });

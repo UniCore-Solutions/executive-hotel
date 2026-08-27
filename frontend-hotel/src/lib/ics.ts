@@ -37,7 +37,7 @@ export function buildIcs({
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Executive Boutique Hotels//Booking//EN',
+    'PRODID:-//Executive Hotel//Booking//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',

@@ -1,7 +1,10 @@
-/** Backend quote service — calls the server-side pricing engine. */
+/** Backend quote service — calls the server-side pricing engine.
+    Transaction currency is always MAD (see TRANSACTION_CURRENCY in
+    graphqlClient.ts) — the display currency the guest picks never reaches
+    this call; useCurrency().fmt() converts the MAD result for display only. */
 import { QuoteDocument, type QuoteQuery } from '@/graphql/generated/graphql';
-import type { PriceBreakdown } from '@/types';
-import { gqlRequest } from './graphqlClient';
+import type { Extra, PriceBreakdown, QuoteExtraLine } from '@/types';
+import { gqlRequest, TRANSACTION_CURRENCY } from './graphqlClient';
 import { toISODate } from '@/lib/dates';
 
 type BackendQuote = QuoteQuery['quote'];
@@ -12,7 +15,6 @@ export interface QuoteParams {
   checkOutDate: Date | string;
   adults: number;
   children: number;
-  currencyCode: string;
   rooms: Array<{ roomTypeId: string; ratePlanId: string }>;
   extras?: Array<{ extraId: string; quantity: number }>;
   promoCode?: string;
@@ -20,6 +22,24 @@ export interface QuoteParams {
 
 function toISO(d: Date | string): string {
   return typeof d === 'string' ? d : toISODate(d);
+}
+
+/** Joins the backend's itemized extras (quantity/unit/total price — the
+    priced-per-model amounts, e.g. per_night × nights) against the caller's
+    already-loaded extras catalog for display names, so QuoteTable can
+    itemize instead of showing one aggregate line. Pricing math itself always
+    stays server-computed — this only attaches the name. */
+export function mapQuoteExtraLines(
+  rawExtras: BackendQuote['extras'],
+  catalog: Extra[]
+): QuoteExtraLine[] {
+  return rawExtras.map((line) => ({
+    extraId: line.extraId,
+    name: catalog.find((e) => e.id === line.extraId)?.name ?? 'Extra',
+    quantity: line.quantity,
+    unitPrice: line.unitPrice,
+    totalPrice: line.totalPrice,
+  }));
 }
 
 /** Call the backend quote engine and map the result to a PriceBreakdown. */
@@ -34,7 +54,7 @@ export async function getQuote(params: QuoteParams): Promise<{
       checkOutDate: toISO(params.checkOutDate),
       adults: params.adults,
       children: params.children,
-      currencyCode: params.currencyCode,
+      currencyCode: TRANSACTION_CURRENCY,
       rooms: params.rooms,
       extras: params.extras,
       promoCode: params.promoCode || null,

@@ -4,9 +4,9 @@ import HeaderTheme from '@/components/layout/HeaderTheme';
 import ReservationFlow from '@/components/booking/ReservationFlow';
 
 export const metadata: Metadata = {
-  title: 'My reservation — Executive Boutique Hotel Rabat',
+  title: 'My reservation — Executive Hotel',
   description:
-    'Look up your reservation at Executive Boutique Hotel Rabat with your reference and email — view your stay, add extras or cancel.',
+    'Look up your reservation at Executive Hotel with your reference and email — view your stay, add extras or cancel.',
 };
 
 export default function ReservationPage() {

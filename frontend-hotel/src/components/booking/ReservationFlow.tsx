@@ -1,35 +1,66 @@
 'use client';
 
-/* My reservation — port of reservation.js: lookup by ref+email (deep-link
-   ?ref= jumps straight in), status banner, stay details, price, demo QR,
-   cancellation with fee evaluation, post-booking extras (RES-4), the D-5
-   modify dates/occupants dialog, and the check-in CTA when today falls in
-   the stay window. State is always re-read from the store after mutations. */
+/* My reservation — lookup by ref+email, status banner, stay details, price,
+   cancellation via backend GraphQL, check-in CTA. */
 
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { PROPERTY, EXTRAS } from '@/data';
 import { useToast } from '@/context/ToastContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useModal } from '@/context/ModalContext';
-import { reservations } from '@/services/reservations';
-import { evaluate } from '@/services/cancellation';
-import { compute } from '@/services/pricing';
-import { fmt, fromISODate, inStayWindow, nightsBetween, toISODate } from '@/lib/dates';
-import { fmtPrice, planLabel } from '@/lib/format';
+import { reservations, type BackendReservation } from '@/services/reservations';
+import { GraphqlClientError } from '@/services/graphqlClient';
+import { getExtras } from '@/services/extras';
+import { fmt, fromISODate, inStayWindow } from '@/lib/dates';
+import { fmtPrice } from '@/lib/format';
 import { image } from '@/services/availability';
 import { QuoteTable } from '@/components/ui/QuoteTable';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { QR } from '@/components/ui/QR';
-import type { CurrencyCode, PriceBreakdown, Reservation } from '@/types';
+import type { CurrencyCode, Extra, PriceBreakdown } from '@/types';
 
 const STATUS_META: Record<string, string> = {
   confirmed: 'Confirmed — your stay is locked in. We look forward to welcoming you.',
-  'checked-in': 'Checked in — welcome to the hotel! Your room is ready from 15:00.',
+  checked_in: 'Checked in — welcome to the hotel! Your room is ready from 15:00.',
   cancelled: 'Cancelled — this reservation is no longer active.',
 };
+
+function derivePrice(br: BackendReservation): PriceBreakdown {
+  const firstLine = br.roomLines[0];
+  const perNight = firstLine?.ratePerNight ?? 0;
+  const nights = firstLine?.nights ?? 1;
+  const rooms = br.roomLines.length;
+  const roomSubtotal = br.roomLines.reduce((sum, l) => sum + l.subtotalAmount, 0);
+  const extrasTotal = br.extras.reduce((sum, x) => sum + x.totalPrice, 0);
+  return {
+    perNight,
+    nights,
+    rooms,
+    roomSubtotal,
+    discount: br.discountAmount,
+    taxedBase: Math.max(0, br.subtotalAmount - br.discountAmount),
+    taxes: br.taxAmount + br.feeAmount,
+    extrasTotal,
+    total: br.totalAmount,
+    originalTotal: roomSubtotal + br.taxAmount + br.feeAmount + extrasTotal,
+    extras: br.extras,
+  };
+}
+
+function deriveCancellation(br: BackendReservation) {
+  const c = br.cancellation;
+  if (c) {
+    return {
+      fee: c.penaltyAmount,
+      refund: c.refundAmount,
+      label: c.isRefundable ? 'Free cancellation' : 'Cancellation fee',
+      freeUntilIso: '',
+    };
+  }
+  return { fee: 0, refund: derivePrice(br).total, label: 'Free cancellation', freeUntilIso: '' };
+}
 
 export default function ReservationFlow() {
   const searchParams = useSearchParams();
@@ -45,47 +76,36 @@ export default function ReservationFlow() {
     [searchParams]
   );
   const [status, setStatus] = useState<'lookup' | 'view'>('lookup');
-  const [res, setRes] = useState<Reservation | null>(null);
+  const [res, setRes] = useState<BackendReservation | null>(null);
   const [refInput, setRefInput] = useState(deepRef);
   const [emailInput, setEmailInput] = useState('');
   const [lookupMsg, setLookupMsg] = useState<{ text: string; ok: boolean | null }>({
     text: 'Enter your details below.',
     ok: null,
   });
-  const [extrasDraft, setExtrasDraft] = useState<Array<{ id: string; qty: number }>>([]);
   const [busy, setBusy] = useState(false);
 
+  const [extrasDefs, setExtrasDefs] = useState<Extra[]>([]);
   useEffect(() => {
-    if (!deepRef) return;
-    const t = setTimeout(() => {
-      const r = reservations.byRef(deepRef);
-      if (r) {
-        setRes(r);
-        setStatus('view');
-      }
-    }, 0);
-    return () => clearTimeout(t);
-  }, [deepRef]);
+    if (res?.hotelId) {
+      getExtras(res.hotelId).then(setExtrasDefs).catch(() => {});
+    }
+  }, [res?.hotelId]);
 
-  const extraDefs = useMemo(() => EXTRAS, []);
+  const checkingIn =
+    !!res && res.status === 'confirmed' && inStayWindow(res.checkInDate, res.checkOutDate);
 
-  const nights = res
-    ? Math.max(1, nightsBetween(fromISODate(res.checkin), fromISODate(res.checkout)))
-    : 0;
-  const checkingIn = !!res && res.status === 'confirmed' && inStayWindow(res.checkin, res.checkout);
-
-  const doLookup = (e: React.FormEvent) => {
+  const doLookup = async (e: React.FormEvent) => {
     e.preventDefault();
+    const ref = refInput.trim();
+    const email = emailInput.trim();
+    if (!ref || !email) {
+      setLookupMsg({ text: 'Please enter both your reference and email address.', ok: false });
+      return;
+    }
     setBusy(true);
-    setTimeout(() => {
-      setBusy(false);
-      const ref = refInput.trim();
-      const email = emailInput.trim();
-      if (!ref || !email) {
-        setLookupMsg({ text: 'Please enter both your reference and email address.', ok: false });
-        return;
-      }
-      const r = reservations.find(ref, email);
+    try {
+      const r = await reservations.find(ref, email);
       if (!r) {
         setLookupMsg({
           text: 'No reservation found for those details. Check the reference and the email used at booking.',
@@ -96,9 +116,22 @@ export default function ReservationFlow() {
       setLookupMsg({ text: '', ok: null });
       setRes(r);
       setStatus('view');
-      setExtrasDraft((r.extras || []).map((x) => ({ id: x.id, qty: x.qty || 1 })));
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 350);
+    } catch (err) {
+      // The lookup query throws NOT_FOUND rather than resolving to null (the
+      // `if (!r)` branch above is unreachable for that case in practice) —
+      // its message is already guest-appropriate, so surface it directly.
+      if (err instanceof GraphqlClientError && err.code === 'NOT_FOUND') {
+        setLookupMsg({ text: err.message, ok: false });
+      } else {
+        setLookupMsg({
+          text: 'Something went wrong looking up your reservation. Please try again.',
+          ok: false,
+        });
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const showOther = () => {
@@ -153,132 +186,60 @@ export default function ReservationFlow() {
         >
           {lookupMsg.text}
         </p>
-        <div className="bg-gold/[0.08] border-gold/25 text-navy/65 mt-5 rounded-2xl border px-4 py-3 text-xs leading-relaxed">
-          <strong className="text-gold-dark">Try the demo:</strong> reference{' '}
-          <code className="font-mono">RC-DEMO1</code> with email{' '}
-          <code className="font-mono">demo@hotelcollection.com</code> (or{' '}
-          <code className="font-mono">RC-DEMO2</code> /{' '}
-          <code className="font-mono">guest@demo.com</code>, already checked in).
-        </div>
       </div>
     );
   }
 
-  const roomStore = PROPERTY.rooms.find((r) => r.id === res.roomId);
-  const price = res.price || {};
-  const extras = (res.extras || [])
-    .map((x) => {
-      const def = extraDefs.find((e) => e.id === x.id);
-      return def ? { ...def, qty: x.qty || 1 } : null;
-    })
-    .filter(Boolean) as Array<{
-    name: string;
-    price: number;
-    qty: number;
-    unit: string;
-    id: string;
-  }>;
+  const roomLine = res.roomLines[0];
+  const extras = res.extras.map((x) => {
+    const def = extrasDefs.find((e) => e.id === x.extraId);
+    return {
+      name: def?.name || x.name,
+      price: def?.price ?? x.unitPrice,
+      qty: x.quantity,
+      unit: def?.unit || 'per stay',
+      id: x.extraId,
+    };
+  });
   const cancelled = res.status === 'cancelled';
-  const est = evaluate(res, currency);
+  const est = deriveCancellation(res);
+  const price = derivePrice(res);
 
-  const reload = () => {
-    const r = reservations.byRef(res.ref);
-    if (r) {
-      setRes(r);
-      setExtrasDraft((r.extras || []).map((x) => ({ id: x.id, qty: x.qty || 1 })));
-    }
-  };
+  const statusText = STATUS_META[res.status] || STATUS_META.confirmed!;
+  const statusCls =
+    res.status === 'checked_in'
+      ? 'bg-emerald-700/8 border border-emerald-700/20 text-emerald-800'
+      : res.status === 'cancelled'
+        ? 'bg-clay/8 border border-clay/25 text-clay'
+        : 'bg-white border border-navy/10';
 
-  /* ---------- RES-4 extras delta ---------- */
-  const extraBase = () =>
-    compute({
-      perNight: price.perNight || roomStore?.pricePerNight || 0,
-      nights,
-      rooms: res.rooms || 1,
-      extras: res.extras || [],
-      promo: res.promo || '',
-      planId: res.planId,
-      checkin: res.checkin,
-    });
-  const extraWithDraft = () =>
-    compute({
-      perNight: price.perNight || roomStore?.pricePerNight || 0,
-      nights,
-      rooms: res.rooms || 1,
-      extras: extrasDraft,
-      promo: res.promo || '',
-      planId: res.planId,
-      checkin: res.checkin,
-    });
-  const delta = extraWithDraft().total - extraBase().total;
-  const sameExtras =
-    JSON.stringify((res.extras || []).map((x) => `${x.id}:${x.qty}`).sort()) ===
-    JSON.stringify(extrasDraft.map((x) => `${x.id}:${x.qty}`).sort());
-
-  const saveExtras = () => {
-    const q = extraWithDraft();
-    reservations.update(res.ref, {
-      extras: extrasDraft.map((x) => ({ id: x.id, qty: x.qty })),
-      price: fullPrice(q),
-    });
-    toast({
-      message: 'Your extras were added — settle them at the hotel.',
-      type: 'ok',
-      title: 'Updated',
-    });
-    reload();
-  };
-
-  /* ---------- cancellation ---------- */
-  const openCancel = () => {
+  const doCancel = () => {
     open(
       <CancelContent
         res={res}
         est={est}
         currency={currency}
-        onConfirm={(reason) => {
-          reservations.update(res.ref, {
-            status: 'cancelled',
-            cancelReason: reason,
-            cancelledAt: toISODate(new Date()),
-          });
-          toast({
-            message: 'Your reservation has been cancelled.',
-            type: 'ok',
-            title: 'Cancelled',
-          });
-          reload();
+        onConfirm={async (reason) => {
+          try {
+            await reservations.cancel(res.reference, res.guest.email || '', 'guest_requested', reason);
+            const updated = await reservations.find(res.reference, res.guest.email || '');
+            if (updated) setRes(updated);
+            toast({
+              message: 'Your reservation has been cancelled.',
+              type: 'ok',
+              title: 'Cancelled',
+            });
+          } catch {
+            toast({
+              message: 'Could not cancel your reservation. Please try again.',
+              type: 'error',
+              title: 'Error',
+            });
+          }
         }}
       />
     );
   };
-
-  /* ---------- D-5 modify ---------- */
-  const openModify = () => {
-    open(
-      <ModifyDialog
-        res={res}
-        currency={currency}
-        onApply={(patch) => {
-          reservations.update(res.ref, patch);
-          toast({
-            message: 'Your stay was updated — check the new balance below.',
-            type: 'ok',
-            title: 'Updated',
-          });
-          reload();
-        }}
-      />
-    );
-  };
-
-  const statusText = STATUS_META[res.status] || STATUS_META.confirmed!;
-  const statusCls =
-    res.status === 'checked-in'
-      ? 'bg-emerald-700/8 border border-emerald-700/20 text-emerald-800'
-      : res.status === 'cancelled'
-        ? 'bg-clay/8 border border-clay/25 text-clay'
-        : 'bg-white border border-navy/10';
 
   return (
     <div id="view" className="mt-8 space-y-6">
@@ -298,7 +259,7 @@ export default function ReservationFlow() {
             </p>
           </div>
           <a
-            href={`/checkin?ref=${encodeURIComponent(res.ref)}`}
+            href={`/checkin?ref=${encodeURIComponent(res.reference)}`}
             className="bg-navy hover:bg-navy-light rounded-xl px-5 py-3 text-xs font-bold tracking-widest text-white uppercase transition-colors"
           >
             Online check-in
@@ -317,22 +278,21 @@ export default function ReservationFlow() {
                 id="view-ref"
                 className="font-display text-navy text-lg font-semibold tracking-wider"
               >
-                {res.ref}
+                {res.reference}
               </span>
             </div>
             <div id="view-room" className="mt-4 flex items-center gap-4">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={image(roomStore?.images[0] ?? '', 400)}
-                alt={roomStore?.name || 'Room'}
+                src={image(roomLine?.roomTypeId ?? '', 400)}
+                alt="Room"
                 className="h-20 w-20 rounded-2xl object-cover"
               />
               <div className="min-w-0">
-                <p className="font-display text-navy text-xl font-semibold">
-                  {roomStore?.name || ''}
-                </p>
+                <p className="font-display text-navy text-xl font-semibold">Room</p>
                 <p className="text-navy/55 mt-0.5 text-xs">
-                  {roomStore?.bed || ''} · {roomStore?.size || ''} · {roomStore?.view || ''}
+                  {roomLine ? `${roomLine.nights} night${roomLine.nights !== 1 ? 's' : ''}` : ''}
+                  {roomLine?.ratePerNight ? ` · ${fmtPrice(roomLine.ratePerNight, currency)}/night` : ''}
                 </p>
               </div>
             </div>
@@ -342,7 +302,7 @@ export default function ReservationFlow() {
                   Check-in
                 </dt>
                 <dd className="text-navy mt-1 font-semibold">
-                  {fmt(fromISODate(res.checkin))} · from 15:00
+                  {fmt(fromISODate(res.checkInDate))} · from 15:00
                 </dd>
               </div>
               <div>
@@ -350,100 +310,35 @@ export default function ReservationFlow() {
                   Check-out
                 </dt>
                 <dd className="text-navy mt-1 font-semibold">
-                  {fmt(fromISODate(res.checkout))} · by 11:00
+                  {fmt(fromISODate(res.checkOutDate))} · by 11:00
                 </dd>
               </div>
               <div>
                 <dt className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
                   Guests
                 </dt>
-                <dd className="text-navy mt-1">{`${res.adults} adults${res.children ? `, ${res.children} child${res.children > 1 ? 'ren' : ''}` : ''}${res.childrenAges && res.children ? ` (ages ${res.childrenAges.join(', ')})` : ''}`}</dd>
+                <dd className="text-navy mt-1">{`${res.adults} adults${res.children ? `, ${res.children} child${res.children > 1 ? 'ren' : ''}` : ''}`}</dd>
               </div>
               <div>
                 <dt className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
                   Rate
                 </dt>
                 <dd className="text-navy mt-1">
-                  {planLabel(res.planId)}
-                  {res.promo ? ` · promo ${res.promo}` : ''}
+                  {roomLine?.ratePlanId ? `Plan ${roomLine.ratePlanId.slice(0, 8)}` : ''}
+                  {res.discountAmount > 0 ? ` · promo applied` : ''}
                 </dd>
               </div>
-              <div className="sm:col-span-2">
-                <dt className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
-                  Extras &amp; services
-                </dt>
-                <dd className="text-navy mt-1">
-                  {extras.length
-                    ? extras.map((x) => `${x.name} × ${x.qty}`).join(' · ')
-                    : 'None booked'}
-                </dd>
-              </div>
+              {extras.length > 0 ? (
+                <div className="sm:col-span-2">
+                  <dt className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+                    Extras &amp; services
+                  </dt>
+                  <dd className="text-navy mt-1">
+                    {extras.map((x) => `${x.name} × ${x.qty}`).join(' · ')}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
-            {!cancelled ? (
-              <Button
-                type="button"
-                onClick={openModify}
-                variant="ghost"
-                className="mt-5 font-bold tracking-widest uppercase"
-              >
-                Change dates or guests <span aria-hidden="true">→</span>
-              </Button>
-            ) : null}
-          </div>
-
-          <div className="border-navy/10 rounded-3xl border bg-white p-6 lg:p-7" id="extra-panel">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
-                Add extras before arrival
-              </h2>
-              <span className="text-navy/45 text-[11px]">
-                Charged &amp; settled on the spot (mock)
-              </span>
-            </div>
-            <div id="extra-list" className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                <ExtrasList
-                  extras={extraDefs}
-                  selected={extrasDraft}
-                  onChange={setExtrasDraft}
-                  adults={res.adults}
-                  childCount={res.children}
-                  currency={currency}
-                />
-              </div>
-            </div>
-            <div
-              id="extra-delta"
-              className={sameExtras || cancelled ? 'hidden' : 'mt-4'}
-              aria-live="polite"
-            >
-              {delta >= 0 ? (
-                <div className="bg-paper border-navy/10 rounded-2xl border px-4 py-3 text-sm">
-                  <span className="text-navy/60">New balance with extras:</span>{' '}
-                  <strong className="text-navy">
-                    {fmtPrice(extraWithDraft().total, currency)}
-                  </strong>{' '}
-                  <span className="text-navy/45 text-xs">(+{fmtPrice(delta, currency)})</span>
-                </div>
-              ) : (
-                <div className="bg-paper border-navy/10 rounded-2xl border px-4 py-3 text-sm">
-                  <span className="text-navy/60">Extras removed — new balance:</span>{' '}
-                  <strong className="text-navy">
-                    {fmtPrice(extraWithDraft().total, currency)}
-                  </strong>
-                </div>
-              )}
-            </div>
-            <Button
-              type="button"
-              id="extra-add"
-              onClick={saveExtras}
-              disabled={sameExtras || cancelled}
-              size="sm"
-              className="mt-4 py-3"
-            >
-              Add to my stay
-            </Button>
           </div>
         </div>
 
@@ -454,10 +349,10 @@ export default function ReservationFlow() {
             </h2>
             <div id="view-price" className="mt-4">
               <QuoteTable
-                quote={fullPrice(price)}
+                quote={price}
                 currency={currency}
                 note={
-                  cancelled ? 'cancelled — no further charges' : 'settled (simulated) at booking'
+                  cancelled ? 'cancelled — no further charges' : 'settled at booking'
                 }
               />
             </div>
@@ -467,10 +362,10 @@ export default function ReservationFlow() {
               Mobile key
             </h2>
             <div className="mt-4 flex justify-center" id="view-qr">
-              <QR value={res.ref} size={120} />
+              <QR value={res.reference} size={120} />
             </div>
             <p className="text-navy/45 mt-2 text-center text-[11px]">
-              Demo QR — the production version would open your mobile key.
+              Show this at the front desk for quick check-in.
             </p>
           </div>
           <div className="bg-navy-dark rounded-3xl p-6 text-white">
@@ -494,7 +389,7 @@ export default function ReservationFlow() {
             <Button
               type="button"
               id="cancel-btn"
-              onClick={openCancel}
+              onClick={doCancel}
               disabled={cancelled}
               variant="onDark"
               size="sm"
@@ -514,44 +409,27 @@ export default function ReservationFlow() {
   );
 }
 
-function fullPrice(p: Partial<PriceBreakdown>): PriceBreakdown {
-  return {
-    perNight: p.perNight || 0,
-    nights: p.nights || 1,
-    rooms: p.rooms || 1,
-    roomSubtotal: p.roomSubtotal || 0,
-    discount: p.discount || 0,
-    taxedBase: p.taxedBase || 0,
-    taxes: p.taxes || 0,
-    extrasTotal: p.extrasTotal || 0,
-    total: p.total || 0,
-    originalTotal: p.originalTotal || 0,
-    promo: p.promo ?? undefined,
-  };
-}
-
 function CancelContent({
   res,
   est,
   currency,
   onConfirm,
 }: {
-  res: Reservation;
-  est: ReturnType<typeof evaluate>;
+  res: BackendReservation;
+  est: ReturnType<typeof deriveCancellation>;
   currency: CurrencyCode;
   onConfirm: (reason: string) => void;
 }) {
   const { close } = useModal();
   const [reason, setReason] = useState('Plans changed');
-  const roomStore = PROPERTY.rooms.find((r) => r.id === res.roomId);
   return (
     <>
       <h2 className="font-display text-navy text-xl font-semibold">
-        Cancel reservation {res.ref}?
+        Cancel reservation {res.reference}?
       </h2>
       <p className="text-navy/60 mt-2 text-sm">
-        {res.ref} · {roomStore?.name || res.roomId} · {fmt(fromISODate(res.checkin))} →{' '}
-        {fmt(fromISODate(res.checkout))}
+        {res.reference} · {fmt(fromISODate(res.checkInDate))} →{' '}
+        {fmt(fromISODate(res.checkOutDate))}
       </p>
       {est.fee > 0 ? (
         <div className="bg-clay/10 border-clay/25 text-clay mt-4 rounded-2xl border px-4 py-3 text-sm">
@@ -596,385 +474,5 @@ function CancelContent({
         </Button>
       </div>
     </>
-  );
-}
-
-/* ---------- D-5 modify dialog ---------- */
-function ModifyDialog({
-  res,
-  currency,
-  onApply,
-}: {
-  res: Reservation;
-  currency: CurrencyCode;
-  onApply: (patch: Partial<Reservation>) => void;
-}) {
-  const { close } = useModal();
-  const roomStore = PROPERTY.rooms.find((r) => r.id === res.roomId);
-  const perNight = res.price?.perNight || roomStore?.pricePerNight || 0;
-  const [checkin, setCheckin] = useState(res.checkin);
-  const [checkout, setCheckout] = useState(res.checkout);
-  const [adults, setAdults] = useState(res.adults);
-  const [children, setChildren] = useState(res.children);
-  const [childrenAges, setChildrenAges] = useState<number[]>(
-    (res.childrenAges || []).slice(0, res.children)
-  );
-  const [rooms, setRooms] = useState(res.rooms || 1);
-  const [err, setErr] = useState('');
-
-  const n = nightsBetween(fromISODate(checkin), fromISODate(checkout));
-  const ci = fromISODate(checkin);
-  const co = fromISODate(checkout);
-  const todayIso = toISODate(new Date());
-
-  const quote = useMemo(() => {
-    if (!n || n < 1) return null;
-    let ages = childrenAges;
-    while (ages.length < children) ages = [...ages, 4];
-    ages = ages.slice(0, children);
-    return compute({
-      perNight,
-      nights: n,
-      rooms,
-      extras: res.extras || [],
-      promo: res.promo || '',
-      planId: res.planId,
-      checkin,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkin, checkout, adults, children, rooms, perNight, res.extras, res.promo, res.planId]);
-
-  const diff = quote && res.price?.total ? quote.total - res.price.total : 0;
-
-  const apply = () => {
-    if (!ci || !co || co <= ci) {
-      setErr('Check-out must be after check-in.');
-      return;
-    }
-    if (checkin < todayIso) {
-      setErr('Check-in cannot be in the past.');
-      return;
-    }
-    if (rooms > adults) {
-      setErr('At least one adult per room.');
-      return;
-    }
-    let ages = childrenAges;
-    while (ages.length < children) ages = [...ages, 4];
-    ages = ages.slice(0, children);
-    if (!quote) return;
-    close();
-    onApply({
-      checkin,
-      checkout,
-      adults,
-      children,
-      childrenAges: ages,
-      rooms,
-      price: {
-        perNight: quote.perNight,
-        nights: quote.nights,
-        rooms: quote.rooms,
-        roomSubtotal: quote.roomSubtotal,
-        discount: quote.discount,
-        taxedBase: quote.taxedBase,
-        taxes: quote.taxes,
-        extrasTotal: quote.extrasTotal,
-        total: quote.total,
-        originalTotal: quote.originalTotal,
-        currency: 'MAD',
-      },
-    });
-  };
-
-  const step = (
-    setter: (v: number) => void,
-    cur: number,
-    delta: number,
-    min: number,
-    max: number
-  ) => {
-    setter(Math.min(max, Math.max(min, cur + delta)));
-  };
-
-  return (
-    <>
-      <h2 className="font-display text-navy text-xl font-semibold">Change your stay</h2>
-      <p className="text-navy/60 mt-2 text-sm">
-        {res.ref} · {roomStore?.name || res.roomId} — the new balance is quoted before you apply.
-      </p>
-
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <div>
-          <Label htmlFor="m-checkin">Check-in</Label>
-          <Input
-            id="m-checkin"
-            size="sm"
-            type="date"
-            value={checkin}
-            min={todayIso}
-            onChange={(e) => setCheckin(e.target.value)}
-          />
-        </div>
-        <div>
-          <Label htmlFor="m-checkout">Check-out</Label>
-          <Input
-            id="m-checkout"
-            size="sm"
-            type="date"
-            value={checkout}
-            min={checkin}
-            onChange={(e) => setCheckout(e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="bg-paper border-navy/10 mt-4 space-y-3 rounded-2xl border px-4 py-3">
-        <ModStepper
-          label="Adults"
-          sub="Age 18+"
-          value={adults}
-          min={1}
-          max={9}
-          onStep={(d) => step(setAdults, adults, d, 1, 9)}
-        />
-        <ModStepper
-          label="Children"
-          sub="Choose an age for each"
-          value={children}
-          min={0}
-          max={6}
-          onStep={(d) => step(setChildren, children, d, 0, 6)}
-        />
-        {children > 0 ? (
-          <div className="border-navy/8 space-y-2.5 border-t py-2.5">
-            {Array.from({ length: children }, (_, i) => (
-              <div key={i} className="flex items-center justify-between gap-3">
-                <p className="text-navy text-sm font-medium">Child {i + 1}</p>
-                <select
-                  value={childrenAges[i] ?? 4}
-                  onChange={(e) => {
-                    const ages = [...childrenAges];
-                    ages[i] = parseInt(e.target.value, 10);
-                    setChildrenAges(ages);
-                  }}
-                  className="border-navy/15 text-navy focus:ring-gold/40 appearance-none rounded-xl border bg-white px-3 py-2 text-sm font-medium focus:ring-2 focus:outline-none"
-                  aria-label={`Age of child ${i + 1}`}
-                >
-                  {Array.from({ length: 18 }, (_, a) => (
-                    <option key={a} value={a}>
-                      {a} years
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        <ModStepper
-          label="Rooms"
-          sub="1–5 rooms of this type"
-          value={rooms}
-          min={1}
-          max={5}
-          onStep={(d) => step(setRooms, rooms, d, 1, 5)}
-        />
-      </div>
-
-      {err ? (
-        <p className="text-clay mt-3 text-sm" role="alert">
-          {err}
-        </p>
-      ) : null}
-
-      <div className="border-navy/10 mt-4 rounded-2xl border bg-white px-4 py-3">
-        {quote ? (
-          <p className="text-sm">
-            <span className="text-navy/60">New balance:</span>{' '}
-            <strong className="text-navy">{fmtPrice(quote.total, currency)}</strong>{' '}
-            <span className="text-navy/45 text-xs">
-              · {n} {n === 1 ? 'night' : 'nights'} · {adults + children}{' '}
-              {adults + children === 1 ? 'guest' : 'guests'} · {rooms}{' '}
-              {rooms === 1 ? 'room' : 'rooms'}
-            </span>
-            {res.price?.total && diff !== 0 ? (
-              <span
-                className={`ml-2 text-xs font-bold ${diff > 0 ? 'text-emerald-700' : 'text-clay'}`}
-              >
-                {diff > 0
-                  ? `+${fmtPrice(diff, currency)}`
-                  : `−${fmtPrice(Math.abs(diff), currency)}`}{' '}
-                vs current
-              </span>
-            ) : null}
-          </p>
-        ) : (
-          <p className="text-navy/50 text-sm">Pick valid dates to see the new balance.</p>
-        )}
-      </div>
-
-      <div className="mt-6 flex items-center justify-end gap-2">
-        <Button type="button" onClick={close} variant="ghost" size="sm" className="px-4">
-          Keep current stay
-        </Button>
-        <Button type="button" onClick={apply} disabled={!quote} size="sm">
-          Apply changes
-        </Button>
-      </div>
-    </>
-  );
-}
-
-function ModStepper({
-  label,
-  sub,
-  value,
-  min,
-  max,
-  onStep,
-}: {
-  label: string;
-  sub: string;
-  value: number;
-  min: number;
-  max: number;
-  onStep: (d: number) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4 py-2.5">
-      <div className="min-w-0">
-        <p className="text-navy text-sm font-semibold">{label}</p>
-        <p className="text-navy/50 text-xs">{sub}</p>
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <Button
-          type="button"
-          onClick={() => onStep(-1)}
-          disabled={value <= min}
-          variant="outline"
-          size="icon"
-          className="rounded-full text-lg leading-none"
-          aria-label={`Decrease ${label.toLowerCase()}`}
-        >
-          −
-        </Button>
-        <span className="text-navy w-9 text-center text-sm font-bold">{value}</span>
-        <Button
-          type="button"
-          onClick={() => onStep(1)}
-          disabled={value >= max}
-          variant="outline"
-          size="icon"
-          className="rounded-full text-lg leading-none"
-          aria-label={`Increase ${label.toLowerCase()}`}
-        >
-          +
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/* Compact full-catalog extras list for the reservation dashboard (mirrors reference renderExtras). */
-function ExtrasList({
-  extras,
-  selected,
-  onChange,
-  adults,
-  childCount: children,
-  currency,
-}: {
-  extras: typeof EXTRAS;
-  selected: Array<{ id: string; qty: number }>;
-  onChange: (s: Array<{ id: string; qty: number }>) => void;
-  adults: number;
-  childCount: number;
-  currency: CurrencyCode;
-}) {
-  const guests = adults + children;
-  const sel = (id: string) => selected.find((x) => x.id === id) || null;
-
-  const toggle = (id: string) => {
-    const s = sel(id);
-    const extra = extras.find((e) => e.id === id);
-    onChange(
-      s
-        ? selected.filter((x) => x.id !== id)
-        : [...selected, { id, qty: extra?.unit === 'per person' ? guests : 1 }]
-    );
-  };
-
-  const stepQty = (id: string, delta: number) => {
-    const s = sel(id);
-    if (!s) return;
-    const extra = extras.find((e) => e.id === id);
-    const max =
-      extra?.unit === 'per person'
-        ? Math.max(8, guests)
-        : id === 'late-checkout' || id === 'airport-shuttle'
-          ? 1
-          : 6;
-    const qty = Math.min(max, Math.max(1, s.qty + delta));
-    onChange(selected.map((x) => (x.id === id ? { ...x, qty } : x)));
-  };
-
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {extras.map((e) => {
-        const s = sel(e.id);
-        return (
-          <label
-            key={e.id}
-            className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3.5 transition-colors ${s ? 'border-gold/50 bg-gold/[0.06]' : 'border-navy/12 bg-white'}`}
-          >
-            <input
-              type="checkbox"
-              checked={!!s}
-              onChange={() => toggle(e.id)}
-              className="accent-navy mt-1"
-              aria-label={e.name}
-            />
-            <span className="min-w-0">
-              <span className="flex items-baseline justify-between gap-2">
-                <span className="text-navy text-sm font-semibold">{e.name}</span>
-                <span className="text-gold-dark text-xs font-bold">
-                  {fmtPrice(e.price, currency)}
-                  <span className="text-navy/45 font-medium">
-                    {' '}
-                    /{e.unit === 'per person' ? 'pp' : 'stay'}
-                  </span>
-                </span>
-              </span>
-              <span className="text-navy/55 mt-0.5 block text-[11px]">{e.desc}</span>
-              {s ? (
-                <span className="mt-2 flex items-center gap-2">
-                  <Button
-                    type="button"
-                    onClick={() => stepQty(e.id, -1)}
-                    variant="outline"
-                    size="iconSm"
-                    className="rounded-full text-sm"
-                    aria-label={`Decrease ${e.name}`}
-                  >
-                    −
-                  </Button>
-                  <span className="text-navy w-6 text-center text-sm font-bold">{s.qty}</span>
-                  <Button
-                    type="button"
-                    onClick={() => stepQty(e.id, 1)}
-                    variant="outline"
-                    size="iconSm"
-                    className="rounded-full text-sm"
-                    aria-label={`Increase ${e.name}`}
-                  >
-                    +
-                  </Button>
-                </span>
-              ) : null}
-            </span>
-          </label>
-        );
-      })}
-    </div>
   );
 }

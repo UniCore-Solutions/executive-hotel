@@ -1,23 +1,21 @@
 'use client';
 
-/* Booking tunnel — faithful port of booking.js: stay/summary sidebar with live
-   quote + promo + extras, a two-step details→payment form with per-field
-   validation, the D-4 hold chip, the BOOK-7 idempotency banner, simulated
-   payment (cards ending in 1 decline) and redirect to /confirmation. */
+/* Booking tunnel — stay/summary sidebar with live server-side quote + promo +
+   extras, a two-step details→payment form with per-field validation,
+   real backend reservation creation and payment capture. */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { PROPERTY } from '@/data';
 import { useSearch } from '@/context/SearchContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/context/ToastContext';
 import { useSession } from '@/context/SessionContext';
 import { getStayRoom } from '@/services/catalog';
 import { getExtras } from '@/services/extras';
-import { getQuote } from '@/services/quote';
+import { getQuote, mapQuoteExtraLines } from '@/services/quote';
 import { charge } from '@/services/payment';
 import type { Extra, PriceBreakdown } from '@/types';
-import { bookingKey, reservations } from '@/services/reservations';
+import { reservations, generateIdempotencyKey } from '@/services/reservations';
 import { fmtShort, nightsBetween, stateToParams, toISODate } from '@/lib/dates';
 import { roomURL } from '@/lib/links';
 import {
@@ -36,6 +34,9 @@ import { ExtrasPicker } from '@/components/ui/ExtrasPicker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PhoneField } from '@/components/ui/PhoneField';
+import { CountrySelect } from '@/components/ui/CountrySelect';
+import type { Country } from 'react-phone-number-input';
 import { image } from '@/services/availability';
 
 const TITLES = ['Mr', 'Ms', 'Mrs', 'Mx', 'Dr'] as const;
@@ -89,19 +90,6 @@ const STAY_ICONS = {
 type DetailsErrors = Partial<Record<'first' | 'last' | 'email' | 'phone', string>>;
 type PayErrors = Partial<Record<'pname' | 'pnumber' | 'pexp' | 'pcvc' | 'pterms', string>>;
 
-const COUNTRIES = [
-  'Morocco',
-  'France',
-  'United Kingdom',
-  'Spain',
-  'Germany',
-  'United States',
-  'United Arab Emirates',
-  'Netherlands',
-  'Italy',
-  'Belgium',
-  'Canada',
-];
 const ARRIVALS = ['15:00 – 18:00', '18:00 – 21:00', '21:00 – 23:00', 'After 23:00'];
 
 export default function BookingFlow({
@@ -119,9 +107,7 @@ export default function BookingFlow({
   const { toast } = useToast();
   const { session } = useSession();
 
-  /* Backend-first stay resolution: real room-type UUIDs never match the static
-     fixture, so the fixture path only serves legacy demo deep-links. */
-  const fixtureRoom = PROPERTY.rooms.find((r) => r.id === roomId) ?? null;
+  /* Backend-first stay resolution: real room-type UUIDs are resolved via the catalog gateway. */
   const [resolvedFor, setResolvedFor] = useState<{
     id: string;
     data: Awaited<ReturnType<typeof getStayRoom>> | null;
@@ -130,18 +116,20 @@ export default function BookingFlow({
     let alive = true;
     getStayRoom(undefined, roomId, {
       checkin: state.checkin,
+      checkout: state.checkout,
       adults: state.adults,
       children: state.children,
+      rooms: state.rooms,
     })
       .then((r) => alive && setResolvedFor({ id: roomId, data: r }))
       .catch(() => alive && setResolvedFor({ id: roomId, data: null }));
     return () => {
       alive = false;
     };
-  }, [roomId, state.checkin, state.adults, state.children]);
+  }, [roomId, state.checkin, state.checkout, state.adults, state.children, state.rooms]);
   const resolved = resolvedFor?.id === roomId ? resolvedFor.data : undefined;
 
-  const room = resolved ? resolved.room : fixtureRoom;
+  const room = resolved ? resolved.room : null;
   const plans = useMemo(
     () => (resolved ? resolved.plans : []),
     [resolved]
@@ -165,17 +153,16 @@ export default function BookingFlow({
   const extraSelInitial = useMemo(() => parseExtrasParam(initialExtras), [initialExtras]);
   const [extrasSel, setExtrasSel] = useState<ExtraSelection>(extraSelInitial);
   const [step, setStep] = useState<1 | 2>(1);
-  const [exitRef, setExitRef] = useState<string | null>(null);
   const [holdSecs, setHoldSecs] = useState(HOLDS_SECONDS);
   const [declined, setDeclined] = useState('');
   const [paying, setPaying] = useState(false);
   const [details, setDetails] = useState({
     title: 'Mr' as Title,
-    first: session ? String(session.name.split(' ')[0] ?? '') : '',
-    last: session ? String(session.name.split(' ').slice(1).join(' ')) : '',
+    first: session ? String(session.firstName ?? session.name.split(' ')[0] ?? '') : '',
+    last: session ? String(session.lastName ?? session.name.split(' ').slice(1).join(' ')) : '',
     email: session ? session.email : '',
-    phone: '',
-    country: 'Morocco',
+    phone: session?.phone ?? '',
+    country: 'MA' as Country,
     arrival: '15:00 – 18:00',
     requests: '',
   });
@@ -183,6 +170,22 @@ export default function BookingFlow({
   const [terms, setTerms] = useState(false);
   const [dErrors, setDErrors] = useState<DetailsErrors>({});
   const [pErrors, setPErrors] = useState<PayErrors>({});
+
+  // Session resolves asynchronously (httpOnly-cookie restore, see
+  // SessionContext) — prefill from it once it's known, without clobbering
+  // anything the guest has already typed.
+  const prefilledFromSession = useRef(false);
+  useEffect(() => {
+    if (!session || prefilledFromSession.current) return;
+    prefilledFromSession.current = true;
+    setDetails((d) => ({
+      ...d,
+      first: d.first || String(session.firstName ?? session.name.split(' ')[0] ?? ''),
+      last: d.last || String(session.lastName ?? session.name.split(' ').slice(1).join(' ')),
+      email: d.email || session.email,
+      phone: d.phone || session.phone || '',
+    }));
+  }, [session]);
 
   const hasDates = !!(state.checkin && state.checkout);
   const nights = nightsBetween(state.checkin, state.checkout);
@@ -199,20 +202,23 @@ export default function BookingFlow({
     if (!plan || !validStay || !state.checkin || !state.checkout) return;
     const reqId = ++quoteReqId.current;
     getQuote({
-      hotelId: resolved?.property.id ?? PROPERTY.id,
+      hotelId: resolved?.property.id ?? '',
       checkInDate: state.checkin,
       checkOutDate: state.checkout,
       adults: state.adults || 2,
       children: state.children || 0,
-      currencyCode: currency,
-      rooms: [{ roomTypeId: room!.id, ratePlanId: plan.id }],
+      rooms: [{ roomTypeId: room!.id, ratePlanId: plan.backendRatePlanId }],
       extras: extrasSel.map((x) => ({ extraId: x.id, quantity: x.qty })),
       promoCode: state.promo || undefined,
     })
       .then((result) => {
         if (reqId !== quoteReqId.current) return;
         if (result.raw.valid) {
-          setQuoteState({ quote: result.quote, loading: false, error: '' });
+          setQuoteState({
+            quote: { ...result.quote, extras: mapQuoteExtraLines(result.raw.extras, extrasList) },
+            loading: false,
+            error: '',
+          });
         } else {
           setQuoteState({
             quote: null,
@@ -229,27 +235,18 @@ export default function BookingFlow({
           error: 'Could not calculate price — please try again.',
         });
       });
-  }, [plan, validStay, state.checkin, state.checkout, state.adults, state.children, currency, room, state.rooms, state.promo, extrasSel, resolved?.property.id]);
+  }, [plan, validStay, state.checkin, state.checkout, state.adults, state.children, room, state.rooms, state.promo, extrasSel, extrasList, resolved?.property.id]);
 
   const quote = quoteState.quote;
   const quoteLoading = !quote && !quoteState.error;
   const quoteError = quoteState.error;
 
-  /* BOOK-7 idempotency key + D-4 hold chip; both once per mount. */
+  /* Hold timer — shows how long the quoted rate is valid. */
   useEffect(() => {
     if (!validStay || !state.checkin || !state.checkout) return;
-    const item = `room:${roomId}:${planId}:${toISODate(state.checkin)}:${toISODate(state.checkout)}`;
-    const bk = bookingKey.begin(item);
     const t = setInterval(() => {
       setHoldSecs((s) => (s > 0 ? s - 1 : 0));
     }, 1000);
-    if (bk.exitRef) {
-      const t0 = setTimeout(() => setExitRef(bk.exitRef), 0);
-      return () => {
-        clearInterval(t);
-        clearTimeout(t0);
-      };
-    }
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -271,6 +268,18 @@ export default function BookingFlow({
   else missing = true;
 
   const wait = useRef(false);
+
+  /* One idempotency key per mounted checkout attempt, generated lazily on
+     first render and reused for every retry (double-click, decline-then-
+     retry) instead of a fresh key per submit. The backend's unique
+     constraint on reservations.idempotency_key then resolves a retried
+     submit to the SAME reservation rather than creating a duplicate. A new
+     key is only ever produced by a fresh mount (a real navigation to a new
+     booking). See docs/investigations/TASK2-TASK3-CURRENCY-AND-ATOMICITY.md. */
+  const reservationIdempotencyKeyRef = useRef<string | null>(null);
+  if (reservationIdempotencyKeyRef.current === null) {
+    reservationIdempotencyKeyRef.current = generateIdempotencyKey();
+  }
 
   const detailsError = (id: keyof DetailsErrors) => dErrors[id] ?? '';
   const payError = (id: keyof PayErrors) => pErrors[id] ?? '';
@@ -301,96 +310,85 @@ export default function BookingFlow({
     setPErrors(errs);
     if (Object.values(errs).some(Boolean)) return;
     if (!quote || !plan || wait.current) return;
+    if (!resolved?.property.id) return;
     wait.current = true;
     setDeclined('');
     setPaying(true);
-    const res = await charge({ card: card.number, amount: quote.total });
-    setPaying(false);
-    if (!res.ok) {
-      setDeclined(
-        `Payment declined — ${res.message} Your details are still here; try another card.`
+
+    try {
+      // Step 1: Create reservation via backend. idempotencyKey is stable
+      // across retries within this mounted attempt (see
+      // reservationIdempotencyKeyRef above) — a retried submit resolves to
+      // the same reservation instead of creating a duplicate.
+      const idempotencyKey = reservationIdempotencyKeyRef.current!;
+      const guestEmail = details.email.trim().toLowerCase();
+      const result = await reservations.create({
+        hotelId: resolved.property.id,
+        checkInDate: toISODate(state.checkin!),
+        checkOutDate: toISODate(state.checkout!),
+        adults: state.adults || 2,
+        children: state.children || 0,
+        guest: {
+          firstName: details.first.trim(),
+          lastName: details.last.trim(),
+          email: guestEmail,
+          phone: details.phone.trim() || undefined,
+          countryCode: details.country || undefined,
+        },
+        rooms: [{ roomTypeId: room!.id, ratePlanId: plan.backendRatePlanId }],
+        extras: extrasSel.length
+          ? extrasSel.map((x) => ({ extraId: x.id, quantity: x.qty }))
+          : undefined,
+        promoCode: state.promo || undefined,
+        idempotencyKey,
+      });
+
+      // Step 2: Process payment via backend. The payment idempotency key is
+      // deterministically derived from the reservation key (stable for the
+      // same reason); guestEmail is the accountless-checkout proof of
+      // possession the backend accepts in place of a signed-in session.
+      const paymentResult = await charge({
+        reservationId: result.reservation.id,
+        amount: quote.total,
+        card: card.number,
+        idempotencyKey: `${idempotencyKey}:payment`,
+        guestEmail,
+      });
+
+      setPaying(false);
+
+      if (!paymentResult.ok) {
+        setDeclined(
+          `Payment declined — ${paymentResult.message} Your details are still here; try another card.`
+        );
+        wait.current = false;
+        return;
+      }
+
+      toast({
+        message: 'Your room is confirmed — see you in Rabat.',
+        type: 'ok',
+        title: 'Booking confirmed',
+      });
+      router.push(
+        `/confirmation?ref=${encodeURIComponent(result.reservation.reference)}&email=${encodeURIComponent(guestEmail)}`
       );
+    } catch (err) {
+      setPaying(false);
+      const msg = err instanceof Error ? err.message : 'Booking failed. Please try again.';
+      setDeclined(msg);
       wait.current = false;
-      return;
     }
-    const reservation = reservations.create({
-      hotelId: resolved?.property.id ?? PROPERTY.id,
-      hotelName: resolved?.property.name ?? PROPERTY.name,
-      roomName: resolved?.room.name ?? fixtureRoom?.name,
-      extrasSnapshot: extrasSel.flatMap((x) => {
-        const def = extrasList.find((e) => e.id === x.id);
-        return def ? [{ id: def.id, name: def.name, price: def.price, unit: def.unit, qty: x.qty }] : [];
-      }),
-      roomId,
-      planId: plan.id,
-      checkin: state.checkin ? toISODate(state.checkin) : '',
-      checkout: state.checkout ? toISODate(state.checkout) : '',
-      adults: state.adults,
-      children: state.children,
-      childrenAges: state.childrenAges.slice(0, state.children),
-      rooms: state.rooms || 1,
-      extras: extrasSel.map((x) => ({ id: x.id, qty: x.qty })),
-      promo: state.promo,
-      price: {
-        perNight: plan.price,
-        nights,
-        roomSubtotal: quote.roomSubtotal,
-        discount: quote.discount,
-        taxes: quote.taxes,
-        extrasTotal: quote.extrasTotal,
-        total: quote.total,
-        originalTotal: quote.originalTotal,
-        currency: 'MAD',
-      },
-      guest: {
-        title: details.title,
-        firstName: details.first.trim(),
-        lastName: details.last.trim(),
-        email: details.email.trim().toLowerCase(),
-        phone: details.phone.trim(),
-        country: details.country,
-        arrival: details.arrival,
-        requests: details.requests.trim(),
-      },
-      email: details.email.trim().toLowerCase(),
-    });
-    bookingKey.finish(reservation.ref);
-    toast({
-      message: 'Your room is confirmed — see you in Rabat.',
-      type: 'ok',
-      title: 'Booking confirmed',
-    });
-    router.push(`/confirmation?ref=${encodeURIComponent(reservation.ref)}`);
   };
 
   const holdLabel = () => {
     const m = Math.floor(holdSecs / 60);
     const s = String(holdSecs % 60).padStart(2, '0');
-    return `Rate held for ${m}:${s} (mock hold)`;
+    return `Rate held for ${m}:${s}`;
   };
 
   return (
     <>
-      {exitRef ? (
-        <div id="idem-banner" className="mb-6">
-          <div
-            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-700/20 bg-emerald-700/8 px-5 py-4 text-sm text-emerald-700"
-            role="status"
-          >
-            <span>
-              <strong>You already confirmed this booking</strong> — a reservation for these exact
-              dates and room exists under your reference.
-            </span>
-            <a
-              href={`/confirmation?ref=${encodeURIComponent(exitRef)}`}
-              className="shrink-0 rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-bold tracking-widest text-white uppercase hover:bg-emerald-800"
-            >
-              View confirmation
-            </a>
-          </div>
-        </div>
-      ) : null}
-
       <div id="steps" className={`mb-8 ${missing ? 'hidden' : ''}`} aria-label="Booking progress">
         <Steps steps={['Guest details', 'Payment & confirm']} current={step - 1} />
       </div>
@@ -541,8 +539,7 @@ export default function BookingFlow({
               </div>
 
               <div className="bg-paper border-navy/10 text-navy/55 mt-5 rounded-2xl border px-4 py-3 text-[11px] leading-relaxed">
-                Free cancellation on most plans · Payment is simulated in this prototype — no card
-                data is stored or sent.
+                Free cancellation on most plans · Secure payment processing
               </div>
             </div>
           </aside>
@@ -560,12 +557,11 @@ export default function BookingFlow({
                   Confirm who the room is for — this is the contact for your confirmation.
                 </p>
 
-                <form
-                  id="details-form"
-                  className="mt-6 grid gap-x-4 gap-y-5 sm:grid-cols-2"
-                  onSubmit={submitDetails}
-                  noValidate
-                >
+                <form id="details-form" onSubmit={submitDetails} noValidate>
+                <fieldset className="mt-6 grid gap-x-4 gap-y-5 sm:grid-cols-2">
+                  <legend className="text-navy/45 col-span-full mb-1 text-xs font-semibold tracking-widest uppercase">
+                    Guest information
+                  </legend>
                   <div className="grid grid-cols-2 gap-3 sm:col-span-2 sm:grid-cols-[120px_1fr_1fr] sm:gap-4">
                     <div className="col-span-2 sm:col-span-1">
                       <label
@@ -651,35 +647,33 @@ export default function BookingFlow({
                     <Label htmlFor="f-phone">
                       Phone <Star />
                     </Label>
-                    <Input
-                      size="sm"
+                    <PhoneField
                       id="f-phone"
-                      type="tel"
-                      autoComplete="tel"
-                      placeholder="+212 6 00 00 00 00"
                       value={details.phone}
-                      onChange={(e) => {
-                        setDetails({ ...details, phone: e.target.value });
+                      defaultCountry={details.country}
+                      onChange={(phone) => {
+                        setDetails({ ...details, phone });
                         setDErrors({ ...dErrors, phone: undefined });
                       }}
-                      aria-invalid={!!detailsError('phone')}
-                      aria-describedby={detailsError('phone') ? 'err-phone' : undefined}
+                      ariaInvalid={!!detailsError('phone')}
+                      ariaDescribedby={detailsError('phone') ? 'err-phone' : undefined}
                     />
                     <FieldErr id="err-phone" msg={detailsError('phone')} />
                   </div>
                   <div>
                     <Label htmlFor="f-country">Country</Label>
-                    <select
+                    <CountrySelect
                       id="f-country"
                       value={details.country}
-                      onChange={(e) => setDetails({ ...details, country: e.target.value })}
-                      className="bg-paper border-navy/15 focus:ring-gold/40 w-full rounded-xl border px-3 py-2.5 text-sm font-medium focus:ring-2 focus:outline-none"
-                    >
-                      {COUNTRIES.map((c) => (
-                        <option key={c}>{c}</option>
-                      ))}
-                    </select>
+                      onChange={(country) => setDetails({ ...details, country })}
+                    />
                   </div>
+                </fieldset>
+
+                <fieldset className="border-navy/10 mt-7 grid gap-x-4 gap-y-5 border-t pt-6 sm:grid-cols-2">
+                  <legend className="text-navy/45 col-span-full -mt-3 mb-1 bg-white pr-3 text-xs font-semibold tracking-widest uppercase">
+                    Arrival &amp; requests <span className="text-navy/35 font-normal normal-case tracking-normal">(optional)</span>
+                  </legend>
                   <div>
                     <Label htmlFor="f-arrival">Arrival time</Label>
                     <select
@@ -694,9 +688,7 @@ export default function BookingFlow({
                     </select>
                   </div>
                   <div className="sm:col-span-2">
-                    <Label htmlFor="f-requests">
-                      Special requests <span className="text-navy/40 font-normal">(optional)</span>
-                    </Label>
+                    <Label htmlFor="f-requests">Special requests</Label>
                     <textarea
                       id="f-requests"
                       rows={2}
@@ -706,19 +698,21 @@ export default function BookingFlow({
                       className="bg-paper border-navy/15 focus:ring-gold/40 w-full resize-none rounded-xl border px-3 py-2.5 text-sm font-medium focus:ring-2 focus:outline-none"
                     />
                   </div>
-                  <div className="flex flex-col items-stretch justify-between gap-3 pt-1 sm:col-span-2 sm:flex-row sm:items-center">
-                    <p className="text-navy/45 text-[11px]">
-                      Free cancellation on most plans · No charge until you confirm
-                    </p>
-                    <Button
-                      type="submit"
-                      id="details-submit"
-                      size="lg"
-                      className="rounded-2xl text-sm"
-                    >
-                      Continue to payment →
-                    </Button>
-                  </div>
+                </fieldset>
+
+                <div className="border-navy/10 mt-7 flex flex-col items-stretch justify-between gap-3 border-t pt-6 sm:flex-row sm:items-center">
+                  <p className="text-navy/45 text-[11px]">
+                    Free cancellation on most plans · No charge until you confirm
+                  </p>
+                  <Button
+                    type="submit"
+                    id="details-submit"
+                    size="lg"
+                    className="rounded-2xl text-sm"
+                  >
+                    Continue to payment →
+                  </Button>
+                </div>
                 </form>
               </section>
             ) : (
@@ -729,7 +723,7 @@ export default function BookingFlow({
               >
                 <h2 className="font-display text-navy text-2xl font-semibold">Payment</h2>
                 <p className="text-navy/55 mt-1 text-sm">
-                  This is a prototype — payment is simulated and no card data leaves your browser.
+                  Enter your card details to complete the booking.
                 </p>
 
                 {declined ? (
@@ -790,8 +784,7 @@ export default function BookingFlow({
                       aria-describedby={payError('pnumber') ? 'err-pnumber' : undefined}
                     />
                     <p className="text-navy/45 mt-1 text-[11px]">
-                      Demo rule: any card works — except numbers ending in <strong>1</strong>, which
-                      the bank (mock) declines.
+                      Your payment is processed securely via the backend.
                     </p>
                     <FieldErr id="err-pnumber" msg={payError('pnumber')} />
                   </div>

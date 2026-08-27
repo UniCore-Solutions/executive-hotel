@@ -17,6 +17,7 @@ import com.hotelcollection.hotel.entity.UserRole;
 import com.hotelcollection.hotel.dto.identity.AuthPayload;
 import com.hotelcollection.hotel.dto.identity.LoginInput;
 import com.hotelcollection.hotel.dto.identity.RegisterInput;
+import com.hotelcollection.hotel.dto.identity.UpdateProfileInput;
 import com.hotelcollection.hotel.exception.DomainException;
 import com.hotelcollection.hotel.repository.RoleRepository;
 import com.hotelcollection.hotel.repository.UserRepository;
@@ -110,6 +111,35 @@ public class AuthServiceImpl implements AuthService {
 		User user = userRepository.findByIdWithRoles(userId)
 				.orElseThrow(() -> DomainException.notFound("user not found"));
 		return currentUserOf(user);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public User findUser(UUID userId) {
+		return userRepository.findById(userId)
+				.orElseThrow(() -> DomainException.notFound("user not found"));
+	}
+
+	@Override
+	@Transactional
+	public void updateProfile(UUID userId, UpdateProfileInput in) {
+		User user = userRepository.findById(userId)
+				.orElseThrow(() -> DomainException.notFound("user not found"));
+		if (in.firstName() != null) {
+			Validation.requireNotBlank(in.firstName(), "firstName");
+			user.setFirstName(in.firstName().trim());
+		}
+		if (in.lastName() != null) {
+			Validation.requireNotBlank(in.lastName(), "lastName");
+			user.setLastName(in.lastName().trim());
+		}
+		if (in.phone() != null) {
+			user.setPhone(in.phone().isBlank() ? null : in.phone().trim());
+		}
+		user.setUpdatedAt(Instant.now());
+		userRepository.save(user);
+
+		guestProvisioning.updateContactInfo(userId, in.firstName(), in.lastName(), in.phone());
 	}
 
 	private String issueToken(User user) {

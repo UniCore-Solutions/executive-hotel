@@ -4,12 +4,14 @@
    the first room + eligible plan for the visitor's dates; Apply carries the
    current stay state + promo into the search page. */
 
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { OFFERS, PROPERTY } from '@/data';
+import { PROPERTY } from '@/data';
 import { useSearch } from '@/context/SearchContext';
 import { useToast } from '@/context/ToastContext';
 import { nightsBetween } from '@/lib/dates';
-import { validatePromo } from '@/services/pricing';
+import { allOffers, validatePromo } from '@/services/pricing';
+import { ensurePricingSources } from '@/services/pricingHydration';
 import { searchURL } from '@/lib/links';
 
 const PLAN_LABELS: Record<string, string> = {
@@ -23,6 +25,18 @@ export default function OffersGrid() {
   const { toast } = useToast();
   const hasDates = !!(state.checkin && state.checkout);
   const nights = nightsBetween(state.checkin, state.checkout);
+
+  // Real backend promo catalog (SPRING25, MADINA15, …) — never the static
+  // fixture, which advertised codes that don't exist in the database (see
+  // docs/investigations/TASK2-TASK3-CURRENCY-AND-ATOMICITY.md, Task 6).
+  const [offers, setOffers] = useState(allOffers());
+  const [offersLoaded, setOffersLoaded] = useState(offers.length > 0);
+  useEffect(() => {
+    ensurePricingSources().then(() => {
+      setOffers(allOffers());
+      setOffersLoaded(true);
+    });
+  }, []);
 
   const copy = async (code: string) => {
     try {
@@ -52,9 +66,17 @@ export default function OffersGrid() {
     );
   };
 
+  if (offersLoaded && offers.length === 0) {
+    return (
+      <p className="text-navy/60 mt-10 text-sm">
+        No offers are currently available. Check back soon.
+      </p>
+    );
+  }
+
   return (
     <div id="offers-list" className="mt-10 grid gap-6 lg:grid-cols-2">
-      {OFFERS.map((o) => (
+      {offers.map((o) => (
         <article
           key={o.code}
           className="border-navy/10 flex flex-col gap-4 rounded-3xl border bg-white p-7 shadow-sm"

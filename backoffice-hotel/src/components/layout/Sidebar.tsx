@@ -43,7 +43,7 @@ export function Sidebar() {
         <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold">
           <Building2 className="h-5 w-5" aria-hidden="true" />
         </span>
-        <span className="font-display text-lg font-semibold tracking-wide">Hotel Collection</span>
+        <span className="font-display text-lg font-semibold tracking-wide">Executive Hotel</span>
       </Link>
       <nav aria-label="Back office" className="flex-1 space-y-0.5 px-3 py-2">
         {NAV.filter((item) => !item.superAdminOnly || isSuperAdmin).map((item) => {

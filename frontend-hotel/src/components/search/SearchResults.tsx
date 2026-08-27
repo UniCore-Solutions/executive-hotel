@@ -16,6 +16,7 @@ import { dateLabel, guestsLabel, nightsBetween, readStateFromURL, validateState 
 import { image, IMG_FALLBACK, filterEntries } from '@/services/availability';
 import { searchStay } from '@/services/catalog';
 import { validatePromo } from '@/services/pricing';
+import { ensurePricingSources } from '@/services/pricingHydration';
 import { hotelRoomURL, roomURL } from '@/lib/links';
 import {
   amenityOptions,
@@ -67,6 +68,7 @@ export default function SearchResults() {
   const searchParams = useSearchParams();
   const [entries, setEntries] = useState<SearchResultEntry[] | null>(null);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState('');
   const [mode, setMode] = useState<SortMode>('recommended');
   const [noMatchMsg, setNoMatchMsg] = useState('');
   const [filters, setFilters] = useState<SearchFilters>(() =>
@@ -88,6 +90,13 @@ export default function SearchResults() {
   /* Loading is derived: any committed-search change immediately re-renders the
      skeleton without touching state inside the effect. */
   const loading = stayKey !== loadedKey;
+
+  /* Backend promo catalog for promoAnalysis below (a ?promo= deep link, e.g.
+     from OffersGrid's "Apply this offer", must be validatable on arrival). */
+  useEffect(() => {
+    ensurePricingSources();
+  }, []);
+
   useEffect(() => {
     const p = new URLSearchParams();
     stayKey
@@ -106,10 +115,16 @@ export default function SearchResults() {
       if (!alive) return;
       setEntries(list);
       setLoadedKey(stayKey);
+      setSearchError('');
       if (!list.length)
         setNoMatchMsg(
           'We have no rooms matching those dates at the moment. Try adjusting your dates or guest numbers.'
         );
+    }).catch(() => {
+      if (!alive) return;
+      setEntries([]);
+      setLoadedKey(stayKey);
+      setSearchError('Could not load rooms — please check your connection and try again.');
     });
     return () => {
       alive = false;
@@ -125,7 +140,7 @@ export default function SearchResults() {
     return () => clearTimeout(t);
   }, [paramsKey]);
 
-  const emptyMsg = validationMsg || noMatchMsg;
+  const emptyMsg = searchError || validationMsg || noMatchMsg;
 
   const promoAnalysis = useMemo(() => {
     const out: { any: boolean; first: PromoResult | null; result: PromoResult | null } = {
@@ -429,7 +444,7 @@ export default function SearchResults() {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={image(room.images[0] ?? IMG_FALLBACK, 800)}
-                      alt={`${room.name}${e.hotelName ? ` — ${e.hotelName}` : ' — Executive Boutique Hotel Rabat'}`}
+                      alt={`${room.name}${e.hotelName ? ` — ${e.hotelName}` : ' — Executive Hotel'}`}
                       loading="lazy"
                       className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />

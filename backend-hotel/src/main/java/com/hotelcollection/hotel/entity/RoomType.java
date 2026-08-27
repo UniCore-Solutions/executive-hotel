@@ -14,6 +14,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -35,6 +36,9 @@ public class RoomType {
 
 	@Column(nullable = false)
 	private String name;
+
+	@Column(nullable = false)
+	private String slug;
 
 	private String description;
 
@@ -73,4 +77,14 @@ public class RoomType {
 			joinColumns = @JoinColumn(name = "room_type_id"),
 			inverseJoinColumns = @JoinColumn(name = "amenity_id"))
 	private List<Amenity> amenities = new ArrayList<>();
+
+	@PrePersist
+	void generateSlug() {
+		if (slug == null || slug.isBlank()) {
+			slug = name == null ? "room"
+					: name.trim().toLowerCase().replaceAll("[^a-z0-9]+", "-")
+							.replaceAll("(^-|-$)", "");
+			if (slug.isBlank()) slug = "room";
+		}
+	}
 }

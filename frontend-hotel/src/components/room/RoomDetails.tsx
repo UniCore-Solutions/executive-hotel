@@ -8,7 +8,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { EXTRAS } from '@/data';
 import { useSearch } from '@/context/SearchContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/context/ToastContext';
@@ -23,10 +22,11 @@ import {
 } from '@/lib/dates';
 import { image, IMG_FALLBACK } from '@/services/availability';
 import { getStayRoom } from '@/services/catalog';
+import { GraphqlClientError } from '@/services/graphqlClient';
 import { getExtras } from '@/services/extras';
 import { ensurePricingSources } from '@/services/pricingHydration';
 import { recordRoomView } from '@/services/activity';
-import { getQuote } from '@/services/quote';
+import { getQuote, mapQuoteExtraLines } from '@/services/quote';
 import { bookingURL, hotelRoomURL, roomURL } from '@/lib/links';
 import Calendar from '@/components/search/Calendar';
 import Breadcrumb from '@/components/ui/Breadcrumb';
@@ -35,6 +35,8 @@ import { PromoField } from '@/components/ui/PromoField';
 import { QuoteTable } from '@/components/ui/QuoteTable';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/button';
+import { PhotoGallery } from '@/components/ui/PhotoGallery';
+import { ReadMore } from '@/components/ui/ReadMore';
 import { parseExtrasParam, type ExtraSelection } from '@/lib/extras';
 import type { Availability, Extra, PriceBreakdown, RatePlan, Room, StayRoomResult } from '@/types';
 
@@ -76,6 +78,32 @@ const iconFor = (name: string) => {
   const k = AMENITY_ICONS.find(([re]) => name.toLowerCase().includes(re.toLowerCase()));
   return ICON[k ? k[1] : 'check'];
 };
+
+/* Two-bucket grouping of room amenities by keyword — real data (see
+   catalog.ts's mapRoomTypeToRoom) is a flat string[] with no category, so
+   this is a lightweight client-side classification, not a lost backend
+   field. Anything unmatched goes to "Comfort" rather than a third bucket. */
+const ESSENTIAL_AMENITY_KEYWORDS = [
+  'wi-fi',
+  'wifi',
+  'air condition',
+  'heating',
+  'safe',
+  'tv',
+  'desk',
+  'wardrobe',
+];
+
+function groupRoomAmenities(amenities: string[]) {
+  const essentials = amenities.filter((a) =>
+    ESSENTIAL_AMENITY_KEYWORDS.some((k) => a.toLowerCase().includes(k))
+  );
+  const comfort = amenities.filter((a) => !essentials.includes(a));
+  return [
+    ...(essentials.length ? [{ label: 'Room essentials', items: essentials }] : []),
+    ...(comfort.length ? [{ label: 'Comfort', items: comfort }] : []),
+  ];
+}
 
 const STAY_ICONS = {
   cal: (
@@ -143,8 +171,11 @@ export default function RoomDetails({
      gate re-renders with the synced plan, which must not change the badge). */
   const [initialPlanOnce] = useState(initialPlan);
   const [extrasSel, setExtrasSel] = useState<ExtrasSel>(() => parseExtrasParam(initialExtras));
-  const [extrasList, setExtrasList] = useState<Extra[]>(EXTRAS);
-  const [thumbIndex, setThumbIndex] = useState(0);
+  // Real backend extras load async (see the hotelId-keyed effect below); an
+  // empty list until then means a fixture slug id (e.g. "airport-shuttle")
+  // can never leak into a quote request (see Task 8 in
+  // docs/investigations/TASK2-TASK3-CURRENCY-AND-ATOMICITY.md).
+  const [extrasList, setExtrasList] = useState<Extra[]>([]);
   const [dialog, setDialog] = useState<null | 'dates' | 'guests'>(null);
   const [guestTouched, setGuestTouched] = useState(false);
   const [availForCheckin, setAvailForCheckin] = useState('');
@@ -176,8 +207,10 @@ export default function RoomDetails({
     try {
       const res = await getStayRoom(undefined, roomId, {
         checkin: state.checkin,
+        checkout: state.checkout,
         adults: state.adults || 2,
         children: state.children || 0,
+        rooms: state.rooms,
       });
       if (seq !== seqRef.current || !res || !res.room) return;
       setAvailability(res.availability);
@@ -188,14 +221,16 @@ export default function RoomDetails({
       if (seq !== seqRef.current) return;
       setLoadError('Could not refresh availability — please check your connection.');
     }
-  }, [room, roomId, state.checkin, state.adults, state.children]);
+  }, [room, roomId, state.checkin, state.checkout, state.adults, state.children, state.rooms]);
 
   useEffect(() => {
     let alive = true;
     getStayRoom(undefined, roomId, {
       checkin: state.checkin,
+      checkout: state.checkout,
       adults: state.adults || 2,
       children: state.children || 0,
+      rooms: state.rooms,
     }).then((res) => {
       if (!alive) return;
       if (!res || !res.room) {
@@ -215,8 +250,20 @@ export default function RoomDetails({
         });
       }
       setLoaded(true);
-    }).catch(() => {
+    }).catch((err) => {
       if (!alive) return;
+      // roomType() throws rather than resolving to null for a missing room
+      // (VALIDATION for a bad UUID lookup, NOT_FOUND for a bad slug lookup —
+      // both mean "not found" here), so the `!res.room` branch above never
+      // actually sees that case; catch it here instead of showing a
+      // misleading "check your connection" message.
+      if (
+        err instanceof GraphqlClientError &&
+        (err.code === 'NOT_FOUND' || err.code === 'VALIDATION')
+      ) {
+        setNotFound(true);
+        return;
+      }
       setLoadError('Could not load room details — please check your connection and try again.');
     });
     return () => {
@@ -284,7 +331,6 @@ export default function RoomDetails({
       checkOutDate: state.checkout,
       adults: state.adults || 2,
       children: state.children || 0,
-      currencyCode: currency,
       rooms: [{ roomTypeId: room.id, ratePlanId: plan.backendRatePlanId }],
       extras: extrasSel.map((x) => ({ extraId: x.id, quantity: x.qty })),
       promoCode: state.promo || undefined,
@@ -292,7 +338,11 @@ export default function RoomDetails({
       .then((result) => {
         if (reqId !== quoteReqId.current) return;
         if (result.raw.valid) {
-          setQuoteState({ quote: result.quote, loading: false, error: '' });
+          setQuoteState({
+            quote: { ...result.quote, extras: mapQuoteExtraLines(result.raw.extras, extrasList) },
+            loading: false,
+            error: '',
+          });
         } else {
           setQuoteState({
             quote: null,
@@ -301,9 +351,16 @@ export default function RoomDetails({
           });
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (reqId !== quoteReqId.current) return;
-        setQuoteState({ quote: null, loading: false, error: 'Could not calculate price — please try again.' });
+        // VALIDATION/CONFLICT here mean the request itself is wrong (e.g. no
+        // price configured for these dates) — retrying won't help, so the
+        // backend's specific message is more useful than a generic one.
+        const message =
+          err instanceof GraphqlClientError && (err.code === 'VALIDATION' || err.code === 'CONFLICT')
+            ? err.message
+            : 'Could not calculate price — please try again.';
+        setQuoteState({ quote: null, loading: false, error: message });
       });
   }, [
     plan,
@@ -315,8 +372,8 @@ export default function RoomDetails({
     state.rooms,
     state.promo,
     extrasSel,
+    extrasList,
     room,
-    currency,
     hotelId,
   ]);
 
@@ -716,82 +773,12 @@ export default function RoomDetails({
         {/* Photo gallery */}
         <div className="order-1 min-w-0 lg:col-start-1 lg:row-start-1">
           <section aria-label="Room photos">
-            <div
-              id="gallery"
-              className="border-navy/10 shadow-navy/10 overflow-hidden rounded-3xl border bg-white shadow-xl"
-            >
-              <div className="relative">
-                <div className="bg-paper relative aspect-[16/9]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={image(room.images[thumbIndex] ?? IMG_FALLBACK, 1400)}
-                    alt={`${room.name} — photo ${thumbIndex + 1} of ${room.images.length} — Executive Hotel`}
-                    className="absolute inset-0 h-full w-full object-cover"
-                  />
-                  <Button
-                    type="button"
-                    onClick={() =>
-                      setThumbIndex((thumbIndex - 1 + room.images.length) % room.images.length)
-                    }
-                    variant="outline"
-                    size="iconLg"
-                    className="border-navy/10 absolute top-1/2 left-3 -translate-y-1/2 rounded-full bg-white/90 shadow-lg backdrop-blur hover:bg-white"
-                    aria-label="Previous photo"
-                  >
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="m15 6-6 6 6 6"
-                      />
-                    </svg>
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => setThumbIndex((thumbIndex + 1) % room.images.length)}
-                    variant="outline"
-                    size="iconLg"
-                    className="border-navy/10 absolute top-1/2 right-3 -translate-y-1/2 rounded-full bg-white/90 shadow-lg backdrop-blur hover:bg-white"
-                    aria-label="Next photo"
-                  >
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="m9 6 6 6-6 6"
-                      />
-                    </svg>
-                  </Button>
-                  <span className="bg-navy-dark/70 absolute right-3 bottom-3 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur">
-                    {thumbIndex + 1} / {room.images.length}
-                  </span>
-                </div>
-                <div
-                  className="no-scrollbar flex gap-2 overflow-x-auto p-2 sm:p-3"
-                  role="tablist"
-                  aria-label="Room photos"
-                  tabIndex={0}
-                >
-                  {room.images.map((src, i) => (
-                    <button
-                      key={src}
-                      type="button"
-                      role="tab"
-                      tabIndex={i === thumbIndex ? 0 : -1}
-                      aria-selected={i === thumbIndex}
-                      onClick={() => setThumbIndex(i)}
-                      className={`h-14 w-20 shrink-0 overflow-hidden rounded-xl border-2 transition-colors sm:h-16 sm:w-24 ${i === thumbIndex ? 'border-gold' : 'border-navy/12 hover:border-navy/40'}`}
-                      aria-label={`Show photo ${i + 1}`}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={image(src, 200)} alt="" className="h-full w-full object-cover" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <PhotoGallery
+              photos={(room.images.length ? room.images : [IMG_FALLBACK]).map((src) => ({
+                url: image(src, 1400),
+                alt: room.name,
+              }))}
+            />
           </section>
         </div>
 
@@ -838,7 +825,13 @@ export default function RoomDetails({
                   </span>
                 ))}
             </div>
-            <p className="text-navy/70 mt-5 max-w-2xl leading-relaxed">{room.description}</p>
+            {room.description ? (
+              <ReadMore
+                text={room.description}
+                lines={3}
+                className="text-navy/70 mt-5 max-w-2xl text-[15px] leading-relaxed"
+              />
+            ) : null}
             <ul className="mt-6 grid max-w-2xl grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
               {room.amenities.slice(0, 4).map((a) => (
                 <li
@@ -1038,6 +1031,7 @@ export default function RoomDetails({
                 <QuoteTable
                   quote={quote}
                   currency={currency}
+                  highlight
                   note={
                     hasDates
                       ? `Includes ${nights} night${nights === 1 ? '' : 's'}, ${state.rooms} room${state.rooms === 1 ? '' : 's'}.`
@@ -1090,35 +1084,39 @@ export default function RoomDetails({
             </h2>
             <div className="border-navy/10 mt-5 rounded-3xl border bg-white p-6 shadow-sm sm:p-8">
               <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12">
-                <div>
-                  <h3 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
-                    In this room
-                  </h3>
-                  <ul className="text-navy/75 mt-5 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
-                    {room.amenities.map((a) => (
-                      <li key={a} className="flex min-w-0 items-start gap-3">
-                        <span className="bg-gold/10 border-gold/25 text-gold-dark flex h-9 w-9 shrink-0 items-center justify-center rounded-full border">
-                          <svg
-                            className="h-[18px] w-[18px]"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path d={iconFor(a)} />
-                          </svg>
-                        </span>
-                        <span className="pt-1.5">{a}</span>
-                      </li>
-                    ))}
-                  </ul>
+                <div className="space-y-7">
+                  {groupRoomAmenities(room.amenities).map((group) => (
+                    <div key={group.label}>
+                      <h3 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+                        {group.label}
+                      </h3>
+                      <ul className="text-navy/75 mt-4 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+                        {group.items.map((a) => (
+                          <li key={a} className="flex min-w-0 items-start gap-3">
+                            <span className="bg-gold/10 border-gold/25 text-gold-dark flex h-9 w-9 shrink-0 items-center justify-center rounded-full border">
+                              <svg
+                                className="h-[18px] w-[18px]"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path d={iconFor(a)} />
+                              </svg>
+                            </span>
+                            <span className="pt-1.5">{a}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
                 </div>
+                {plan?.cancellationPolicy ? (
                 <div className="lg:border-navy/10 lg:border-l lg:pl-12">
                   <h3 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
                     Good to know
                   </h3>
                   <ul className="text-navy/75 mt-5 space-y-3.5 text-sm">
-                    {room.importantInfo.map((a) => (
-                      <li key={a} className="flex items-start gap-2.5">
+                    <li className="flex items-start gap-2.5">
                         <svg
                           className="text-gold-dark mt-0.5 h-4 w-4 shrink-0"
                           fill="none"
@@ -1127,11 +1125,15 @@ export default function RoomDetails({
                         >
                           <path d={ICON.check} />
                         </svg>
-                        <span className="pt-0.5">{a}</span>
-                      </li>
-                    ))}
+                        {/* Cancellation policy for the currently-selected rate — real,
+                            plan-specific text from the backend (see RatePlan.cancellationPolicy
+                            in catalog.ts), not the room-level field, which is unpopulated
+                            for every real room today. */}
+                        <span className="pt-0.5">{plan.cancellationPolicy}</span>
+                    </li>
                   </ul>
                 </div>
+                ) : null}
               </div>
             </div>
           </section>

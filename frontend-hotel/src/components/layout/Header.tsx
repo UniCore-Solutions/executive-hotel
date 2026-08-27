@@ -1,13 +1,13 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
+import { useSession } from '@/context/SessionContext';
 import { useLang } from '@/hooks/useLang';
 import { PROPERTY } from '@/data';
-import { session as readSession } from '@/services/auth';
-import type { Session } from '@/types';
 import { CURRENCY_INFO } from '@/lib/format';
 import { TEL, TEL_DISPLAY, NAV_LINKS, MOBILE_UTILITY_LINKS } from '@/constants/navigation';
 import { Icon } from '@/components/ui/Icon';
@@ -31,7 +31,7 @@ export default function Header({ onHome = false, platform }: HeaderProps) {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [drop, setDrop] = useState<'lang' | 'cur' | ''>('');
-  const [sess, setSess] = useState<Session | null>(null);
+  const { session: sess } = useSession();
 
   const brandName = platform?.name ?? PROPERTY.name;
   const brandLine = platform?.tagline ?? `${PROPERTY.brand} · ${PROPERTY.city}`;
@@ -44,11 +44,6 @@ export default function Header({ onHome = false, platform }: HeaderProps) {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
-
-  useEffect(() => {
-    const t = setTimeout(() => setSess(readSession()), 0);
-    return () => clearTimeout(t);
-  }, [pathname]);
 
   const accountName = ((sess?.name || '').split(' ')[0] || '').trim();
   const accountLabel = accountName ? `${accountName}'s account` : 'Account';
@@ -149,15 +144,15 @@ export default function Header({ onHome = false, platform }: HeaderProps) {
             className="group flex min-w-0 flex-1 items-center gap-2.5 lg:flex-none"
             aria-label={`${brandName} — home`}
           >
-            <span className="bg-gold/15 border-gold/30 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border">
-              <svg
-                className="text-gold-dark h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M12 2 4 8v12h16V8l-8-6Zm-4.5 8.5a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5Zm9 0a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5ZM12 13c1.5 0 3 .5 3.5 1.5l.5 1H8l.5-1C9 13.5 10.5 13 12 13Z" />
-              </svg>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full">
+              <Image
+                src="/logo.jpg"
+                alt="Executive Hotel logo"
+                className="h-full w-full object-cover"
+                width={36}
+                height={36}
+                priority
+              />
             </span>
             <span className="min-w-0 leading-tight">
               <span className="hdr-logo-name font-display text-navy block truncate text-[13px] leading-tight font-semibold tracking-tight sm:text-[15px] lg:text-lg">

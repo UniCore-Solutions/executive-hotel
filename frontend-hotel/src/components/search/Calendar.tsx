@@ -53,20 +53,32 @@ export default function Calendar({
   const rootRef = useRef<HTMLDivElement>(null);
 
   /* Keep the current view static while picking check-in; re-anchor once a range exists. */
-  const base = useMemo(() => {
+  const anchor = useMemo(() => {
     if (calBase && !checkout) return calBase;
-    const anchor = checkin && checkout ? checkin : addDays(today, 1);
-    const b = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+    const a = checkin && checkout ? checkin : addDays(today, 1);
+    const b = new Date(a.getFullYear(), a.getMonth(), 1);
     return b;
   }, [calBase, checkin, checkout, today]);
 
   useEffect(() => {
     if (calBase === null || !checkout) {
-      const t = setTimeout(() => setCalBase(base), 0);
+      const t = setTimeout(() => setCalBase(anchor), 0);
       return () => clearTimeout(t);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base]);
+  }, [anchor]);
+
+  /* Manual month navigation, independent of the checkin/checkout anchor
+     above — reset back to the anchor month whenever that anchor changes
+     (e.g. a fresh check-in was just picked), adjusted during render rather
+     than an effect to avoid a redundant extra render pass. */
+  const [monthOffset, setMonthOffset] = useState(0);
+  const [syncedAnchor, setSyncedAnchor] = useState(anchor);
+  if (+anchor !== +syncedAnchor) {
+    setSyncedAnchor(anchor);
+    setMonthOffset(0);
+  }
+  const base = addMonths(anchor, monthOffset);
 
   const nights = nightsBetween(checkin, checkout);
 
@@ -103,6 +115,29 @@ export default function Calendar({
           </span>
         ) : null}
       </div>
+      <div className="mb-3 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setMonthOffset((o) => Math.max(0, o - 1))}
+          disabled={monthOffset === 0}
+          aria-label="Previous month"
+          className="border-navy/15 text-navy hover:bg-paper flex h-8 w-8 items-center justify-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m15 6-6 6 6 6" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMonthOffset((o) => o + 1)}
+          aria-label="Next month"
+          className="border-navy/15 text-navy hover:bg-paper flex h-8 w-8 items-center justify-center rounded-full border transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m9 6 6 6-6 6" />
+          </svg>
+        </button>
+      </div>
       <div className="grid gap-6 sm:grid-cols-2">
         {months.map((m) => {
           const cells = buildMonth(m.getFullYear(), m.getMonth());
@@ -128,11 +163,12 @@ export default function Calendar({
                   const disabled = +d < +today;
                   const isStart = checkin && +d === +checkin;
                   const isEnd = checkout && +d === +checkout;
+                  const isToday = +d === +today;
                   const inBand =
                     !!checkin && !checkout && !!hoverDate && +d > +checkin && +d <= +hoverDate;
                   const middle = checkin && checkout && +d > +checkin && +d < +checkout;
                   const cls = [
-                    'day-cell h-9 text-[13px] rounded-full',
+                    'day-cell relative h-9 text-[13px] rounded-full',
                     disabled
                       ? 'text-navy/20 cursor-default'
                       : 'text-navy cursor-pointer hover:bg-navy/10',
@@ -141,6 +177,7 @@ export default function Calendar({
                       : '',
                     inBand ? 'bg-gold-light/30 font-semibold' : '',
                     middle ? 'bg-navy/8 font-semibold' : '',
+                    isToday && !isStart && !isEnd ? 'font-bold' : '',
                   ]
                     .filter(Boolean)
                     .join(' ');
@@ -158,6 +195,12 @@ export default function Calendar({
                       onClick={() => handleDay(d)}
                     >
                       {d.getDate()}
+                      {isToday && !isStart && !isEnd ? (
+                        <span
+                          className="bg-gold-dark absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full"
+                          aria-hidden="true"
+                        />
+                      ) : null}
                     </button>
                   );
                 })}

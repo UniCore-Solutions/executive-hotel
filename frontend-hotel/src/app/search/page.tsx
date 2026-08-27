@@ -6,9 +6,9 @@ import SearchBar from '@/components/search/SearchBar';
 import SearchResults from '@/components/search/SearchResults';
 
 export const metadata: Metadata = {
-  title: 'Rooms & availability — Executive Boutique Hotel Rabat',
+  title: 'Rooms & availability — Executive Hotel',
   description:
-    'Search live availability and book directly at Executive Boutique Hotel Rabat — air-conditioned rooms with free Wi-Fi in the Agdal district. Free cancellation on most plans.',
+    'Search live availability and book directly at Executive Hotel — air-conditioned rooms with free Wi-Fi in the Agdal district. Free cancellation on most plans.',
 };
 
 export default function SearchPage() {

@@ -42,4 +42,22 @@ public class GuestProvisioningServiceImpl implements GuestProvisioningService {
 	public Optional<Guest> findByUserId(UUID userId) {
 		return guestRepository.findByUserId(userId);
 	}
+
+	@Override
+	@Transactional
+	public void updateContactInfo(UUID userId, String firstName, String lastName, String phone) {
+		guestRepository.findByUserId(userId).ifPresent(guest -> {
+			if (firstName != null && !firstName.isBlank()) {
+				guest.setFirstName(firstName.trim());
+			}
+			if (lastName != null && !lastName.isBlank()) {
+				guest.setLastName(lastName.trim());
+			}
+			if (phone != null) {
+				guest.setPhone(phone.isBlank() ? null : phone.trim());
+			}
+			guest.setUpdatedAt(Instant.now());
+			guestRepository.save(guest);
+		});
+	}
 }

@@ -34,10 +34,19 @@ input CreatePaymentInput {
 	amount: Float!
 	currencyCode: String!
 	provider: String!
+	idempotencyKey: String!
+	"""Guest email on file for an accountless reservation — required proof of
+	possession when the caller is not authenticated as the reservation's owner
+	or hotel staff, mirroring the reference+email pattern used by reservation
+	lookup/cancel."""
+	guestEmail: String
 }
 
 input CapturePaymentInput {
 	paymentId: ID!
+	"""See CreatePaymentInput.guestEmail — the same proof is re-checked here
+	since capture independently re-validates access."""
+	guestEmail: String
 }
 
 type Invoice {

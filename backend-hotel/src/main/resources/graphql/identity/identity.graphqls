@@ -7,6 +7,7 @@ extend type Query {
 extend type Mutation {
 	login(input: LoginInput!): AuthPayload!
 	register(input: RegisterInput!): AuthPayload!
+	updateMyProfile(input: UpdateProfileInput!): Me!
 	createUser(input: AdminCreateUserInput!): AdminUser!
 	assignRole(userId: ID!, roleName: String!, hotelId: ID): AdminUser!
 	revokeRole(userRoleId: ID!): AdminUser!
@@ -15,8 +16,17 @@ extend type Mutation {
 type Me {
 	id: ID!
 	email: String!
+	firstName: String
+	lastName: String
+	phone: String
 	roles: [String!]!
 	hotelIds: [ID!]!
+}
+
+input UpdateProfileInput {
+	firstName: String
+	lastName: String
+	phone: String
 }
 
 input LoginInput {
