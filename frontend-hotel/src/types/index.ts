@@ -87,6 +87,14 @@ export interface PromoResult {
   message: string;
 }
 
+export interface QuoteExtraLine {
+  extraId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+}
+
 export interface PriceBreakdown {
   perNight: number;
   nights: number;
@@ -100,6 +108,9 @@ export interface PriceBreakdown {
   originalTotal: number;
   currency?: string;
   promo?: PromoResult;
+  /** Itemized extras (name/quantity/unit price) — undefined where a caller
+      hasn't wired it through yet; QuoteTable falls back to one aggregate line. */
+  extras?: QuoteExtraLine[];
   /** Server-derived figures when pricing came from the backend quote engine.
       `taxes` is the aggregate for display; these preserve the split. */
   taxAmount?: number;
@@ -288,6 +299,9 @@ export interface Session {
   id: string;
   email: string;
   name: string;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
   roles: string[];
   hotelIds: string[];
   token: string;

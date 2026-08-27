@@ -6,8 +6,10 @@ import java.util.List;
 import com.hotelcollection.hotel.entity.Experience;
 import com.hotelcollection.hotel.entity.Faq;
 import com.hotelcollection.hotel.entity.Hotel;
+import com.hotelcollection.hotel.entity.HotelPolicy;
 import com.hotelcollection.hotel.entity.Restaurant;
 
 public record HotelDetails(Hotel hotel, List<Experience> experiences, List<Restaurant> restaurants,
-		List<Faq> faqs, ReviewPage reviews, long reviewsCount, Double averageRating) {
+		List<Faq> faqs, List<HotelPolicy> policies, ReviewPage reviews, long reviewsCount,
+		Double averageRating) {
 }

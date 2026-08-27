@@ -16,8 +16,6 @@ import com.hotelcollection.hotel.dto.rate.Quote;
 import com.hotelcollection.hotel.dto.rate.QuoteExtraInput;
 import com.hotelcollection.hotel.dto.rate.QuoteInput;
 import com.hotelcollection.hotel.dto.rate.QuoteLineInput;
-import com.hotelcollection.hotel.exception.DomainException;
-import com.hotelcollection.hotel.exception.ErrorCode;
 import com.hotelcollection.hotel.repository.PromotionRepository;
 import com.hotelcollection.hotel.service.PricingService;
 import com.hotelcollection.hotel.dto.rate.ExtraLineSpec;
@@ -89,20 +87,25 @@ class PricingServiceIntegrationTest {
 	}
 
 	@Test
-	void invalidPromoCodeRejectedWithMessage() {
+	void invalidPromoCodeSoftFailsWithMessageInsteadOfThrowing() {
+		// An unknown/inapplicable promo code must never fail the whole quote —
+		// room pricing is still valid without it (C16's totals hold); only the
+		// promo-specific outcome is surfaced via Quote.valid()/message().
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
 		LocalDate checkIn = LocalDate.now().plusDays(5);
 		LocalDate checkOut = checkIn.plusDays(3);
-		try {
-			pricingService.quote(new QuoteInput(fx.hotelId(), checkIn, checkOut, 2, 0,
-					TestFixtures.CURRENCY,
-					List.of(new QuoteLineInput(fx.roomType().getId(), fx.ratePlan().getId())),
-					List.of(), "NOPE"));
-			throw new AssertionError("expected validation failure");
-		} catch (DomainException ex) {
-			assertThat(ex.getCode()).isEqualTo(ErrorCode.VALIDATION);
-			assertThat(ex.getMessage()).contains("not a valid promo code");
-		}
+
+		Quote quote = pricingService.quote(new QuoteInput(fx.hotelId(), checkIn, checkOut, 2, 0,
+				TestFixtures.CURRENCY,
+				List.of(new QuoteLineInput(fx.roomType().getId(), fx.ratePlan().getId())),
+				List.of(), "NOPE"));
+
+		assertThat(quote.valid()).isFalse();
+		assertThat(quote.promoMessage()).contains("not a valid promo code");
+		assertThat(quote.discountAmount()).isZero();
+		// Room pricing itself is unaffected by the bad promo code.
+		assertThat(quote.subtotalAmount()).isEqualByComparingTo(new BigDecimal("3000.00"));
+		assertThat(quote.totalAmount()).isGreaterThan(BigDecimal.ZERO);
 	}
 
 	@Test

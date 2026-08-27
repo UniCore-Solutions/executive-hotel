@@ -17,8 +17,10 @@ import com.hotelcollection.hotel.dto.catalog.AdminHotelInput;
 import com.hotelcollection.hotel.dto.catalog.AdminRoomInput;
 import com.hotelcollection.hotel.dto.catalog.AdminRoomTypeInput;
 import com.hotelcollection.hotel.service.CatalogAdminService;
+import com.hotelcollection.hotel.dto.catalog.HotelPolicyInput;
 import com.hotelcollection.hotel.entity.Amenity;
 import com.hotelcollection.hotel.entity.Hotel;
+import com.hotelcollection.hotel.entity.HotelPolicy;
 import com.hotelcollection.hotel.entity.Room;
 import com.hotelcollection.hotel.entity.RoomType;
 import com.hotelcollection.hotel.repository.AmenityRepository;
@@ -27,6 +29,7 @@ import com.hotelcollection.hotel.repository.RoomRepository;
 import com.hotelcollection.hotel.repository.RoomTypeRepository;
 import com.hotelcollection.hotel.security.CurrentUserAccessor;
 import com.hotelcollection.hotel.security.CurrentUser;
+import com.hotelcollection.hotel.service.HotelPolicyAdminService;
 import com.hotelcollection.hotel.service.MediaAdminService;
 import com.hotelcollection.hotel.dto.media.MediaInput;
 import com.hotelcollection.hotel.entity.Media;
@@ -45,6 +48,7 @@ public class CatalogAdminServiceImpl implements CatalogAdminService {
 	private final RoomTypeRepository roomTypeRepository;
 	private final RoomRepository roomRepository;
 	private final AmenityRepository amenityRepository;
+	private final HotelPolicyAdminService hotelPolicyAdmin;
 	private final MediaAdminService mediaAdmin;
 	private final ReferenceQueryService reference;
 	private final AuditService audit;
@@ -53,13 +57,14 @@ public class CatalogAdminServiceImpl implements CatalogAdminService {
 
 	public CatalogAdminServiceImpl(HotelRepository hotelRepository,
 			RoomTypeRepository roomTypeRepository, RoomRepository roomRepository,
-			AmenityRepository amenityRepository, MediaAdminService mediaAdmin,
-			ReferenceQueryService reference, AuditService audit, CurrentUserAccessor currentUser,
-			AvailabilityService availability) {
+			AmenityRepository amenityRepository, HotelPolicyAdminService hotelPolicyAdmin,
+			MediaAdminService mediaAdmin, ReferenceQueryService reference, AuditService audit,
+			CurrentUserAccessor currentUser, AvailabilityService availability) {
 		this.hotelRepository = hotelRepository;
 		this.roomTypeRepository = roomTypeRepository;
 		this.roomRepository = roomRepository;
 		this.amenityRepository = amenityRepository;
+		this.hotelPolicyAdmin = hotelPolicyAdmin;
 		this.mediaAdmin = mediaAdmin;
 		this.reference = reference;
 		this.audit = audit;
@@ -182,6 +187,17 @@ public class CatalogAdminServiceImpl implements CatalogAdminService {
 		return media;
 	}
 
+	@Override
+	@Transactional
+	public List<HotelPolicy> setHotelPolicies(UUID hotelId, List<HotelPolicyInput> inputs) {
+		CurrentUser actor = requireStaffAccess(hotelId);
+		requireHotel(hotelId);
+		List<HotelPolicy> policies = hotelPolicyAdmin.replaceHotelPolicies(hotelId, inputs);
+		audit.record(actor, "hotel.policies.updated", "hotel", hotelId, hotelId,
+				Map.of("count", policies.size()));
+		return policies;
+	}
+
 	// ---------------------------------------------------------------- room types
 
 	@Override
@@ -204,6 +220,7 @@ public class CatalogAdminServiceImpl implements CatalogAdminService {
 				: nonNegative(in.totalInventory(), "totalInventory"));
 		rt.setCreatedAt(Instant.now());
 		rt.setUpdatedAt(Instant.now());
+		rt.setSlug(uniqueRoomTypeSlug(hotelId, in.name()));
 		if (rt.getMaxAdults() < 0 || rt.getMaxChildren() < 0) {
 			throw DomainException.validation("occupancy cannot be negative");
 		}
@@ -221,6 +238,7 @@ public class CatalogAdminServiceImpl implements CatalogAdminService {
 		CurrentUser actor = requireStaffAccess(rt.getHotelId());
 		if (in.name() != null) {
 			rt.setName(required(in.name(), "name"));
+			rt.setSlug(uniqueRoomTypeSlug(rt.getHotelId(), in.name()));
 		}
 		applyIfPresent(in.description(), rt::setDescription);
 		applyIfPresent(in.longDescription(), rt::setLongDescription);
@@ -402,6 +420,24 @@ public class CatalogAdminServiceImpl implements CatalogAdminService {
 		for (int suffix = 2; ; suffix++) {
 			String candidate = base + "-" + suffix;
 			if (!hotelRepository.existsBySlug(candidate)) {
+				return candidate;
+			}
+		}
+	}
+
+	private String uniqueRoomTypeSlug(UUID hotelId, String name) {
+		String base = name == null ? "room"
+				: name.trim().toLowerCase().replaceAll("[^a-z0-9]+", "-")
+						.replaceAll("(^-|-$)", "");
+		if (base.isBlank()) {
+			base = "room";
+		}
+		if (!roomTypeRepository.existsByHotelIdAndSlug(hotelId, base)) {
+			return base;
+		}
+		for (int suffix = 2; ; suffix++) {
+			String candidate = base + "-" + suffix;
+			if (!roomTypeRepository.existsByHotelIdAndSlug(hotelId, candidate)) {
 				return candidate;
 			}
 		}

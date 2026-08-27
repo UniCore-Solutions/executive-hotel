@@ -6,10 +6,10 @@ import {
   fmtExpiry,
   MSGS,
   NAME_RE,
-  PHONE_RE,
   validCard,
   validCvc,
   validExpiry,
+  validPhone,
 } from '@/lib/validation';
 
 describe('validators', () => {
@@ -20,11 +20,18 @@ describe('validators', () => {
     expect(NAME_RE.test('Adam123')).toBe(false);
   });
 
-  it('email + phone regexes (reference)', () => {
+  it('email regex (reference)', () => {
     expect(EMAIL_RE.test('demo@hotelcollection.com')).toBe(true);
     expect(EMAIL_RE.test('a@b')).toBe(false);
-    expect(PHONE_RE.test('+212 6 61 23 45 67')).toBe(true);
-    expect(PHONE_RE.test('123')).toBe(false);
+  });
+
+  it('validPhone checks a real, country-aware E.164 number (Task 11)', () => {
+    // Moroccan and French numbers, as produced by PhoneField
+    expect(validPhone('+212661234567')).toBe(true);
+    expect(validPhone('+33612345678')).toBe(true);
+    expect(validPhone('123')).toBe(false);
+    expect(validPhone('')).toBe(false);
+    expect(validPhone('+212123')).toBe(false); // too short to be a real number
   });
 
   it('card number 13–19 digits', () => {

@@ -161,9 +161,12 @@ public class PricingServiceImpl implements PricingService {
 
 		BigDecimal discount = MoneyUtil.ZERO;
 		String promoMessage = null;
+		boolean valid = true;
 		if (in.promoCode() != null && !in.promoCode().isBlank()) {
-			discount = applyPromo(in, nights, subtotal);
-			promoMessage = promoName(in.promoCode());
+			PromoOutcome outcome = applyPromo(in, nights, subtotal);
+			discount = outcome.discount();
+			promoMessage = outcome.message();
+			valid = outcome.valid();
 		}
 
 		BigDecimal taxedBase = subtotal.subtract(discount).max(MoneyUtil.ZERO);
@@ -180,7 +183,7 @@ public class PricingServiceImpl implements PricingService {
 
 		BigDecimal total = taxedBase.add(tax).add(fee).add(extrasTotal);
 		BigDecimal originalTotal = subtotal.add(tax).add(fee).add(extrasTotal);
-		return new Quote(in.currencyCode(), subtotal, discount, tax, fee, total, originalTotal, true,
+		return new Quote(in.currencyCode(), subtotal, discount, tax, fee, total, originalTotal, valid,
 				lines, extras, charges, promoMessage);
 	}
 
@@ -270,34 +273,43 @@ public class PricingServiceImpl implements PricingService {
 		}
 	}
 
-	private BigDecimal applyPromo(QuoteInput in, int nights, BigDecimal subtotal) {
-		Promotion promo = promotionRepository.findByCodeIgnoreCase(in.promoCode().trim()).orElseThrow(
-				() -> DomainException.validation("\"" + in.promoCode().trim()
-						+ "\" is not a valid promo code. Check the code and try again."));
+	/** Soft-failure result of applying a promo code to a quote: an inapplicable or
+	    unknown code never fails the whole quote (C16's totals are still valid without
+	    it) — {@code valid} carries the promo-specific outcome for the caller to surface. */
+	private record PromoOutcome(BigDecimal discount, String message, boolean valid) {
+	}
+
+	private PromoOutcome applyPromo(QuoteInput in, int nights, BigDecimal subtotal) {
+		String code = in.promoCode().trim();
+		Promotion promo = promotionRepository.findByCodeIgnoreCase(code).orElse(null);
+		if (promo == null) {
+			return new PromoOutcome(MoneyUtil.ZERO,
+					"\"" + code + "\" is not a valid promo code. Check the code and try again.", false);
+		}
 		if (!promo.getStatus().equals("active")
 				|| (promo.getHotelId() != null && !promo.getHotelId().equals(in.hotelId()))) {
-			throw DomainException.validation("promo code is not valid for this hotel");
+			return new PromoOutcome(MoneyUtil.ZERO, "promo code is not valid for this hotel", false);
 		}
 		if (promo.getMinNights() != null && nights < promo.getMinNights()) {
-			throw DomainException.validation("promo code requires a stay of at least "
-					+ promo.getMinNights() + " nights");
+			return new PromoOutcome(MoneyUtil.ZERO, "promo code requires a stay of at least "
+					+ promo.getMinNights() + " nights", false);
 		}
 		if (promo.getStayWindowStart() != null && in.checkInDate().isBefore(promo.getStayWindowStart())
 				|| promo.getStayWindowEnd() != null
 						&& in.checkInDate().isAfter(promo.getStayWindowEnd())) {
-			throw DomainException.validation("promo code does not apply to these stay dates");
+			return new PromoOutcome(MoneyUtil.ZERO, "promo code does not apply to these stay dates",
+					false);
 		}
-		return switch (promo.getDiscountType()) {
+		if (promo.getDiscountType() == com.hotelcollection.hotel.entity.PromotionDiscountType.stay_x_pay_y) {
+			return new PromoOutcome(MoneyUtil.ZERO,
+					"stay_x_pay_y promos are not supported yet (see docs/architecture/invariants.md)",
+					false);
+		}
+		BigDecimal discount = switch (promo.getDiscountType()) {
 			case percentage -> MoneyUtil.percent(subtotal, promo.getDiscountValue());
 			case fixed_amount -> promo.getDiscountValue().min(subtotal);
-			case stay_x_pay_y -> throw DomainException.validation(
-					"stay_x_pay_y promos are not supported yet (see docs/architecture/invariants.md)");
+			case stay_x_pay_y -> MoneyUtil.ZERO; // handled above
 		};
-	}
-
-	private String promoName(String code) {
-		return promotionRepository.findByCodeIgnoreCase(code.trim())
-				.map(p -> p.getName() + " — " + p.getCode() + " applied.")
-				.orElse(null);
+		return new PromoOutcome(discount, promo.getName() + " — " + promo.getCode() + " applied.", true);
 	}
 }

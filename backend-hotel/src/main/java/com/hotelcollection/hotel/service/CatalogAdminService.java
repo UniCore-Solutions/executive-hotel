@@ -12,6 +12,8 @@ import com.hotelcollection.hotel.entity.Media;
 import com.hotelcollection.hotel.dto.catalog.AdminHotelInput;
 import com.hotelcollection.hotel.dto.catalog.AdminRoomInput;
 import com.hotelcollection.hotel.dto.catalog.AdminRoomTypeInput;
+import com.hotelcollection.hotel.dto.catalog.HotelPolicyInput;
+import com.hotelcollection.hotel.entity.HotelPolicy;
 
 /**
  * Back-office catalog write use cases. Authorization (hotel scoping /
@@ -26,6 +28,8 @@ public interface CatalogAdminService {
 	List<Amenity> setHotelAmenities(UUID hotelId, List<UUID> amenityIds);
 
 	List<Media> setHotelMedia(UUID hotelId, List<MediaInput> media);
+
+	List<HotelPolicy> setHotelPolicies(UUID hotelId, List<HotelPolicyInput> policies);
 
 	RoomType createRoomType(UUID hotelId, AdminRoomTypeInput in);
 

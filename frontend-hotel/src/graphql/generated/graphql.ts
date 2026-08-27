@@ -16,6 +16,51 @@ export type AvailabilityInput = {
 
 export type AvailabilityStatus = 'available' | 'few' | 'soldout';
 
+export type CancelReservationInput = {
+  email: string;
+  reasonCode?: string | null | undefined;
+  reasonNote?: string | null | undefined;
+  reference: string;
+};
+
+export type CapturePaymentInput = {
+  /**
+   * See CreatePaymentInput.guestEmail — the same proof is re-checked here
+   * since capture independently re-validates access.
+   */
+  guestEmail?: string | null | undefined;
+  paymentId: string | number;
+};
+
+export type CreatePaymentInput = {
+  amount: number;
+  currencyCode: string;
+  /**
+   * Guest email on file for an accountless reservation — required proof of
+   * possession when the caller is not authenticated as the reservation's owner
+   * or hotel staff, mirroring the reference+email pattern used by reservation
+   * lookup/cancel.
+   */
+  guestEmail?: string | null | undefined;
+  idempotencyKey: string;
+  provider: string;
+  reservationId: string | number;
+};
+
+export type CreateReservationInput = {
+  adults: number;
+  checkInDate: string;
+  checkOutDate: string;
+  children: number;
+  currencyCode: string;
+  extras?: Array<ReservationExtraInput> | null | undefined;
+  guest: ReservationGuestInput;
+  hotelId: string | number;
+  idempotencyKey: string;
+  promoCode?: string | null | undefined;
+  rooms: Array<ReservationRoomInput>;
+};
+
 export type ExtraPricingModel = 'per_night' | 'per_person' | 'per_room' | 'per_stay';
 
 export type HotelSearchInput = {
@@ -32,6 +77,9 @@ export type PageInput = {
   page?: number | null | undefined;
   size?: number | null | undefined;
 };
+
+export type PaymentStatus =
+  'authorized' | 'captured' | 'failed' | 'partially_refunded' | 'pending' | 'refunded';
 
 /** Closed block-type enum; new types require a migration + GraphQL type. */
 export type PlatformBlockType = 'EXPERIENCES' | 'HERO';
@@ -70,6 +118,32 @@ export type RatesInput = {
   hotelId: string | number;
   roomTypeId?: string | number | null | undefined;
 };
+
+export type ReservationExtraInput = {
+  extraId: string | number;
+  quantity: number;
+};
+
+export type ReservationGuestInput = {
+  countryCode?: string | null | undefined;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone?: string | null | undefined;
+};
+
+export type ReservationLookupInput = {
+  email: string;
+  reference: string;
+};
+
+export type ReservationRoomInput = {
+  ratePlanId: string | number;
+  roomTypeId: string | number;
+};
+
+export type ReservationStatus =
+  'cancelled' | 'checked_in' | 'checked_out' | 'confirmed' | 'modified' | 'no_show' | 'pending';
 
 export type RoomTypeStatus = 'active' | 'draft' | 'inactive';
 
@@ -191,6 +265,88 @@ export type HotelByIdQuery = {
       isPrimary: boolean;
       sortOrder: number;
     }>;
+  } | null;
+};
+
+export type HotelDetailsQueryVariables = Exact<{
+  id: string | number;
+}>;
+
+export type HotelDetailsQuery = {
+  hotelDetails: {
+    reviewsCount: number;
+    averageRating: number | null;
+    hotel: {
+      id: string;
+      name: string;
+      brand: string | null;
+      description: string | null;
+      hotelType: string | null;
+      addressLine1: string | null;
+      addressLine2: string | null;
+      city: string | null;
+      countryCode: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      phone: string | null;
+      email: string | null;
+      starRating: number | null;
+      checkInTime: string | null;
+      checkOutTime: string | null;
+      defaultCurrency: string;
+      status: HotelStatus;
+      averageRating: number | null;
+      amenities: Array<{ id: string; name: string; icon: string | null; category: string | null }>;
+      media: Array<{
+        id: string;
+        url: string;
+        altText: string | null;
+        category: string | null;
+        isPrimary: boolean;
+        sortOrder: number;
+      }>;
+    };
+    experiences: Array<{
+      id: string;
+      name: string;
+      description: string | null;
+      category: string | null;
+      durationMinutes: number | null;
+      priceAmount: number | null;
+      currencyCode: string | null;
+      location: string | null;
+      sortOrder: number;
+    }>;
+    restaurants: Array<{
+      id: string;
+      name: string;
+      description: string | null;
+      cuisineType: string | null;
+      openingHours: string | null;
+      location: string | null;
+      sortOrder: number;
+    }>;
+    faqs: Array<{
+      id: string;
+      question: string;
+      answer: string;
+      category: string | null;
+      sortOrder: number;
+    }>;
+    reviews: {
+      total: number;
+      page: number;
+      size: number;
+      items: Array<{
+        id: string;
+        authorName: string | null;
+        rating: number;
+        title: string | null;
+        comment: string | null;
+        responseText: string | null;
+        createdAt: string;
+      }>;
+    };
   } | null;
 };
 
@@ -337,6 +493,40 @@ export type HotelListQuery = {
   };
 };
 
+export type CreatePaymentMutationVariables = Exact<{
+  input: CreatePaymentInput;
+}>;
+
+export type CreatePaymentMutation = {
+  createPayment: {
+    id: string;
+    reservationId: string;
+    amount: number;
+    currencyCode: string;
+    status: PaymentStatus;
+    provider: string;
+    providerReference: string | null;
+    createdAt: string;
+  };
+};
+
+export type CapturePaymentMutationVariables = Exact<{
+  input: CapturePaymentInput;
+}>;
+
+export type CapturePaymentMutation = {
+  capturePayment: {
+    id: string;
+    reservationId: string;
+    amount: number;
+    currencyCode: string;
+    status: PaymentStatus;
+    provider: string;
+    providerReference: string | null;
+    createdAt: string;
+  };
+};
+
 export type PlatformBySlugQueryVariables = Exact<{
   slug: string;
 }>;
@@ -421,6 +611,215 @@ export type QuoteQuery = {
       nights: number;
       subtotalAmount: number;
     }>;
+    extras: Array<{ extraId: string; quantity: number; unitPrice: number; totalPrice: number }>;
+  };
+};
+
+export type CreateReservationMutationVariables = Exact<{
+  input: CreateReservationInput;
+}>;
+
+export type CreateReservationMutation = {
+  createReservation: {
+    created: boolean;
+    reservation: {
+      id: string;
+      reference: string;
+      hotelId: string;
+      status: ReservationStatus;
+      paymentStatus: PaymentStatus;
+      checkInDate: string;
+      checkOutDate: string;
+      adults: number;
+      children: number;
+      currencyCode: string;
+      subtotalAmount: number;
+      discountAmount: number;
+      taxAmount: number;
+      feeAmount: number;
+      totalAmount: number;
+      source: string;
+      notes: string | null;
+      createdAt: string;
+      guest: {
+        id: string | null;
+        firstName: string;
+        lastName: string;
+        email: string | null;
+        phone: string | null;
+        countryCode: string | null;
+      };
+      roomLines: Array<{
+        id: string;
+        roomTypeId: string;
+        ratePlanId: string;
+        checkInDate: string;
+        checkOutDate: string;
+        nights: number;
+        ratePerNight: number;
+        subtotalAmount: number;
+        status: string;
+      }>;
+      extras: Array<{
+        id: string;
+        extraId: string;
+        name: string;
+        quantity: number;
+        unitPrice: number;
+        totalPrice: number;
+      }>;
+      charges: Array<{ id: string; name: string; chargeType: string; amount: number }>;
+    };
+  };
+};
+
+export type MyReservationsQueryVariables = Exact<{ [key: string]: never }>;
+
+export type MyReservationsQuery = {
+  myReservations: Array<{
+    id: string;
+    reference: string;
+    hotelId: string;
+    status: ReservationStatus;
+    paymentStatus: PaymentStatus;
+    checkInDate: string;
+    checkOutDate: string;
+    adults: number;
+    children: number;
+    currencyCode: string;
+    subtotalAmount: number;
+    discountAmount: number;
+    taxAmount: number;
+    feeAmount: number;
+    totalAmount: number;
+    source: string;
+    notes: string | null;
+    createdAt: string;
+    guest: {
+      id: string | null;
+      firstName: string;
+      lastName: string;
+      email: string | null;
+      phone: string | null;
+      countryCode: string | null;
+    };
+    roomLines: Array<{
+      id: string;
+      roomTypeId: string;
+      ratePlanId: string;
+      checkInDate: string;
+      checkOutDate: string;
+      nights: number;
+      ratePerNight: number;
+      subtotalAmount: number;
+      status: string;
+    }>;
+    extras: Array<{
+      id: string;
+      extraId: string;
+      name: string;
+      quantity: number;
+      unitPrice: number;
+      totalPrice: number;
+    }>;
+    charges: Array<{ id: string; name: string; chargeType: string; amount: number }>;
+    cancellation: {
+      id: string;
+      reason: string | null;
+      reasonNote: string | null;
+      isRefundable: boolean;
+      penaltyAmount: number;
+      refundAmount: number;
+      cancelledAt: string;
+    } | null;
+  }>;
+};
+
+export type ReservationLookupQueryVariables = Exact<{
+  input: ReservationLookupInput;
+}>;
+
+export type ReservationLookupQuery = {
+  reservation: {
+    id: string;
+    reference: string;
+    hotelId: string;
+    status: ReservationStatus;
+    paymentStatus: PaymentStatus;
+    checkInDate: string;
+    checkOutDate: string;
+    adults: number;
+    children: number;
+    currencyCode: string;
+    subtotalAmount: number;
+    discountAmount: number;
+    taxAmount: number;
+    feeAmount: number;
+    totalAmount: number;
+    source: string;
+    notes: string | null;
+    createdAt: string;
+    guest: {
+      id: string | null;
+      firstName: string;
+      lastName: string;
+      email: string | null;
+      phone: string | null;
+      countryCode: string | null;
+    };
+    roomLines: Array<{
+      id: string;
+      roomTypeId: string;
+      ratePlanId: string;
+      checkInDate: string;
+      checkOutDate: string;
+      nights: number;
+      ratePerNight: number;
+      subtotalAmount: number;
+      status: string;
+    }>;
+    extras: Array<{
+      id: string;
+      extraId: string;
+      name: string;
+      quantity: number;
+      unitPrice: number;
+      totalPrice: number;
+    }>;
+    charges: Array<{ id: string; name: string; chargeType: string; amount: number }>;
+    cancellation: {
+      id: string;
+      reason: string | null;
+      reasonNote: string | null;
+      isRefundable: boolean;
+      penaltyAmount: number;
+      refundAmount: number;
+      cancelledAt: string;
+    } | null;
+  } | null;
+};
+
+export type CancelReservationMutationVariables = Exact<{
+  input: CancelReservationInput;
+}>;
+
+export type CancelReservationMutation = {
+  cancelReservation: {
+    created: boolean;
+    reservation: {
+      id: string;
+      reference: string;
+      status: ReservationStatus;
+      cancellation: {
+        id: string;
+        reason: string | null;
+        reasonNote: string | null;
+        isRefundable: boolean;
+        penaltyAmount: number;
+        refundAmount: number;
+        cancelledAt: string;
+      } | null;
+    };
   };
 };
 
@@ -796,6 +1195,181 @@ export const HotelByIdDocument = {
     },
   ],
 } as unknown as DocumentNode<HotelByIdQuery, HotelByIdQueryVariables>;
+export const HotelDetailsDocument = {
+  kind: 'Document',
+  definitions: [
+    {
+      kind: 'OperationDefinition',
+      operation: 'query',
+      name: { kind: 'Name', value: 'HotelDetails' },
+      variableDefinitions: [
+        {
+          kind: 'VariableDefinition',
+          variable: { kind: 'Variable', name: { kind: 'Name', value: 'id' } },
+          type: {
+            kind: 'NonNullType',
+            type: { kind: 'NamedType', name: { kind: 'Name', value: 'ID' } },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: 'SelectionSet',
+        selections: [
+          {
+            kind: 'Field',
+            name: { kind: 'Name', value: 'hotelDetails' },
+            arguments: [
+              {
+                kind: 'Argument',
+                name: { kind: 'Name', value: 'id' },
+                value: { kind: 'Variable', name: { kind: 'Name', value: 'id' } },
+              },
+            ],
+            selectionSet: {
+              kind: 'SelectionSet',
+              selections: [
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'hotel' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'name' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'brand' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'description' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'hotelType' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'addressLine1' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'addressLine2' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'city' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'countryCode' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'latitude' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'longitude' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'phone' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'email' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'starRating' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'checkInTime' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'checkOutTime' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'defaultCurrency' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'status' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'averageRating' } },
+                      {
+                        kind: 'Field',
+                        name: { kind: 'Name', value: 'amenities' },
+                        selectionSet: {
+                          kind: 'SelectionSet',
+                          selections: [
+                            { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'name' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'icon' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'category' } },
+                          ],
+                        },
+                      },
+                      {
+                        kind: 'Field',
+                        name: { kind: 'Name', value: 'media' },
+                        selectionSet: {
+                          kind: 'SelectionSet',
+                          selections: [
+                            { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'url' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'altText' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'category' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'isPrimary' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'sortOrder' } },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'experiences' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'name' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'description' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'category' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'durationMinutes' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'priceAmount' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'currencyCode' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'location' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'sortOrder' } },
+                    ],
+                  },
+                },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'restaurants' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'name' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'description' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'cuisineType' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'openingHours' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'location' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'sortOrder' } },
+                    ],
+                  },
+                },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'faqs' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'question' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'answer' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'category' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'sortOrder' } },
+                    ],
+                  },
+                },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'reviews' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'total' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'page' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'size' } },
+                      {
+                        kind: 'Field',
+                        name: { kind: 'Name', value: 'items' },
+                        selectionSet: {
+                          kind: 'SelectionSet',
+                          selections: [
+                            { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'authorName' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'rating' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'title' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'comment' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'responseText' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'createdAt' } },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
+                { kind: 'Field', name: { kind: 'Name', value: 'reviewsCount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'averageRating' } },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<HotelDetailsQuery, HotelDetailsQueryVariables>;
 export const HotelRoomTypesDocument = {
   kind: 'Document',
   definitions: [
@@ -1216,6 +1790,104 @@ export const HotelListDocument = {
     },
   ],
 } as unknown as DocumentNode<HotelListQuery, HotelListQueryVariables>;
+export const CreatePaymentDocument = {
+  kind: 'Document',
+  definitions: [
+    {
+      kind: 'OperationDefinition',
+      operation: 'mutation',
+      name: { kind: 'Name', value: 'CreatePayment' },
+      variableDefinitions: [
+        {
+          kind: 'VariableDefinition',
+          variable: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+          type: {
+            kind: 'NonNullType',
+            type: { kind: 'NamedType', name: { kind: 'Name', value: 'CreatePaymentInput' } },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: 'SelectionSet',
+        selections: [
+          {
+            kind: 'Field',
+            name: { kind: 'Name', value: 'createPayment' },
+            arguments: [
+              {
+                kind: 'Argument',
+                name: { kind: 'Name', value: 'input' },
+                value: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+              },
+            ],
+            selectionSet: {
+              kind: 'SelectionSet',
+              selections: [
+                { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'reservationId' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'amount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'currencyCode' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'status' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'provider' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'providerReference' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'createdAt' } },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<CreatePaymentMutation, CreatePaymentMutationVariables>;
+export const CapturePaymentDocument = {
+  kind: 'Document',
+  definitions: [
+    {
+      kind: 'OperationDefinition',
+      operation: 'mutation',
+      name: { kind: 'Name', value: 'CapturePayment' },
+      variableDefinitions: [
+        {
+          kind: 'VariableDefinition',
+          variable: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+          type: {
+            kind: 'NonNullType',
+            type: { kind: 'NamedType', name: { kind: 'Name', value: 'CapturePaymentInput' } },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: 'SelectionSet',
+        selections: [
+          {
+            kind: 'Field',
+            name: { kind: 'Name', value: 'capturePayment' },
+            arguments: [
+              {
+                kind: 'Argument',
+                name: { kind: 'Name', value: 'input' },
+                value: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+              },
+            ],
+            selectionSet: {
+              kind: 'SelectionSet',
+              selections: [
+                { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'reservationId' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'amount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'currencyCode' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'status' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'provider' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'providerReference' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'createdAt' } },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<CapturePaymentMutation, CapturePaymentMutationVariables>;
 export const PlatformBySlugDocument = {
   kind: 'Document',
   definitions: [
@@ -1452,6 +2124,19 @@ export const QuoteDocument = {
                     ],
                   },
                 },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'extras' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'extraId' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'quantity' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'unitPrice' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'totalPrice' } },
+                    ],
+                  },
+                },
               ],
             },
           },
@@ -1460,6 +2145,461 @@ export const QuoteDocument = {
     },
   ],
 } as unknown as DocumentNode<QuoteQuery, QuoteQueryVariables>;
+export const CreateReservationDocument = {
+  kind: 'Document',
+  definitions: [
+    {
+      kind: 'OperationDefinition',
+      operation: 'mutation',
+      name: { kind: 'Name', value: 'CreateReservation' },
+      variableDefinitions: [
+        {
+          kind: 'VariableDefinition',
+          variable: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+          type: {
+            kind: 'NonNullType',
+            type: { kind: 'NamedType', name: { kind: 'Name', value: 'CreateReservationInput' } },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: 'SelectionSet',
+        selections: [
+          {
+            kind: 'Field',
+            name: { kind: 'Name', value: 'createReservation' },
+            arguments: [
+              {
+                kind: 'Argument',
+                name: { kind: 'Name', value: 'input' },
+                value: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+              },
+            ],
+            selectionSet: {
+              kind: 'SelectionSet',
+              selections: [
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'reservation' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'reference' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'hotelId' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'status' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'paymentStatus' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'checkInDate' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'checkOutDate' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'adults' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'children' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'currencyCode' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'subtotalAmount' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'discountAmount' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'taxAmount' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'feeAmount' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'totalAmount' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'source' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'notes' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'createdAt' } },
+                      {
+                        kind: 'Field',
+                        name: { kind: 'Name', value: 'guest' },
+                        selectionSet: {
+                          kind: 'SelectionSet',
+                          selections: [
+                            { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'firstName' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'lastName' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'email' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'phone' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'countryCode' } },
+                          ],
+                        },
+                      },
+                      {
+                        kind: 'Field',
+                        name: { kind: 'Name', value: 'roomLines' },
+                        selectionSet: {
+                          kind: 'SelectionSet',
+                          selections: [
+                            { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'roomTypeId' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'ratePlanId' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'checkInDate' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'checkOutDate' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'nights' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'ratePerNight' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'subtotalAmount' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'status' } },
+                          ],
+                        },
+                      },
+                      {
+                        kind: 'Field',
+                        name: { kind: 'Name', value: 'extras' },
+                        selectionSet: {
+                          kind: 'SelectionSet',
+                          selections: [
+                            { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'extraId' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'name' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'quantity' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'unitPrice' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'totalPrice' } },
+                          ],
+                        },
+                      },
+                      {
+                        kind: 'Field',
+                        name: { kind: 'Name', value: 'charges' },
+                        selectionSet: {
+                          kind: 'SelectionSet',
+                          selections: [
+                            { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'name' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'chargeType' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'amount' } },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
+                { kind: 'Field', name: { kind: 'Name', value: 'created' } },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<CreateReservationMutation, CreateReservationMutationVariables>;
+export const MyReservationsDocument = {
+  kind: 'Document',
+  definitions: [
+    {
+      kind: 'OperationDefinition',
+      operation: 'query',
+      name: { kind: 'Name', value: 'MyReservations' },
+      selectionSet: {
+        kind: 'SelectionSet',
+        selections: [
+          {
+            kind: 'Field',
+            name: { kind: 'Name', value: 'myReservations' },
+            selectionSet: {
+              kind: 'SelectionSet',
+              selections: [
+                { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'reference' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'hotelId' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'status' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'paymentStatus' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'checkInDate' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'checkOutDate' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'adults' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'children' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'currencyCode' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'subtotalAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'discountAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'taxAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'feeAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'totalAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'source' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'notes' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'createdAt' } },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'guest' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'firstName' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'lastName' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'email' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'phone' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'countryCode' } },
+                    ],
+                  },
+                },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'roomLines' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'roomTypeId' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'ratePlanId' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'checkInDate' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'checkOutDate' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'nights' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'ratePerNight' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'subtotalAmount' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'status' } },
+                    ],
+                  },
+                },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'extras' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'extraId' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'name' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'quantity' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'unitPrice' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'totalPrice' } },
+                    ],
+                  },
+                },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'charges' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'name' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'chargeType' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'amount' } },
+                    ],
+                  },
+                },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'cancellation' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'reason' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'reasonNote' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'isRefundable' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'penaltyAmount' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'refundAmount' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'cancelledAt' } },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<MyReservationsQuery, MyReservationsQueryVariables>;
+export const ReservationLookupDocument = {
+  kind: 'Document',
+  definitions: [
+    {
+      kind: 'OperationDefinition',
+      operation: 'query',
+      name: { kind: 'Name', value: 'ReservationLookup' },
+      variableDefinitions: [
+        {
+          kind: 'VariableDefinition',
+          variable: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+          type: {
+            kind: 'NonNullType',
+            type: { kind: 'NamedType', name: { kind: 'Name', value: 'ReservationLookupInput' } },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: 'SelectionSet',
+        selections: [
+          {
+            kind: 'Field',
+            name: { kind: 'Name', value: 'reservation' },
+            arguments: [
+              {
+                kind: 'Argument',
+                name: { kind: 'Name', value: 'input' },
+                value: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+              },
+            ],
+            selectionSet: {
+              kind: 'SelectionSet',
+              selections: [
+                { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'reference' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'hotelId' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'status' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'paymentStatus' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'checkInDate' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'checkOutDate' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'adults' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'children' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'currencyCode' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'subtotalAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'discountAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'taxAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'feeAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'totalAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'source' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'notes' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'createdAt' } },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'guest' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'firstName' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'lastName' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'email' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'phone' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'countryCode' } },
+                    ],
+                  },
+                },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'roomLines' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'roomTypeId' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'ratePlanId' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'checkInDate' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'checkOutDate' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'nights' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'ratePerNight' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'subtotalAmount' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'status' } },
+                    ],
+                  },
+                },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'extras' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'extraId' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'name' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'quantity' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'unitPrice' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'totalPrice' } },
+                    ],
+                  },
+                },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'charges' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'name' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'chargeType' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'amount' } },
+                    ],
+                  },
+                },
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'cancellation' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'reason' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'reasonNote' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'isRefundable' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'penaltyAmount' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'refundAmount' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'cancelledAt' } },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<ReservationLookupQuery, ReservationLookupQueryVariables>;
+export const CancelReservationDocument = {
+  kind: 'Document',
+  definitions: [
+    {
+      kind: 'OperationDefinition',
+      operation: 'mutation',
+      name: { kind: 'Name', value: 'CancelReservation' },
+      variableDefinitions: [
+        {
+          kind: 'VariableDefinition',
+          variable: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+          type: {
+            kind: 'NonNullType',
+            type: { kind: 'NamedType', name: { kind: 'Name', value: 'CancelReservationInput' } },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: 'SelectionSet',
+        selections: [
+          {
+            kind: 'Field',
+            name: { kind: 'Name', value: 'cancelReservation' },
+            arguments: [
+              {
+                kind: 'Argument',
+                name: { kind: 'Name', value: 'input' },
+                value: { kind: 'Variable', name: { kind: 'Name', value: 'input' } },
+              },
+            ],
+            selectionSet: {
+              kind: 'SelectionSet',
+              selections: [
+                {
+                  kind: 'Field',
+                  name: { kind: 'Name', value: 'reservation' },
+                  selectionSet: {
+                    kind: 'SelectionSet',
+                    selections: [
+                      { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'reference' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'status' } },
+                      {
+                        kind: 'Field',
+                        name: { kind: 'Name', value: 'cancellation' },
+                        selectionSet: {
+                          kind: 'SelectionSet',
+                          selections: [
+                            { kind: 'Field', name: { kind: 'Name', value: 'id' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'reason' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'reasonNote' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'isRefundable' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'penaltyAmount' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'refundAmount' } },
+                            { kind: 'Field', name: { kind: 'Name', value: 'cancelledAt' } },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
+                { kind: 'Field', name: { kind: 'Name', value: 'created' } },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<CancelReservationMutation, CancelReservationMutationVariables>;
 export const RoomTypeByIdDocument = {
   kind: 'Document',
   definitions: [

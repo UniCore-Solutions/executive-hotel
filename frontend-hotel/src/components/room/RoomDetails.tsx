@@ -8,7 +8,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { EXTRAS } from '@/data';
 import { useSearch } from '@/context/SearchContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/context/ToastContext';
@@ -23,10 +22,11 @@ import {
 } from '@/lib/dates';
 import { image, IMG_FALLBACK } from '@/services/availability';
 import { getStayRoom } from '@/services/catalog';
+import { GraphqlClientError } from '@/services/graphqlClient';
 import { getExtras } from '@/services/extras';
 import { ensurePricingSources } from '@/services/pricingHydration';
 import { recordRoomView } from '@/services/activity';
-import { getQuote } from '@/services/quote';
+import { getQuote, mapQuoteExtraLines } from '@/services/quote';
 import { bookingURL, hotelRoomURL, roomURL } from '@/lib/links';
 import Calendar from '@/components/search/Calendar';
 import Breadcrumb from '@/components/ui/Breadcrumb';
@@ -143,7 +143,11 @@ export default function RoomDetails({
      gate re-renders with the synced plan, which must not change the badge). */
   const [initialPlanOnce] = useState(initialPlan);
   const [extrasSel, setExtrasSel] = useState<ExtrasSel>(() => parseExtrasParam(initialExtras));
-  const [extrasList, setExtrasList] = useState<Extra[]>(EXTRAS);
+  // Real backend extras load async (see the hotelId-keyed effect below); an
+  // empty list until then means a fixture slug id (e.g. "airport-shuttle")
+  // can never leak into a quote request (see Task 8 in
+  // docs/investigations/TASK2-TASK3-CURRENCY-AND-ATOMICITY.md).
+  const [extrasList, setExtrasList] = useState<Extra[]>([]);
   const [thumbIndex, setThumbIndex] = useState(0);
   const [dialog, setDialog] = useState<null | 'dates' | 'guests'>(null);
   const [guestTouched, setGuestTouched] = useState(false);
@@ -176,8 +180,10 @@ export default function RoomDetails({
     try {
       const res = await getStayRoom(undefined, roomId, {
         checkin: state.checkin,
+        checkout: state.checkout,
         adults: state.adults || 2,
         children: state.children || 0,
+        rooms: state.rooms,
       });
       if (seq !== seqRef.current || !res || !res.room) return;
       setAvailability(res.availability);
@@ -188,14 +194,16 @@ export default function RoomDetails({
       if (seq !== seqRef.current) return;
       setLoadError('Could not refresh availability — please check your connection.');
     }
-  }, [room, roomId, state.checkin, state.adults, state.children]);
+  }, [room, roomId, state.checkin, state.checkout, state.adults, state.children, state.rooms]);
 
   useEffect(() => {
     let alive = true;
     getStayRoom(undefined, roomId, {
       checkin: state.checkin,
+      checkout: state.checkout,
       adults: state.adults || 2,
       children: state.children || 0,
+      rooms: state.rooms,
     }).then((res) => {
       if (!alive) return;
       if (!res || !res.room) {
@@ -215,8 +223,20 @@ export default function RoomDetails({
         });
       }
       setLoaded(true);
-    }).catch(() => {
+    }).catch((err) => {
       if (!alive) return;
+      // roomType() throws rather than resolving to null for a missing room
+      // (VALIDATION for a bad UUID lookup, NOT_FOUND for a bad slug lookup —
+      // both mean "not found" here), so the `!res.room` branch above never
+      // actually sees that case; catch it here instead of showing a
+      // misleading "check your connection" message.
+      if (
+        err instanceof GraphqlClientError &&
+        (err.code === 'NOT_FOUND' || err.code === 'VALIDATION')
+      ) {
+        setNotFound(true);
+        return;
+      }
       setLoadError('Could not load room details — please check your connection and try again.');
     });
     return () => {
@@ -284,7 +304,6 @@ export default function RoomDetails({
       checkOutDate: state.checkout,
       adults: state.adults || 2,
       children: state.children || 0,
-      currencyCode: currency,
       rooms: [{ roomTypeId: room.id, ratePlanId: plan.backendRatePlanId }],
       extras: extrasSel.map((x) => ({ extraId: x.id, quantity: x.qty })),
       promoCode: state.promo || undefined,
@@ -292,7 +311,11 @@ export default function RoomDetails({
       .then((result) => {
         if (reqId !== quoteReqId.current) return;
         if (result.raw.valid) {
-          setQuoteState({ quote: result.quote, loading: false, error: '' });
+          setQuoteState({
+            quote: { ...result.quote, extras: mapQuoteExtraLines(result.raw.extras, extrasList) },
+            loading: false,
+            error: '',
+          });
         } else {
           setQuoteState({
             quote: null,
@@ -301,9 +324,16 @@ export default function RoomDetails({
           });
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (reqId !== quoteReqId.current) return;
-        setQuoteState({ quote: null, loading: false, error: 'Could not calculate price — please try again.' });
+        // VALIDATION/CONFLICT here mean the request itself is wrong (e.g. no
+        // price configured for these dates) — retrying won't help, so the
+        // backend's specific message is more useful than a generic one.
+        const message =
+          err instanceof GraphqlClientError && (err.code === 'VALIDATION' || err.code === 'CONFLICT')
+            ? err.message
+            : 'Could not calculate price — please try again.';
+        setQuoteState({ quote: null, loading: false, error: message });
       });
   }, [
     plan,
@@ -315,8 +345,8 @@ export default function RoomDetails({
     state.rooms,
     state.promo,
     extrasSel,
+    extrasList,
     room,
-    currency,
     hotelId,
   ]);
 

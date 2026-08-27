@@ -3,7 +3,7 @@ import Link from 'next/link';
 import HeaderTheme from '@/components/layout/HeaderTheme';
 
 export const metadata: Metadata = {
-  title: 'Privacy notice — Executive Boutique Hotel Rabat',
+  title: 'Privacy notice — Executive Hotel',
 };
 
 export default function PrivacyPage() {

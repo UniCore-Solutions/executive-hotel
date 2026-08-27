@@ -30,9 +30,9 @@ export const BK = {
 const TRIP = (id: string) => `https://aw-d.tripcdn.com/images/${id}.jpg`;
 
 export const PROPERTY: Property = {
-  id: 'executive-boutique-rabat',
-  name: 'Executive Boutique Hotel Rabat',
-  brand: 'Executive Boutique Hotels',
+  id: 'executive-hotel',
+  name: 'Executive Hotel',
+  brand: 'Executive Hotel',
   city: 'Rabat',
   area: 'Agdal',
   type: 'Boutique Hotel',
@@ -45,7 +45,7 @@ export const PROPERTY: Property = {
   description:
     '4-star rooms with free Wi-Fi in the Agdal district of Rabat — air-conditioned rooms with a desk, kettle, safe, flat-screen TV and private shower bathroom, a restaurant serving French, Mediterranean and Moroccan cuisine, and a free buffet breakfast.',
   longDescription:
-    'Located in the Agdal-Ryad district in Rabat, Executive Boutique Hotel Rabat offers 4-star rooms with free Wi-Fi. All air-conditioned rooms come with a work desk, an electric kettle, a safety deposit box, a flat-screen TV and a private bathroom with a walk-in shower, plus bed linen and towels. A free buffet breakfast is served each morning, and the restaurant cooks French, Mediterranean and Moroccan cuisine, with vegetarian and halal options on request. Free private parking is available on site, and a paid airport shuttle runs to Rabat-Salé Airport. Arabic, English, Spanish and French are spoken at the 24-hour reception.',
+    'Located in the Agdal-Ryad district in Rabat, Executive Hotel offers 4-star rooms with free Wi-Fi. All air-conditioned rooms come with a work desk, an electric kettle, a safety deposit box, a flat-screen TV and a private bathroom with a walk-in shower, plus bed linen and towels. A free buffet breakfast is served each morning, and the restaurant cooks French, Mediterranean and Moroccan cuisine, with vegetarian and halal options on request. Free private parking is available on site, and a paid airport shuttle runs to Rabat-Salé Airport. Arabic, English, Spanish and French are spoken at the 24-hour reception.',
   amenities: [
     'Free Wi-Fi',
     'Free private parking',
@@ -228,52 +228,52 @@ export const PROPERTY: Property = {
     {
       src: BK.lobbyWoodenWall,
       category: 'general',
-      alt: 'Lobby with a wooden feature wall at Executive Boutique Hotel Rabat',
+      alt: 'Lobby with a wooden feature wall at Executive Hotel',
     },
     {
       src: BK.lobbyWaitingArea,
       category: 'general',
-      alt: 'Lobby waiting area with chairs and tables at Executive Boutique Hotel Rabat',
+      alt: 'Lobby waiting area with chairs and tables at Executive Hotel',
     },
     {
       src: BK.livingRoomCouches,
       category: 'general',
-      alt: 'Living room with couches and chairs at Executive Boutique Hotel Rabat',
+      alt: 'Living room with couches and chairs at Executive Hotel',
     },
     {
       src: BK.roomTwoBedsDesk,
       category: 'rooms',
-      alt: 'Double room with two beds and a desk at Executive Boutique Hotel Rabat',
+      alt: 'Double room with two beds and a desk at Executive Hotel',
     },
     {
       src: BK.roomBedDeskTv,
       category: 'rooms',
-      alt: 'Room with a bed, a desk and a TV at Executive Boutique Hotel Rabat',
+      alt: 'Room with a bed, a desk and a TV at Executive Hotel',
     },
     {
       src: BK.roomWhiteBedDressing,
       category: 'rooms',
-      alt: 'Bedroom with a white bed at Executive Boutique Hotel Rabat',
+      alt: 'Bedroom with a white bed at Executive Hotel',
     },
     {
       src: BK.bedroomBlueChairs,
       category: 'rooms',
-      alt: 'Bedroom with a bed and two blue chairs at Executive Boutique Hotel Rabat',
+      alt: 'Bedroom with a bed and two blue chairs at Executive Hotel',
     },
     {
       src: BK.roomTwoBlueChairs,
       category: 'rooms',
-      alt: 'Hotel room with a bed and two blue chairs at Executive Boutique Hotel Rabat',
+      alt: 'Hotel room with a bed and two blue chairs at Executive Hotel',
     },
     {
       src: TRIP('0223i12000l4acfph291E'),
       category: 'rooms',
-      alt: 'Executive Suite at Executive Boutique Hotel Rabat',
+      alt: 'Executive Suite at Executive Hotel',
     },
     {
       src: TRIP('0222z12000l6x2nio090D'),
       category: 'rooms',
-      alt: 'Superior room at Executive Boutique Hotel Rabat',
+      alt: 'Superior room at Executive Hotel',
     },
   ],
   reviews: [

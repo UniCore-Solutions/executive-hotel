@@ -76,7 +76,7 @@ WHERE u.id = '00000000-0000-0000-0000-000000000005' AND r.name = 'hotel_admin' A
 -- platform
 -- ---------------------------------------------------------------------------
 
-INSERT INTO platforms (id, name, slug, tagline, description, status, default_currency) VALUES ('00000000-0000-0000-0000-000000000001','The Hotel Collection','the-hotel-collection','A curated collection of boutique stays.','The Hotel Collection brings together distinctive hotels, each with its own character, service and sense of place.','active',NULL);
+INSERT INTO platforms (id, name, slug, tagline, description, status, default_currency) VALUES ('00000000-0000-0000-0000-000000000001','Executive Hotel','executive-hotel','A curated collection of boutique stays.','Executive Hotel brings together distinctive hotels, each with its own character, service and sense of place.','active',NULL);
 
 
 -- ---------------------------------------------------------------------------
@@ -87,26 +87,26 @@ INSERT INTO hotels (id, name, brand, description, long_description, hotel_type,
                     address_line1, address_line2, city, country_code, latitude, longitude,
                     phone, email, star_rating, check_in_time, check_out_time,
                     default_currency, config, status, platform_id, slug, is_featured_on_homepage) VALUES
-    ('00000000-0000-0000-0000-000000000001','Azure Bay Resort','The Hotel Collection','A seaside retreat on Lisbon''s Marina','Azure Bay Resort sits on the edge of Lisbon''s Marina, minutes from the historic waterfront. Sunlit rooms with sea views, a rooftop seafood restaurant and a saltwater pool make it a calm base for exploring the city.','resort','Avenida da Marina 42','Doca de Alcântara','Lisbon','PT',38.7050,-9.1785,'+351 21 000 0101','hello@azurebay.example',4,'15:00','12:00','EUR','{}','active','00000000-0000-0000-0000-000000000001','azure-bay-resort',TRUE),
+    ('00000000-0000-0000-0000-000000000001','Azure Bay Resort','The Hotel Collection','A seaside retreat on Lisbon''s Marina','Azure Bay Resort sits on the edge of Lisbon''s Marina, minutes from the historic waterfront. Sunlit rooms with sea views, a rooftop seafood restaurant and a saltwater pool make it a calm base for exploring the city.','resort','Avenida da Marina 42','Doca de Alcântara','Lisbon','PT',38.7050,-9.1785,'+351 21 000 0101','hello@azurebay.example',4,'15:00','12:00','MAD','{}','active','00000000-0000-0000-0000-000000000001','azure-bay-resort',TRUE),
     ('00000000-0000-0000-0000-000000000002','Dar Zellij','The Hotel Collection','An intimate riad in the heart of the Marrakech medina','Dar Zellij is a traditional riad tucked inside the old city walls, where carved cedar, zellige tilework and a candlelit courtyard set the tone. Hammam, rooftop dinners and the Atlas Mountains on the horizon.','riad','Derb Sidi Bouloukat 17','Médina','Marrakech','MA',31.6287,-7.9940,'+212 524 00 0202','stay@darzellij.example',5,'14:00','12:00','MAD','{}','active','00000000-0000-0000-0000-000000000001','dar-zellij',TRUE),
-    ('00000000-0000-0000-0000-000000000003','Villa Aurelia','The Hotel Collection','A Roman villa hotel on the Pincian Hill','Villa Aurelia pairs a 19th-century palazzo with modern suites, a garden terrace above the Spanish Steps and staff who remember your name. Steps from the Borghese Gardens, minutes from the heart of Rome.','boutique','Via Aurelia Antica 7','Trastevere','Rome','IT',41.8903,12.4612,'+39 06 000 0303','stay@villa-aurelia.example',5,'15:00','11:00','EUR','{}','active','00000000-0000-0000-0000-000000000001','villa-aurelia',TRUE);
+    ('00000000-0000-0000-0000-000000000003','Villa Aurelia','The Hotel Collection','A Roman villa hotel on the Pincian Hill','Villa Aurelia pairs a 19th-century palazzo with modern suites, a garden terrace above the Spanish Steps and staff who remember your name. Steps from the Borghese Gardens, minutes from the heart of Rome.','boutique','Via Aurelia Antica 7','Trastevere','Rome','IT',41.8903,12.4612,'+39 06 000 0303','stay@villa-aurelia.example',5,'15:00','11:00','MAD','{}','active','00000000-0000-0000-0000-000000000001','villa-aurelia',TRUE);
 
 
 -- ---------------------------------------------------------------------------
 -- room types
 -- ---------------------------------------------------------------------------
 
-INSERT INTO room_types (id, hotel_id, name, description, long_description, max_adults, max_children,
+INSERT INTO room_types (id, hotel_id, name, slug, description, long_description, max_adults, max_children,
                         bed_configuration, size_sqm, view_type, status, total_inventory, is_featured_on_homepage) VALUES
-    ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','Deluxe Sea View','King room overlooking the marina','A bright king room with floor-to-ceiling windows over the Tagus, a work desk and a marble bathroom with walk-in rain shower.',2,1,'1 King bed',28.00,'Sea view','active',10,TRUE),
-    ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','Family Suite','Two-bedroom suite with lounge and sea-view terrace','Two bedrooms with a shared lounge, small kitchenette and a terrace with direct marina views; sleeps four comfortably.',4,2,'1 King + 2 Single beds',55.00,'Sea view','active',6,TRUE),
-    ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','Garden Twin','Cosy twin overlooking the pool garden','A quiet twin room on the garden side with two single beds, tea-making corner and views of the pool deck.',2,1,'2 Single beds',24.00,'Garden view','active',8,FALSE),
-    ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000002','Courtyard Double','Traditional double around the central patio','A double room opening onto the riad''s candlelit courtyard, with carved plaster, tadelakt walls and a private roof terrace.',2,0,'1 Queen bed',32.00,'Courtyard','active',8,FALSE),
-    ('00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000002','Atlas Mountain View','King room with balconies over the rooftops','A king room whose twin balconies frame the Atlas Mountains, with a freestanding bathtub and a fireplace in winter.',2,1,'1 King bed',38.00,'Mountain view','active',6,TRUE),
-    ('00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000002','Family Riad Suite','Two-floor suite with rooftop terrace and plunge pool','The riad''s showpiece: two floors, a private lounge, a rooftop terrace with a small plunge pool and views to the Koutoubia.',4,2,'1 King + 2 Single beds',70.00,'Terrace','active',4,TRUE),
-    ('00000000-0000-0000-0000-000000000007','00000000-0000-0000-0000-000000000003','Classic Room','Elegant queen room in the original palazzo','A classic room with restored frescoes, high ceilings and a marble bathroom; quiet, dark and beautifully proportioned.',2,0,'1 Queen bed',22.00,'City view','active',12,TRUE),
-    ('00000000-0000-0000-0000-000000000008','00000000-0000-0000-0000-000000000003','Panorama Superior','King room with balconies over the Pincio','A king room on the top floor with two small balconies overlooking the city, a writing desk and a walk-in wardrobe.',2,1,'1 King bed',30.00,'City panorama','active',8,FALSE),
-    ('00000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-000000000003','Imperial Suite','Palazzo suite with lounge, dining corner and dressing room','The Imperial Suite spans the original grand salon: a separate lounge, dining corner, dressing room and views toward the Pincian Hill.',3,1,'1 King bed + lounge',64.00,'Pincio view','active',4,TRUE);
+    ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','Deluxe Sea View','deluxe-sea-view','King room overlooking the marina','A bright king room with floor-to-ceiling windows over the Tagus, a work desk and a marble bathroom with walk-in rain shower.',2,1,'1 King bed',28.00,'Sea view','active',10,TRUE),
+    ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','Family Suite','family-suite','Two-bedroom suite with lounge and sea-view terrace','Two bedrooms with a shared lounge, small kitchenette and a terrace with direct marina views; sleeps four comfortably.',4,2,'1 King + 2 Single beds',55.00,'Sea view','active',6,TRUE),
+    ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','Garden Twin','garden-twin','Cosy twin overlooking the pool garden','A quiet twin room on the garden side with two single beds, tea-making corner and views of the pool deck.',2,1,'2 Single beds',24.00,'Garden view','active',8,FALSE),
+    ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000002','Courtyard Double','courtyard-double','Traditional double around the central patio','A double room opening onto the riad''s candlelit courtyard, with carved plaster, tadelakt walls and a private roof terrace.',2,0,'1 Queen bed',32.00,'Courtyard','active',8,FALSE),
+    ('00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000002','Atlas Mountain View','atlas-mountain-view','King room with balconies over the rooftops','A king room whose twin balconies frame the Atlas Mountains, with a freestanding bathtub and a fireplace in winter.',2,1,'1 King bed',38.00,'Mountain view','active',6,TRUE),
+    ('00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000002','Family Riad Suite','family-riad-suite','Two-floor suite with rooftop terrace and plunge pool','The riad''s showpiece: two floors, a private lounge, a rooftop terrace with a small plunge pool and views to the Koutoubia.',4,2,'1 King + 2 Single beds',70.00,'Terrace','active',4,TRUE),
+    ('00000000-0000-0000-0000-000000000007','00000000-0000-0000-0000-000000000003','Classic Room','classic-room','Elegant queen room in the original palazzo','A classic room with restored frescoes, high ceilings and a marble bathroom; quiet, dark and beautifully proportioned.',2,0,'1 Queen bed',22.00,'City view','active',12,TRUE),
+    ('00000000-0000-0000-0000-000000000008','00000000-0000-0000-0000-000000000003','Panorama Superior','panorama-superior','King room with balconies over the Pincio','A king room on the top floor with two small balconies overlooking the city, a writing desk and a walk-in wardrobe.',2,1,'1 King bed',30.00,'City panorama','active',8,FALSE),
+    ('00000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-000000000003','Imperial Suite','imperial-suite','Palazzo suite with lounge, dining corner and dressing room','The Imperial Suite spans the original grand salon: a separate lounge, dining corner, dressing room and views toward the Pincian Hill.',3,1,'1 King bed + lounge',64.00,'Pincio view','active',4,TRUE);
 
 
 -- physical rooms (a few per type so the rooms workspace is usable)
@@ -201,45 +201,45 @@ INSERT INTO rate_plans (id, hotel_id, name, code, currency_code, meal_plan, canc
                         payment_policy, is_refundable, cancellation_deadline_days,
                         cancellation_penalty_type, cancellation_penalty_value,
                         payment_timing, deposit_percentage, min_stay, max_stay, occupancy_rules, status) VALUES
-    ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','Bed & Breakfast Flex','BB_FLEX','EUR','breakfast','Free cancellation up to 2 days before arrival; after that the first night is charged.','Pay at the property',TRUE,2,'first_night',NULL,'pay_at_property',NULL,1,NULL,'Maximum 2 adults + 1 child per Deluxe Sea View room','active'),
-    ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','Non-Refundable Saver','SAVER','EUR',NULL,'Non-refundable; full stay charged on cancellation.','Full prepayment at booking',FALSE,NULL,'full_stay',NULL,'prepay_full',NULL,NULL,NULL,NULL,'active'),
+    ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','Bed & Breakfast Flex','BB_FLEX','MAD','breakfast','Free cancellation up to 2 days before arrival; after that the first night is charged.','Pay at the property',TRUE,2,'first_night',NULL,'pay_at_property',NULL,1,NULL,'Maximum 2 adults + 1 child per Deluxe Sea View room','active'),
+    ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','Non-Refundable Saver','SAVER','MAD',NULL,'Non-refundable; full stay charged on cancellation.','Full prepayment at booking',FALSE,NULL,'full_stay',NULL,'prepay_full',NULL,NULL,NULL,NULL,'active'),
     ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000002','Courtyard & Breakfast','COURTYARD','MAD','breakfast','Free cancellation up to 3 days before arrival; after that one night is charged.','Pay at the property',TRUE,3,'first_night',NULL,'pay_at_property',NULL,1,NULL,'Maximum 2 adults','active'),
     ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000002','Riad Half Board','HALF_BOARD','MAD','half_board','Free cancellation up to 5 days before arrival; after that 30% of the stay is charged.','30% deposit at booking',TRUE,5,'percentage',30.00,'prepay_deposit',30.00,2,NULL,NULL,'active'),
-    ('00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000003','Palazzo Classic','CLASSIC','EUR','breakfast','Free cancellation up to 1 day before arrival; after that the first night is charged.','Pay at the property',TRUE,1,'first_night',NULL,'pay_at_property',NULL,NULL,NULL,'Maximum 2 adults','active'),
-    ('00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000003','Non-Refundable Roma','ROMA_SAVER','EUR',NULL,'Non-refundable; full stay charged on cancellation.','Full prepayment at booking',FALSE,NULL,'full_stay',NULL,'prepay_full',NULL,NULL,NULL,NULL,'active');
+    ('00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000003','Palazzo Classic','CLASSIC','MAD','breakfast','Free cancellation up to 1 day before arrival; after that the first night is charged.','Pay at the property',TRUE,1,'first_night',NULL,'pay_at_property',NULL,NULL,NULL,'Maximum 2 adults','active'),
+    ('00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000003','Non-Refundable Roma','ROMA_SAVER','MAD',NULL,'Non-refundable; full stay charged on cancellation.','Full prepayment at booking',FALSE,NULL,'full_stay',NULL,'prepay_full',NULL,NULL,NULL,NULL,'active');
 
 
 INSERT INTO room_type_rate_plans (id, hotel_id, room_type_id, rate_plan_id, currency_code) VALUES
-    ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','EUR'), ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','EUR'),
-    ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','EUR'), ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000002','EUR'),
-    ('00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','EUR'), ('00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000002','EUR'),
+    ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','MAD'), ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','MAD'),
+    ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','MAD'), ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000002','MAD'),
+    ('00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','MAD'), ('00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000002','MAD'),
     ('00000000-0000-0000-0000-000000000007','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000003','MAD'), ('00000000-0000-0000-0000-000000000008','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000004','MAD'),
     ('00000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000003','MAD'), ('00000000-0000-0000-0000-000000000010','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000004','MAD'),
     ('00000000-0000-0000-0000-000000000011','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000003','MAD'), ('00000000-0000-0000-0000-000000000012','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000004','MAD'),
-    ('00000000-0000-0000-0000-000000000013','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000007','00000000-0000-0000-0000-000000000005','EUR'), ('00000000-0000-0000-0000-000000000014','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000007','00000000-0000-0000-0000-000000000006','EUR'),
-    ('00000000-0000-0000-0000-000000000015','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000008','00000000-0000-0000-0000-000000000005','EUR'), ('00000000-0000-0000-0000-000000000016','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000008','00000000-0000-0000-0000-000000000006','EUR'),
-    ('00000000-0000-0000-0000-000000000017','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-000000000005','EUR'), ('00000000-0000-0000-0000-000000000018','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-000000000006','EUR');
+    ('00000000-0000-0000-0000-000000000013','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000007','00000000-0000-0000-0000-000000000005','MAD'), ('00000000-0000-0000-0000-000000000014','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000007','00000000-0000-0000-0000-000000000006','MAD'),
+    ('00000000-0000-0000-0000-000000000015','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000008','00000000-0000-0000-0000-000000000005','MAD'), ('00000000-0000-0000-0000-000000000016','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000008','00000000-0000-0000-0000-000000000006','MAD'),
+    ('00000000-0000-0000-0000-000000000017','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-000000000005','MAD'), ('00000000-0000-0000-0000-000000000018','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-000000000006','MAD');
 
 
 INSERT INTO rate_plan_prices (id, room_type_rate_plan_id, currency_code, valid_from, valid_to, price_amount) VALUES
-    ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','EUR','2026-01-01','2027-12-31',189.00),
-    ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000002','EUR','2026-01-01','2027-12-31',165.00),
-    ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000003','EUR','2026-01-01','2027-12-31',240.00),
-    ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000004','EUR','2026-01-01','2027-12-31',210.00),
-    ('00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000005','EUR','2026-01-01','2027-12-31',150.00),
-    ('00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000006','EUR','2026-01-01','2027-12-31',128.00),
+    ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','MAD','2026-01-01','2027-12-31',2077),
+    ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000002','MAD','2026-01-01','2027-12-31',1813),
+    ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000003','MAD','2026-01-01','2027-12-31',2638),
+    ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000004','MAD','2026-01-01','2027-12-31',2308),
+    ('00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000005','MAD','2026-01-01','2027-12-31',1649),
+    ('00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000006','MAD','2026-01-01','2027-12-31',1407),
     ('00000000-0000-0000-0000-000000000007','00000000-0000-0000-0000-000000000007','MAD','2026-01-01','2027-12-31',1200.00),
     ('00000000-0000-0000-0000-000000000008','00000000-0000-0000-0000-000000000008','MAD','2026-01-01','2027-12-31',980.00),
     ('00000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-000000000009','MAD','2026-01-01','2027-12-31',1500.00),
     ('00000000-0000-0000-0000-000000000010','00000000-0000-0000-0000-000000000010','MAD','2026-01-01','2027-12-31',1250.00),
     ('00000000-0000-0000-0000-000000000011','00000000-0000-0000-0000-000000000011','MAD','2026-01-01','2027-12-31',2200.00),
     ('00000000-0000-0000-0000-000000000012','00000000-0000-0000-0000-000000000012','MAD','2026-01-01','2027-12-31',1850.00),
-    ('00000000-0000-0000-0000-000000000013','00000000-0000-0000-0000-000000000013','EUR','2026-01-01','2027-12-31',95.00),
-    ('00000000-0000-0000-0000-000000000014','00000000-0000-0000-0000-000000000014','EUR','2026-01-01','2027-12-31',79.00),
-    ('00000000-0000-0000-0000-000000000015','00000000-0000-0000-0000-000000000015','EUR','2026-01-01','2027-12-31',145.00),
-    ('00000000-0000-0000-0000-000000000016','00000000-0000-0000-0000-000000000016','EUR','2026-01-01','2027-12-31',120.00),
-    ('00000000-0000-0000-0000-000000000017','00000000-0000-0000-0000-000000000017','EUR','2026-01-01','2027-12-31',260.00),
-    ('00000000-0000-0000-0000-000000000018','00000000-0000-0000-0000-000000000018','EUR','2026-01-01','2027-12-31',225.00);
+    ('00000000-0000-0000-0000-000000000013','00000000-0000-0000-0000-000000000013','MAD','2026-01-01','2027-12-31',1044),
+    ('00000000-0000-0000-0000-000000000014','00000000-0000-0000-0000-000000000014','MAD','2026-01-01','2027-12-31',868),
+    ('00000000-0000-0000-0000-000000000015','00000000-0000-0000-0000-000000000015','MAD','2026-01-01','2027-12-31',1594),
+    ('00000000-0000-0000-0000-000000000016','00000000-0000-0000-0000-000000000016','MAD','2026-01-01','2027-12-31',1319),
+    ('00000000-0000-0000-0000-000000000017','00000000-0000-0000-0000-000000000017','MAD','2026-01-01','2027-12-31',2857),
+    ('00000000-0000-0000-0000-000000000018','00000000-0000-0000-0000-000000000018','MAD','2026-01-01','2027-12-31',2473);
 
 
 -- ---------------------------------------------------------------------------
@@ -273,18 +273,18 @@ INSERT INTO tax_fee_types (id, hotel_id, name, charge_type, calculation_method, 
 -- ---------------------------------------------------------------------------
 
 INSERT INTO extras (id, hotel_id, name, description, pricing_model, price_amount, currency_code, status) VALUES
-    ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','Breakfast Buffet','Daily buffet on the rooftop with views over the marina.','per_person',15.00,'EUR','active'),
-    ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','Airport Transfer','Private transfer from Lisbon airport, one way.','per_stay',45.00,'EUR','active'),
-    ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','Spa Access','Access to the spa and saltwater pool for the whole stay.','per_stay',30.00,'EUR','active'),
-    ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000001','Late Check-out','Keep the room until 16:00 on departure day.','per_room',25.00,'EUR','active'),
+    ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','Breakfast Buffet','Daily buffet on the rooftop with views over the marina.','per_person',165,'MAD','active'),
+    ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','Airport Transfer','Private transfer from Lisbon airport, one way.','per_stay',495,'MAD','active'),
+    ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','Spa Access','Access to the spa and saltwater pool for the whole stay.','per_stay',330,'MAD','active'),
+    ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000001','Late Check-out','Keep the room until 16:00 on departure day.','per_room',275,'MAD','active'),
     ('00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000002','Hammam & Massage','Traditional hammam ritual with a 45-minute massage.','per_person',350.00,'MAD','active'),
     ('00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000002','Airport Transfer','Private transfer from Marrakech airport, one way.','per_stay',300.00,'MAD','active'),
     ('00000000-0000-0000-0000-000000000007','00000000-0000-0000-0000-000000000002','Rooftop Dinner','Three-course dinner on the rooftop under the stars.','per_person',450.00,'MAD','active'),
     ('00000000-0000-0000-0000-000000000008','00000000-0000-0000-0000-000000000002','Cooking Class','Hands-on tagine class with the riad''s chef.','per_person',500.00,'MAD','active'),
-    ('00000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-000000000003','Breakfast at the Terrace','Buffet breakfast on the garden terrace.','per_person',18.00,'EUR','active'),
-    ('00000000-0000-0000-0000-000000000010','00000000-0000-0000-0000-000000000003','Private Car to City','Chauffeured car to the city centre, one way.','per_stay',35.00,'EUR','active'),
-    ('00000000-0000-0000-0000-000000000011','00000000-0000-0000-0000-000000000003','Villa Wine Cellar','Guided tasting in the 19th-century cellar.','per_stay',60.00,'EUR','active'),
-    ('00000000-0000-0000-0000-000000000012','00000000-0000-0000-0000-000000000003','Late Check-out','Keep the room until 15:00 on departure day.','per_room',20.00,'EUR','active');
+    ('00000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-000000000003','Breakfast at the Terrace','Buffet breakfast on the garden terrace.','per_person',198,'MAD','active'),
+    ('00000000-0000-0000-0000-000000000010','00000000-0000-0000-0000-000000000003','Private Car to City','Chauffeured car to the city centre, one way.','per_stay',385,'MAD','active'),
+    ('00000000-0000-0000-0000-000000000011','00000000-0000-0000-0000-000000000003','Villa Wine Cellar','Guided tasting in the 19th-century cellar.','per_stay',659,'MAD','active'),
+    ('00000000-0000-0000-0000-000000000012','00000000-0000-0000-0000-000000000003','Late Check-out','Keep the room until 15:00 on departure day.','per_room',220,'MAD','active');
 
 
 -- ---------------------------------------------------------------------------
@@ -293,15 +293,15 @@ INSERT INTO extras (id, hotel_id, name, description, pricing_model, price_amount
 
 INSERT INTO experiences (id, hotel_id, name, description, category, duration_minutes, price_amount,
                          currency_code, location, status, sort_order, is_featured_on_homepage) VALUES
-    ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','Sunset Cruise on the Tagus','Sail the Tagus at golden hour past the Belém Tower and the 25 de Abril bridge, with a glass of local wine on deck.','water',180,45.00,'EUR','Tagus River','active',1,TRUE),
-    ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','Old Lisbon Walking Tour','A guided walk through Alfama and Baixa: cobbled lanes, fado houses and the city''s best pastel de nata.','culture',120,25.00,'EUR','Alfama, Lisbon','active',2,FALSE),
-    ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','Sintra Day Trip','A full day at Sintra''s Pena Palace and Quinta da Regaleira, with hotel pickup and a driver-guide.','day-trip',420,90.00,'EUR','Sintra','active',3,TRUE),
+    ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','Sunset Cruise on the Tagus','Sail the Tagus at golden hour past the Belém Tower and the 25 de Abril bridge, with a glass of local wine on deck.','water',180,495,'MAD','Tagus River','active',1,TRUE),
+    ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','Old Lisbon Walking Tour','A guided walk through Alfama and Baixa: cobbled lanes, fado houses and the city''s best pastel de nata.','culture',120,275,'MAD','Alfama, Lisbon','active',2,FALSE),
+    ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','Sintra Day Trip','A full day at Sintra''s Pena Palace and Quinta da Regaleira, with hotel pickup and a driver-guide.','day-trip',420,989,'MAD','Sintra','active',3,TRUE),
     ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000002','Atlas Mountains Day Trip','Berber villages, waterfalls and lunch in the mountains, with hotel pickup at dawn.','day-trip',480,950.00,'MAD','High Atlas','active',1,TRUE),
     ('00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000002','Marrakech Medina & Souks Tour','A private stroll through the souks: spice stalls, tanneries and a stop for mint tea.','culture',150,250.00,'MAD','Médina, Marrakech','active',2,FALSE),
     ('00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000002','Sunrise Hot Air Balloon','Float over the Palmeraie at sunrise, with a champagne breakfast on landing.','adventure',240,1800.00,'MAD','Palmeraie','active',3,TRUE),
-    ('00000000-0000-0000-0000-000000000007','00000000-0000-0000-0000-000000000003','Colosseum by Night Tour','Skip-the-line access to the Colosseum and Forum after dark, with an archaeologist guide.','culture',150,68.00,'EUR','Colosseum, Rome','active',1,TRUE),
-    ('00000000-0000-0000-0000-000000000008','00000000-0000-0000-0000-000000000003','Trastevere Food Tour','Evening crawl of trattorias and bakeries: cacio e pepe, porchetta and gelato.','food',180,55.00,'EUR','Trastevere, Rome','active',2,TRUE),
-    ('00000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-000000000003','Villa d''Este & Tivoli Gardens','Half-day escape to the Renaissance fountains of Villa d''Este, with private transfer.','day-trip',300,75.00,'EUR','Tivoli','active',3,FALSE);
+    ('00000000-0000-0000-0000-000000000007','00000000-0000-0000-0000-000000000003','Colosseum by Night Tour','Skip-the-line access to the Colosseum and Forum after dark, with an archaeologist guide.','culture',150,747,'MAD','Colosseum, Rome','active',1,TRUE),
+    ('00000000-0000-0000-0000-000000000008','00000000-0000-0000-0000-000000000003','Trastevere Food Tour','Evening crawl of trattorias and bakeries: cacio e pepe, porchetta and gelato.','food',180,604,'MAD','Trastevere, Rome','active',2,TRUE),
+    ('00000000-0000-0000-0000-000000000009','00000000-0000-0000-0000-000000000003','Villa d''Este & Tivoli Gardens','Half-day escape to the Renaissance fountains of Villa d''Este, with private transfer.','day-trip',300,824,'MAD','Tivoli','active',3,FALSE);
 
 
 -- ---------------------------------------------------------------------------
@@ -318,8 +318,8 @@ INSERT INTO restaurants (id, hotel_id, name, description, cuisine_type, opening_
 
 INSERT INTO faqs (id, hotel_id, question, answer, category, sort_order, status) VALUES
     ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','What are the check-in and check-out times?','Check-in is from 15:00 and check-out is until 12:00. Late check-out can be requested at reception.','stay',1,'active'),
-    ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','Is parking available?','Yes — secure on-site parking is available for €15 per night, or €20 with valet.','stay',2,'active'),
-    ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','Do you offer airport transfers?','Yes, a private transfer from Lisbon airport can be added to your booking for €45 one way.','travel',3,'active'),
+    ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','Is parking available?','Yes — secure on-site parking is available for 165 MAD per night, or 220 MAD with valet.','stay',2,'active'),
+    ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','Do you offer airport transfers?','Yes, a private transfer from Lisbon airport can be added to your booking for 495 MAD one way.','travel',3,'active'),
     ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000002','What are the check-in and check-out times?','Check-in is from 14:00 and check-out is until 12:00. The riad is reached by a short walk from the nearest car park.','stay',1,'active'),
     ('00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000002','Are children welcome?','Yes — children are welcome and the Family Riad Suite sleeps up to four. Cots are available on request.','stay',2,'active'),
     ('00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000002','Do you provide hammam treatments?','Yes, our hammam and massage treatments can be booked through the front desk or added to your stay.','wellness',3,'active'),

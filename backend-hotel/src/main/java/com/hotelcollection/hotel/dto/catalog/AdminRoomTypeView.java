@@ -9,7 +9,7 @@ import com.hotelcollection.hotel.entity.Media;
 import com.hotelcollection.hotel.entity.Room;
 
 /** Room type with its physical rooms, amenities and media (back-office). */
-public record AdminRoomTypeView(UUID id, UUID hotelId, String name, String description,
+public record AdminRoomTypeView(UUID id, UUID hotelId, String name, String slug, String description,
 		Integer maxAdults, Integer maxChildren, Integer totalInventory, String bedConfiguration,
 		BigDecimal sizeSqm, String viewType, String status, List<Amenity> amenities,
 		List<Media> media, List<Room> rooms) {

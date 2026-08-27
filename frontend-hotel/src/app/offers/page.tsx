@@ -4,9 +4,9 @@ import HeaderTheme from '@/components/layout/HeaderTheme';
 import OffersGrid from '@/components/offers/OffersGrid';
 
 export const metadata: Metadata = {
-  title: 'Offers — Executive Boutique Hotel Rabat',
+  title: 'Offers — Executive Hotel',
   description:
-    'Current offers at Executive Boutique Hotel Rabat: early-bird savings, long-stay nights free, value and corporate rates. Book direct for the best rate.',
+    'Current offers at Executive Hotel: early-bird savings, long-stay nights free, value and corporate rates. Book direct for the best rate.',
 };
 
 export default function OffersPage() {

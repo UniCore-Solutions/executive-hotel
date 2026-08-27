@@ -4,9 +4,9 @@ import HeaderTheme from '@/components/layout/HeaderTheme';
 import FaqClient from './faq-client';
 
 export const metadata: Metadata = {
-  title: 'FAQ — Executive Boutique Hotel Rabat',
+  title: 'FAQ — Executive Hotel',
   description:
-    'Answers about check-in, bookings, cancellation and staying at Executive Boutique Hotel Rabat in Rabat.',
+    'Answers about check-in, bookings, cancellation and staying at Executive Hotel in Rabat.',
 };
 
 export default function FaqPage() {

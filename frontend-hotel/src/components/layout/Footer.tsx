@@ -126,7 +126,7 @@ export default function Footer({ platform }: FooterProps) {
         </div>
         <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-6 text-xs text-white/60 lg:flex-row">
           <p>
-            © 2026 Executive Boutique Hotels. Frontend prototype — no real bookings are accepted.
+            © 2026 Executive Hotel. Frontend prototype — no real bookings are accepted.
           </p>
           <nav
             className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2"

@@ -3,8 +3,10 @@ package com.hotelcollection.hotel.service.impl;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,10 +36,25 @@ import com.hotelcollection.hotel.util.Validation;
  * (provider, provider_reference) (C17) — a duplicate capture reuses the
  * existing payment.
  *
- * <p>Authorization (audit): payments are money-affecting operations. Both
- * create and capture require an authenticated caller who is either the
- * reservation owner (bookedByUserId) or hotel staff of the reservation's
- * hotel (super_admin / hotel member). Anonymous callers are rejected.
+ * <p>Request-level idempotency (V23): {@code createPayment} takes a client
+ * idempotency key, mirroring {@code reservations.idempotency_key} — a
+ * retried request with the same key resolves to the same payment row rather
+ * than creating a duplicate. Independently, at most one payment may be
+ * {@code pending} per reservation at a time (also DB-enforced, V23): the
+ * balance check alone (summing only {@code captured} payments) cannot
+ * prevent two independent, individually-valid {@code createPayment} calls
+ * from both succeeding while neither is yet captured — the partial unique
+ * index on {@code (reservation_id) WHERE status = 'pending'} makes that
+ * impossible regardless of key equality.
+ *
+ * <p>Authorization (audit): payments are money-affecting operations.
+ * {@code create}/{@code capture} allow either an authenticated caller who is
+ * the reservation owner (bookedByUserId) or hotel staff of the reservation's
+ * hotel (super_admin / hotel member), or — for an accountless reservation
+ * ({@code bookedByUserId} null) — a caller who supplies the guest email on
+ * file, mirroring the reference+email proof-of-possession already used by
+ * self-service reservation lookup/cancel ({@link BookingService}). Account-
+ * backed reservations are never reachable via the guest-email path.
  *
  * <p>Reservation data (read + status updates) is accessed via
  * {@link BookingService}; no other-layer repository access.
@@ -64,10 +81,33 @@ public class PaymentServiceImpl implements PaymentService {
 		Validation.requirePositive(in.amount(), "amount");
 		Validation.requireNotBlank(in.currencyCode(), "currencyCode");
 		Validation.requireNotBlank(in.provider(), "provider");
+		if (in.idempotencyKey() == null || in.idempotencyKey().isBlank()) {
+			throw DomainException.validation("idempotencyKey is required");
+		}
+
+		// A retry with the same key is the same logical attempt: short-circuit
+		// before touching the reservation lock or re-running any check below.
+		Optional<Payment> existing = paymentRepository.findByIdempotencyKey(in.idempotencyKey());
+		if (existing.isPresent()) {
+			return existing.get();
+		}
+
 		Reservation reservation = booking.getByIdForUpdate(in.reservationId());
-		ensurePaymentAccess(reservation);
+		ensurePaymentAccess(reservation, in.guestEmail());
 		if (reservation.getStatus() == ReservationStatus.cancelled) {
 			throw DomainException.conflict("cannot pay for a cancelled reservation");
+		}
+		// V23: at most one payment may be in flight per reservation. The balance
+		// check below only ever considered CAPTURED amounts, so two independent
+		// (not necessarily concurrent — simply sequential, neither yet captured)
+		// createPayment calls could otherwise both pass it and both later capture,
+		// overcharging the guest. The reservation row lock held since
+		// getByIdForUpdate() above already serializes this check against any other
+		// createPayment/capture call on the same reservation.
+		boolean hasPendingPayment = paymentRepository.findByReservationId(reservation.getId()).stream()
+				.anyMatch(p -> p.getStatus() == PaymentStatus.pending);
+		if (hasPendingPayment) {
+			throw DomainException.conflict("a payment is already being processed for this reservation");
 		}
 		BigDecimal balance = reservation.getTotalAmount().subtract(paidAmount(reservation.getId()));
 		if (in.amount().compareTo(balance) > 0) {
@@ -84,9 +124,9 @@ public class PaymentServiceImpl implements PaymentService {
 		payment.setCurrencyCode(in.currencyCode());
 		payment.setStatus(PaymentStatus.pending);
 		payment.setProvider(in.provider());
+		payment.setIdempotencyKey(in.idempotencyKey());
 		payment.setCreatedAt(Instant.now());
 		payment.setUpdatedAt(Instant.now());
-		paymentRepository.save(payment);
 
 		PaymentTransaction transaction = new PaymentTransaction();
 		transaction.setPaymentId(payment.getId());
@@ -96,7 +136,21 @@ public class PaymentServiceImpl implements PaymentService {
 		transaction.setProviderTransactionId(null);
 		transaction.setCreatedAt(Instant.now());
 		payment.getTransactions().add(transaction);
-		paymentRepository.save(payment);
+
+		try {
+			// saveAndFlush surfaces either unique-index violation (idempotency key
+			// or the pending-per-reservation invariant) NOW, inside this catch,
+			// rather than as an opaque DataIntegrityViolation at commit time —
+			// same idiom already used for the reservation-cancellation race
+			// (BookingServiceImpl#doCancel).
+			paymentRepository.saveAndFlush(payment);
+		} catch (DataIntegrityViolationException ex) {
+			Optional<Payment> winner = paymentRepository.findByIdempotencyKey(in.idempotencyKey());
+			if (winner.isPresent()) {
+				return winner.get();
+			}
+			throw DomainException.conflict("a payment is already being processed for this reservation");
+		}
 
 		eventPublisher.publish("payment.created", 1, reservation.getHotelId(),
 				"payment:" + payment.getId(),
@@ -116,7 +170,7 @@ public class PaymentServiceImpl implements PaymentService {
 		Payment payment = paymentRepository.findById(in.paymentId())
 				.orElseThrow(() -> DomainException.notFound("payment not found"));
 		Reservation reservation = booking.getByIdForUpdate(payment.getReservationId());
-		ensurePaymentAccess(reservation);
+		ensurePaymentAccess(reservation, in.guestEmail());
 		if (payment.getStatus() != PaymentStatus.pending) {
 			throw DomainException.conflict("payment is not pending");
 		}
@@ -163,17 +217,39 @@ public class PaymentServiceImpl implements PaymentService {
 	}
 
 	/**
-	 * Owner or hotel-staff access check (IDOR guard). Anonymous callers are
-	 * rejected; for accountless bookings only staff may operate payments.
+	 * Owner-or-staff access check (IDOR guard), plus an accountless-reservation
+	 * escape hatch: guest checkout is a supported self-service product flow
+	 * (createReservation/cancelReservation already work with no account), and
+	 * payment must too — {@code bookedByUserId} is only ever set when the
+	 * booker was signed in at creation time, so a purely anonymous booking has
+	 * no owner to authenticate as. For that case only, the guest email on file
+	 * is accepted as proof of possession, exactly like the reference+email
+	 * lookup {@link BookingService#getByReferenceAndEmail} already uses — never
+	 * for an account-backed reservation, so a correct guest email alone can
+	 * never be used to pay someone else's account-backed booking.
 	 */
-	private void ensurePaymentAccess(Reservation reservation) {
-		CurrentUser actor = currentUser.require();
-		boolean staff = actor.hasRole("super_admin") || actor.inHotel(reservation.getHotelId());
-		boolean owner = reservation.getBookedByUserId() != null
-				&& reservation.getBookedByUserId().equals(actor.userId());
-		if (!staff && !owner) {
-			throw DomainException.forbidden("no access to this reservation");
+	private void ensurePaymentAccess(Reservation reservation, String guestEmail) {
+		Optional<CurrentUser> actor = currentUser.currentUser();
+		if (actor.isPresent()) {
+			boolean staff = actor.get().hasRole("super_admin") || actor.get().inHotel(reservation.getHotelId());
+			boolean owner = reservation.getBookedByUserId() != null
+					&& reservation.getBookedByUserId().equals(actor.get().userId());
+			if (staff || owner) {
+				return;
+			}
 		}
+		if (reservation.getBookedByUserId() == null
+				&& guestEmail != null && !guestEmail.isBlank()
+				&& reservation.getGuest().getEmail() != null
+				&& reservation.getGuest().getEmail().equalsIgnoreCase(guestEmail.trim())) {
+			return;
+		}
+		// No credentials at all and no valid guest-email proof -> 401 (same as
+		// before this change, for a caller who supplied nothing whatsoever).
+		// Authenticated but not entitled, or a wrong/missing guest email on an
+		// account-backed reservation -> 403.
+		currentUser.require();
+		throw DomainException.forbidden("no access to this reservation");
 	}
 
 	@Override

@@ -35,6 +35,8 @@ public interface CatalogQueryService {
 
 	RoomType getRoomType(UUID id);
 
+	RoomType getRoomTypeBySlug(String slug);
+
 	Map<UUID, RoomType> roomTypesByIds(Collection<UUID> ids);
 
 	/** Active room types of a hotel (availability source of truth). */

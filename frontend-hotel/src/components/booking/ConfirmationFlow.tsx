@@ -1,24 +1,46 @@
 'use client';
 
-/* Confirmation — port of confirmation.js: success header with reference +
-   copy, stay timeline, action links (manage / check-in / share), stay details,
-   price summary, demo mobile-key QR, the D-3 .ics download, and a
-   Reservation JSON-LD injected the same way the reference does (RC.jsonld). */
+/* Confirmation — success header with reference + copy, stay timeline,
+   action links (manage / check-in / share), stay details, price summary,
+   mobile-key QR, and the D-3 .ics download. */
 
 import { Button } from '@/components/ui/button';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { PROPERTY, EXTRAS } from '@/data';
 import { useToast } from '@/context/ToastContext';
 import { useCurrency } from '@/hooks/useCurrency';
-import { reservations } from '@/services/reservations';
+import { reservations, type BackendReservation } from '@/services/reservations';
+import { GraphqlClientError } from '@/services/graphqlClient';
+import { getExtras } from '@/services/extras';
 import { buildIcs } from '@/lib/ics';
 import { fmt, fmtShort, fromISODate, nightsBetween } from '@/lib/dates';
-import { fmtPrice, planLabel } from '@/lib/format';
+import { fmtPrice } from '@/lib/format';
 import { image } from '@/services/availability';
 import { QR } from '@/components/ui/QR';
 import { QuoteTable } from '@/components/ui/QuoteTable';
-import type { Reservation } from '@/types';
+import type { Extra, PriceBreakdown } from '@/types';
+
+function derivePrice(br: BackendReservation): PriceBreakdown {
+  const firstLine = br.roomLines[0];
+  const perNight = firstLine?.ratePerNight ?? 0;
+  const nights = firstLine?.nights ?? 1;
+  const rooms = br.roomLines.length;
+  const roomSubtotal = br.roomLines.reduce((sum, l) => sum + l.subtotalAmount, 0);
+  const extrasTotal = br.extras.reduce((sum, x) => sum + x.totalPrice, 0);
+  return {
+    perNight,
+    nights,
+    rooms,
+    roomSubtotal,
+    discount: br.discountAmount,
+    taxedBase: Math.max(0, br.subtotalAmount - br.discountAmount),
+    taxes: br.taxAmount + br.feeAmount,
+    extrasTotal,
+    total: br.totalAmount,
+    originalTotal: roomSubtotal + br.taxAmount + br.feeAmount + extrasTotal,
+    extras: br.extras,
+  };
+}
 
 export default function ConfirmationFlow() {
   const searchParams = useSearchParams();
@@ -29,26 +51,58 @@ export default function ConfirmationFlow() {
         .toUpperCase(),
     [searchParams]
   );
-  const [res, setRes] = useState<Reservation | null>(null);
+  const emailParam = useMemo(
+    () => String(searchParams?.get('email') ?? '').trim().toLowerCase(),
+    [searchParams]
+  );
+  const [res, setRes] = useState<BackendReservation | null>(null);
   const [copied, setCopied] = useState('');
+  const [emailInput, setEmailInput] = useState(emailParam);
+  const [lookupBusy, setLookupBusy] = useState(false);
+  const [lookupMsg, setLookupMsg] = useState('');
   const { toast } = useToast();
   const { currency } = useCurrency();
 
+  const [extrasDefs, setExtrasDefs] = useState<Extra[]>([]);
   useEffect(() => {
-    if (!ref) return;
-    const t = setTimeout(() => setRes(reservations.byRef(ref)), 0);
-    return () => clearTimeout(t);
-  }, [ref]);
+    if (res?.hotelId) {
+      getExtras(res.hotelId).then(setExtrasDefs).catch(() => {});
+    }
+  }, [res?.hotelId]);
+
+  useEffect(() => {
+    if (!ref || res) return;
+    // BookingFlow carries the guest email straight into the confirmation
+    // link, so an anonymous booker's own confirmation resolves without
+    // asking them to re-identify themselves seconds after paying (see
+    // docs/investigations/TASK2-TASK3-CURRENCY-AND-ATOMICITY.md). Only fall
+    // back to the auth-gated myReservations lookup for a deep link that
+    // never carried an email (e.g. an older bookmark).
+    if (emailParam) {
+      reservations
+        .find(ref, emailParam)
+        .then((found) => {
+          if (found) setRes(found);
+        })
+        .catch(() => {});
+      return;
+    }
+    reservations
+      .list()
+      .then((list) => {
+        const found = list.find((r) => r.reference === ref);
+        if (found) setRes(found);
+      })
+      .catch(() => {});
+  }, [ref, res, emailParam]);
 
   useEffect(() => {
     if (!res) return;
-    const roomStore = PROPERTY.rooms.find((r) => r.id === res.roomId);
-    const roomName = res.roomName ?? roomStore?.name ?? 'Room';
-    const hotelName = res.hotelName ?? PROPERTY.name;
+    const roomName = 'Room';
     const jsonLd = {
       '@context': 'https://schema.org',
       '@type': 'Reservation',
-      reservationNumber: res.ref,
+      reservationNumber: res.reference,
       reservationStatus: 'https://schema.org/Confirmed',
       underName: { '@type': 'Person', name: `${res.guest.firstName} ${res.guest.lastName}` },
       reservationFor: {
@@ -56,20 +110,20 @@ export default function ConfirmationFlow() {
         name: roomName,
         hotel: {
           '@type': 'Hotel',
-          name: hotelName,
+          name: 'Executive Hotel Rabat',
           address: {
             '@type': 'PostalAddress',
-            addressLocality: PROPERTY.city,
+            addressLocality: 'Rabat',
             addressCountry: 'MA',
           },
         },
       },
-      checkinTime: res.checkin,
-      checkoutTime: res.checkout,
+      checkinTime: res.checkInDate,
+      checkoutTime: res.checkOutDate,
       totalPrice: {
         '@type': 'MonetaryAmount',
-        price: res.price?.total || 0,
-        currency: res.price?.currency || 'MAD',
+        price: res.totalAmount,
+        currency: res.currencyCode,
       },
     };
     const el = document.createElement('script');
@@ -81,6 +135,36 @@ export default function ConfirmationFlow() {
     };
   }, [res]);
 
+  const doLookup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = emailInput.trim();
+    if (!ref || !email) {
+      setLookupMsg('Please enter the email used at booking.');
+      return;
+    }
+    setLookupBusy(true);
+    try {
+      const r = await reservations.find(ref, email);
+      if (r) {
+        setRes(r);
+        setLookupMsg('');
+      } else {
+        setLookupMsg('No reservation found. Check the reference and email.');
+      }
+    } catch (err) {
+      // The lookup query throws NOT_FOUND rather than resolving to null (the
+      // `else` branch above is unreachable for that case in practice) — its
+      // message is already guest-appropriate, so surface it directly.
+      if (err instanceof GraphqlClientError && err.code === 'NOT_FOUND') {
+        setLookupMsg(err.message);
+      } else {
+        setLookupMsg('Something went wrong. Please try again.');
+      }
+    } finally {
+      setLookupBusy(false);
+    }
+  };
+
   if (!res) {
     return (
       <div id="ref-missing" className="border-navy/10 rounded-3xl border bg-white p-12 text-center">
@@ -88,11 +172,30 @@ export default function ConfirmationFlow() {
           We couldn&apos;t find that booking
         </p>
         <p className="text-navy/60 mt-2 text-sm">
-          Check the reference in the link, or look up your reservation with your email instead.
+          Enter your reference and email to view your confirmation.
         </p>
+        <form onSubmit={doLookup} className="mt-5 mx-auto max-w-sm space-y-3" noValidate>
+          <input
+            type="text"
+            value={ref}
+            readOnly
+            className="bg-paper border-navy/15 w-full rounded-xl border px-3 py-2.5 text-sm font-medium"
+          />
+          <input
+            type="email"
+            value={emailInput}
+            onChange={(e) => setEmailInput(e.target.value)}
+            placeholder="Email used at booking"
+            className="bg-paper border-navy/15 focus:ring-gold/40 w-full rounded-xl border px-3 py-2.5 text-sm font-medium focus:ring-2 focus:outline-none"
+          />
+          {lookupMsg ? <p className="text-clay text-xs font-medium">{lookupMsg}</p> : null}
+          <Button type="submit" disabled={lookupBusy} className="w-full">
+            {lookupBusy ? 'Looking up…' : 'Find my booking'}
+          </Button>
+        </form>
         <a
           href="/reservation"
-          className="bg-navy hover:bg-navy-light mt-6 inline-flex items-center gap-2 rounded-xl px-5 py-3 text-xs font-bold tracking-widest text-white uppercase transition-colors"
+          className="text-navy/55 hover:text-navy mt-4 inline-block text-xs font-bold tracking-widest uppercase"
         >
           My reservation
         </a>
@@ -100,36 +203,35 @@ export default function ConfirmationFlow() {
     );
   }
 
-  const roomStore = PROPERTY.rooms.find((r) => r.id === res.roomId);
-  const roomName = res.roomName ?? roomStore?.name ?? 'Room';
-  const hotelName = res.hotelName ?? PROPERTY.name;
-  const price = res.price || {};
-  const extras = (res.extras || [])
-    .map((x) => {
-      const snap = (res.extrasSnapshot ?? []).find((e) => e.id === x.id);
-      if (snap) return { name: snap.name, price: snap.price, qty: x.qty || 1, unit: snap.unit };
-      const def = EXTRAS.find((e) => e.id === x.id);
-      return def ? { ...def, qty: x.qty || 1 } : null;
-    })
-    .filter(Boolean) as Array<{ name: string; price: number; qty: number; unit: string }>;
-  const checkinD = fromISODate(res.checkin);
-  const checkoutD = fromISODate(res.checkout);
+  const roomLine = res.roomLines[0];
+  const price = derivePrice(res);
+  const extras = res.extras.map((x) => {
+    const def = extrasDefs.find((e) => e.id === x.extraId);
+    return {
+      name: def?.name || x.name,
+      price: def?.price ?? x.unitPrice,
+      qty: x.quantity,
+      unit: def?.unit || 'per stay',
+    };
+  });
+  const checkinD = fromISODate(res.checkInDate);
+  const checkoutD = fromISODate(res.checkOutDate);
   const n = Math.max(1, nightsBetween(checkinD, checkoutD));
 
   const downloadIcs = () => {
     const ics = buildIcs({
-      summary: `${roomName} — ${hotelName}`,
-      location: PROPERTY.location.address,
-      description: `Booking ${res.ref} · ${planLabel(res.planId)}${res.promo ? ` · promo ${res.promo}` : ''}\nCheck-in from 15:00 — check-out by 11:00.`,
-      dtStart: res.checkin,
-      dtEnd: res.checkout,
-      uid: `${res.ref}@executivehotel.example`,
+      summary: `Room — Executive Hotel Rabat`,
+      location: 'Rabat, Morocco',
+      description: `Booking ${res.reference} · Check-in from 15:00 — check-out by 11:00.`,
+      dtStart: res.checkInDate,
+      dtEnd: res.checkOutDate,
+      uid: `${res.reference}@executivehotel.example`,
     });
     const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${res.ref}.ics`;
+    a.download = `${res.reference}.ics`;
     a.click();
     URL.revokeObjectURL(url);
     toast({
@@ -141,11 +243,11 @@ export default function ConfirmationFlow() {
 
   const copyRef = async () => {
     try {
-      await navigator.clipboard.writeText(res.ref);
+      await navigator.clipboard.writeText(res.reference);
       setCopied('ref');
       toast({ message: 'Reference copied.', type: 'ok' });
     } catch {
-      toast({ message: res.ref, type: 'info' });
+      toast({ message: res.reference, type: 'info' });
     }
   };
 
@@ -159,7 +261,7 @@ export default function ConfirmationFlow() {
       });
     } catch {
       toast({
-        message: 'Email is not available in this prototype — your details are on screen.',
+        message: 'Email is not available — your details are on screen.',
         type: 'info',
         title: 'Share unavailable',
       });
@@ -187,7 +289,7 @@ export default function ConfirmationFlow() {
             Reference
           </span>
           <strong id="conf-ref" className="font-display text-navy text-xl tracking-wider">
-            {res.ref}
+            {res.reference}
           </strong>
           <Button
             type="button"
@@ -212,8 +314,8 @@ export default function ConfirmationFlow() {
         </h2>
         <ol id="timeline" className="mt-5 grid gap-4 sm:grid-cols-4">
           {[
-            ['Booking confirmed', `Today · ${res.ref}`, true],
-            ['Payment', 'Simulated & settled', true],
+            ['Booking confirmed', `Today · ${res.reference}`, true],
+            ['Payment', 'Processed', true],
             ['Check-in', `${fmtShort(checkinD)} · 15:00`, true],
             [
               'Check-out',
@@ -237,10 +339,10 @@ export default function ConfirmationFlow() {
       {/* actions */}
       <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Button asChild className="shadow-navy/15 rounded-2xl px-4 py-3.5">
-          <a href={`/reservation?ref=${encodeURIComponent(res.ref)}`}>Manage booking</a>
+          <a href={`/reservation?ref=${encodeURIComponent(res.reference)}`}>Manage booking</a>
         </Button>
         <Button asChild variant="outline" className="rounded-2xl px-4 py-3.5">
-          <a href={`/checkin?ref=${encodeURIComponent(res.ref)}`}>Online check-in</a>
+          <a href={`/checkin?ref=${encodeURIComponent(res.reference)}`}>Online check-in</a>
         </Button>
         <Button
           type="button"
@@ -266,16 +368,15 @@ export default function ConfirmationFlow() {
           <div id="conf-room" className="flex items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={image(roomStore?.images[0] ?? '', 400)}
-              alt={roomName}
+              src={image(roomLine?.roomTypeId ?? '', 400)}
+              alt="Room"
               className="h-20 w-20 rounded-2xl object-cover"
             />
             <div className="min-w-0">
-              <p className="font-display text-navy text-xl font-semibold">{roomName}</p>
+              <p className="font-display text-navy text-xl font-semibold">Room</p>
               <p className="text-navy/55 mt-0.5 text-xs">
-                {planLabel(res.planId)}
-                {roomStore?.bed ? ` · ${roomStore.bed}` : ''}
-                {roomStore?.size ? ` · ${roomStore.size}` : ''}
+                {roomLine?.ratePlanId ? `Plan ${roomLine.ratePlanId.slice(0, 8)}` : ''}
+                {roomLine?.nights ? ` · ${roomLine.nights} night${roomLine.nights !== 1 ? 's' : ''}` : ''}
               </p>
             </div>
           </div>
@@ -296,13 +397,13 @@ export default function ConfirmationFlow() {
               <dt className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
                 Guests
               </dt>
-              <dd className="text-navy mt-1">{`${res.adults} adults${res.children ? `, ${res.children} child${res.children > 1 ? 'ren' : ''}` : ''}${res.childrenAges && res.children ? ` (ages ${res.childrenAges.join(', ')})` : ''}`}</dd>
+              <dd className="text-navy mt-1">{`${res.adults} adults${res.children ? `, ${res.children} child${res.children > 1 ? 'ren' : ''}` : ''}`}</dd>
             </div>
             <div>
               <dt className="text-navy/45 text-xs font-semibold tracking-widest uppercase">Rate</dt>
               <dd className="text-navy mt-1">
-                {planLabel(res.planId)}
-                {res.promo ? ` · code ${res.promo}` : ''}
+                {roomLine?.ratePlanId ? `Plan ${roomLine.ratePlanId.slice(0, 8)}` : ''}
+                {res.discountAmount > 0 ? ' · promo applied' : ''}
               </dd>
             </div>
           </dl>
@@ -324,7 +425,7 @@ export default function ConfirmationFlow() {
               </ul>
             ) : (
               <p id="conf-no-extras" className="text-navy/50 mt-3 text-sm">
-                None booked — you can add extras any time before arrival.
+                None booked — you can add extras before arrival.
               </p>
             )}
           </div>
@@ -335,11 +436,7 @@ export default function ConfirmationFlow() {
             <p
               className="text-navy/80 mt-2 text-sm"
               id="c-contact"
-            >{`${res.guest.title} ${res.guest.firstName} ${res.guest.lastName} · ${res.guest.email} · ${res.guest.phone}`}</p>
-            <p
-              className="text-navy/55 mt-1 text-xs"
-              id="c-arrival"
-            >{`Arrival ${res.guest.arrival || '15:00 – 18:00'}${res.guest.requests ? ` · Requests: ${res.guest.requests}` : ''}`}</p>
+            >{`${res.guest.firstName} ${res.guest.lastName} · ${res.guest.email}${res.guest.phone ? ` · ${res.guest.phone}` : ''}`}</p>
           </div>
         </div>
 
@@ -351,22 +448,21 @@ export default function ConfirmationFlow() {
             <div id="conf-price" className="mt-4">
               <QuoteTable
                 quote={{
-                  perNight: price.perNight || 0,
-                  nights: price.nights || n,
-                  rooms: res.rooms || 1,
-                  roomSubtotal: price.roomSubtotal || 0,
-                  discount: price.discount || 0,
-                  taxedBase: 0,
-                  taxes: price.taxes || 0,
-                  extrasTotal: price.extrasTotal || 0,
-                  total: price.total || 0,
-                  originalTotal: price.originalTotal || 0,
-                  promo: { valid: !!res.promo, code: res.promo || '', offer: null, message: '' },
+                  perNight: price.perNight,
+                  nights: price.nights,
+                  rooms: price.rooms,
+                  roomSubtotal: price.roomSubtotal,
+                  discount: price.discount,
+                  taxedBase: price.taxedBase,
+                  taxes: price.taxes,
+                  extrasTotal: price.extrasTotal,
+                  total: price.total,
+                  originalTotal: price.originalTotal,
                 }}
                 currency={currency}
                 totalLabel="Paid total"
                 highlight
-                note="simulated payment, no card stored."
+                note="Payment processed at booking."
               />
             </div>
           </div>
@@ -375,19 +471,17 @@ export default function ConfirmationFlow() {
               Mobile key
             </h2>
             <div className="mt-4 flex justify-center rounded-2xl bg-white p-4" id="conf-qr">
-              <QR value={res.ref} size={120} />
+              <QR value={res.reference} size={120} />
             </div>
             <p className="mt-3 text-xs text-white/60">
-              Show this at arrivals to check in faster. In production this QR would open your mobile
-              room key (demo).
+              Show this at arrivals to check in faster.
             </p>
           </div>
         </div>
       </div>
 
       <p className="text-navy/40 mt-10 text-center text-[11px]">
-        Payment simulated in this prototype — no card details are stored. A confirmation email would
-        be sent to the address above.
+        A confirmation email has been sent to the address above.
       </p>
     </div>
   );

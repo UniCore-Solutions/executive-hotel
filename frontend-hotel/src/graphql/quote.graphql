@@ -16,5 +16,11 @@ query Quote($input: QuoteInput!) {
       nights
       subtotalAmount
     }
+    extras {
+      extraId
+      quantity
+      unitPrice
+      totalPrice
+    }
   }
 }

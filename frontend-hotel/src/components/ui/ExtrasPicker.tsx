@@ -90,7 +90,7 @@ export function ExtrasPicker({
               />
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline justify-between gap-2">
-                  <span className="text-navy truncate text-[13px] font-semibold">{extra.name}</span>
+                  <span className="text-navy text-[13px] font-semibold">{extra.name}</span>
                   <span className="text-gold-dark text-xs font-bold whitespace-nowrap">
                     {fmtPrice(extra.price, currency)}
                     <span className="text-navy/45 font-medium">
@@ -148,7 +148,7 @@ export function ExtrasPicker({
                   aria-label={extra.name}
                 />
                 <div className="min-w-0">
-                  <p className="text-navy truncate font-medium">{extra.name}</p>
+                  <p className="text-navy font-medium">{extra.name}</p>
                   <p className="text-navy/60 truncate text-sm">{extra.desc}</p>
                   <div className="mt-1 flex items-center gap-2">
                     <Badge variant="navy">{extra.unit}</Badge>

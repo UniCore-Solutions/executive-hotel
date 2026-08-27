@@ -27,6 +27,7 @@ import com.hotelcollection.hotel.entity.Restaurant;
 import com.hotelcollection.hotel.entity.RoomType;
 import com.hotelcollection.hotel.exception.DomainException;
 import com.hotelcollection.hotel.service.CatalogQueryService;
+import com.hotelcollection.hotel.service.HotelPolicyQueryService;
 import com.hotelcollection.hotel.service.ReviewService;
 
 /**
@@ -39,10 +40,13 @@ public class CatalogGraphQLController {
 
 	private final CatalogQueryService catalog;
 	private final ReviewService review;
+	private final HotelPolicyQueryService policies;
 
-	public CatalogGraphQLController(CatalogQueryService catalog, ReviewService review) {
+	public CatalogGraphQLController(CatalogQueryService catalog, ReviewService review,
+			HotelPolicyQueryService policies) {
 		this.catalog = catalog;
 		this.review = review;
+		this.policies = policies;
 	}
 
 	@QueryMapping
@@ -66,13 +70,19 @@ public class CatalogGraphQLController {
 		long count = review.countApproved(id);
 		Double avg = count == 0 ? null : review.averageRating(id);
 		return new HotelDetails(hotel, catalog.experiences(id), catalog.restaurants(id),
-				catalog.faqs(id), review.pagedApproved(id, new PageInput(0, 20)),
-				count, avg);
+				catalog.faqs(id), policies.policies(id),
+				review.pagedApproved(id, new PageInput(0, 20)), count, avg);
 	}
 
 	@QueryMapping
-	public RoomType roomType(@Argument UUID id) {
-		RoomType roomType = catalog.getRoomType(id);
+	public RoomType roomType(@Argument String id) {
+		RoomType roomType;
+		try {
+			UUID uuid = UUID.fromString(id);
+			roomType = catalog.getRoomType(uuid);
+		} catch (IllegalArgumentException e) {
+			roomType = catalog.getRoomTypeBySlug(id);
+		}
 		if (!"active".equals(roomType.getStatus())) {
 			throw DomainException.notFound("room type not found");
 		}

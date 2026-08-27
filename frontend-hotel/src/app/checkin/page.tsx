@@ -4,9 +4,9 @@ import HeaderTheme from '@/components/layout/HeaderTheme';
 import CheckinFlow from '@/components/booking/CheckinFlow';
 
 export const metadata: Metadata = {
-  title: 'Online check-in — Executive Boutique Hotel Rabat',
+  title: 'Online check-in — Executive Hotel',
   description:
-    'Check in online before your stay at Executive Boutique Hotel Rabat — confirm your details and arrival time in two minutes.',
+    'Check in online before your stay at Executive Hotel — confirm your details and arrival time in two minutes.',
 };
 
 export default function CheckinPage() {

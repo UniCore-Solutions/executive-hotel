@@ -35,10 +35,11 @@ public class PaymentRestController {
 	public Payment capture(@PathVariable UUID id,
 			@RequestBody(required = false) CaptureRequest in) {
 		String gatewayReference = in == null ? null : in.gatewayReference();
-		return paymentService.capture(new CapturePaymentInput(id, gatewayReference));
+		String guestEmail = in == null ? null : in.guestEmail();
+		return paymentService.capture(new CapturePaymentInput(id, gatewayReference, guestEmail));
 	}
 
 	/** Transport-specific body for the capture action (payment id comes from the path). */
-	public record CaptureRequest(String gatewayReference) {
+	public record CaptureRequest(String gatewayReference, String guestEmail) {
 	}
 }

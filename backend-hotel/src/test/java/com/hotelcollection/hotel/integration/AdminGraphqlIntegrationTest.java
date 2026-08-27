@@ -152,7 +152,7 @@ class AdminGraphqlIntegrationTest {
 		Map<String, Object> body = post("""
 				query { roomType(id: "not-a-uuid") { id } }
 				""", null, token);
-		assertThat(extensionsCode(body)).isEqualTo("VALIDATION");
+		assertThat(extensionsCode(body)).isEqualTo("NOT_FOUND");
 	}
 
 	@Test
@@ -419,6 +419,44 @@ class AdminGraphqlIntegrationTest {
 		assertThat((List<?>) admin.get("amenities")).hasSize(2);
 		assertThat(((List<Map<String, Object>>) admin.get("media")).get(0).get("url"))
 				.isEqualTo("https://example.com/c.jpg");
+	}
+
+	@Test
+	void hotelPoliciesReplacementAndExposureOnHotelDetails() throws Exception {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		String token = staffToken(uid(32), List.of(fx.hotelId()));
+
+		Map<String, Object> setPolicies = post("""
+				mutation($hotelId: ID!, $policies: [HotelPolicyInput!]!) {
+				  setHotelPolicies(hotelId: $hotelId, policies: $policies) { name value icon sortOrder }
+				}
+				""", Map.of("hotelId", fx.hotelId().toString(), "policies", List.of(
+						Map.of("name", "Check-in", "value", "From 15:00", "icon", "clock", "sortOrder", 0),
+						Map.of("name", "Pets", "value", "Not allowed", "icon", "paw", "sortOrder", 1))),
+				token);
+		assertThat(setPolicies.get("errors")).isNull();
+		assertThat((List<?>) ((Map<String, Object>) setPolicies.get("data"))
+				.get("setHotelPolicies")).hasSize(2);
+
+		// A second call replaces the set rather than appending to it.
+		Map<String, Object> replaced = post("""
+				mutation($hotelId: ID!, $policies: [HotelPolicyInput!]!) {
+				  setHotelPolicies(hotelId: $hotelId, policies: $policies) { name }
+				}
+				""", Map.of("hotelId", fx.hotelId().toString(), "policies", List.of(
+						Map.of("name", "Smoking", "value", "No smoking on site"))), token);
+		assertThat(replaced.get("errors")).isNull();
+
+		Map<String, Object> details = post("""
+				query($id: ID!) {
+				  hotelDetails(id: $id) { policies { name value } }
+				}
+				""", Map.of("id", fx.hotelId().toString()), null);
+		assertThat(details.get("errors")).isNull();
+		List<Map<String, Object>> policies = (List<Map<String, Object>>) ((Map<String, Object>)
+				((Map<String, Object>) details.get("data")).get("hotelDetails")).get("policies");
+		assertThat(policies).hasSize(1);
+		assertThat(policies.get(0).get("name")).isEqualTo("Smoking");
 	}
 
 	@Test
@@ -717,7 +755,8 @@ class AdminGraphqlIntegrationTest {
 				  createPayment(input: $input) { id status }
 				}
 				""", Map.of("input", Map.of("reservationId", reservationId, "amount", 3360.0,
-						"currencyCode", TestFixtures.CURRENCY, "provider", "mock")), token);
+						"currencyCode", TestFixtures.CURRENCY, "provider", "mock",
+						"idempotencyKey", "bo-pay-" + System.nanoTime())), token);
 		assertThat(paid.get("errors")).isNull();
 		String paymentId = (String) ((Map<String, Object>) ((Map<String, Object>) paid.get("data"))
 				.get("createPayment")).get("id");

@@ -48,7 +48,7 @@ export default function LoginPage() {
             <Building2 className="h-5 w-5" aria-hidden="true" />
           </span>
           <div>
-            <h1 className="font-display text-xl font-semibold text-navy">Hotel Collection</h1>
+            <h1 className="font-display text-xl font-semibold text-navy">Executive Hotel</h1>
             <p className="text-xs text-muted-foreground">Back Office sign in</p>
           </div>
         </div>

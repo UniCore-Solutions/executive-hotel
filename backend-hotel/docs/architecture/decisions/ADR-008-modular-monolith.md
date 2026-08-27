@@ -1,6 +1,8 @@
 # ADR-008: Modular monolith — module-per-domain packages with API-first cross-module sync
 
-- Status: accepted (implemented and verified — 98 tests green)
+- Status: **superseded by ADR-009** (the hexagonal module layout described here
+  was never the running code; the repository follows the layered layout in
+  ADR-009). Retained for history only.
 - Date: 2026-08-19
 
 ## Context

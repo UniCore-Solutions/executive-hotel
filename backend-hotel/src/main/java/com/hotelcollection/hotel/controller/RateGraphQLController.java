@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.BatchMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.SchemaMapping;
 import org.springframework.stereotype.Controller;
 
 import com.hotelcollection.hotel.dto.rate.Quote;
@@ -56,6 +57,15 @@ public class RateGraphQLController {
 				input.rooms().stream()
 						.map(r -> new QuoteLineInput(r.roomTypeId(), r.ratePlanId())).toList(),
 				input.extras() == null ? List.of() : input.extras(), input.promoCode()));
+	}
+
+	// Quote.message isn't a record component of Quote (its field is
+	// `promoMessage`, distinct from the schema's public field name) — the
+	// default PropertyDataFetcher can't find it by reflection, so it's
+	// mapped explicitly here.
+	@SchemaMapping(typeName = "Quote", field = "message")
+	public String quoteMessage(Quote quote) {
+		return quote.promoMessage();
 	}
 
 	// ------------------------------------------------------- price fields

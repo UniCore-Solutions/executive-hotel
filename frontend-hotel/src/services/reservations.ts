@@ -1,131 +1,160 @@
-/** Reservation store (localStorage) + booking idempotency key — port of mock.js. */
-import { DATA } from '@/data';
-import type { Reservation } from '@/types';
-import { toISODate } from '@/lib/dates';
+/** Reservation service — calls backend GraphQL API. */
+import { gqlRequest, TRANSACTION_CURRENCY } from './graphqlClient';
+import type {
+  CreateReservationMutation,
+  CreateReservationMutationVariables,
+  MyReservationsQuery,
+  ReservationLookupQuery,
+  ReservationLookupQueryVariables,
+  CancelReservationMutation,
+  CancelReservationMutationVariables,
+  CreateReservationInput,
+  CancelReservationInput,
+  ReservationLookupInput,
+  ReservationStatus,
+  PaymentStatus,
+} from '@/graphql/generated/graphql';
+import { CreateReservationDocument, MyReservationsDocument, ReservationLookupDocument, CancelReservationDocument } from '@/graphql/generated/graphql';
 
-const LS = {
-  res: 'rc_reservations_v1',
-  session: 'rc_session_v1',
-} as const;
+/* ── Types ──────────────────────────────────────────────────────────── */
 
-export const BOOKING_DONE_KEY = 'rc_booking_done';
-
-function read<T>(k: string, fb: T): T {
-  try {
-    const v = JSON.parse(localStorage.getItem(k) ?? 'null');
-    return v ?? fb;
-  } catch {
-    return fb;
-  }
+export interface AuthResult {
+  ok: boolean;
+  message?: string;
 }
 
-function write(k: string, v: unknown): void {
-  try {
-    localStorage.setItem(k, JSON.stringify(v));
-  } catch {
-    /* storage unavailable */
-  }
+/** Backend reservation shape (from GraphQL). */
+export interface BackendReservation {
+  id: string;
+  reference: string;
+  hotelId: string;
+  status: ReservationStatus;
+  paymentStatus: PaymentStatus;
+  checkInDate: string;
+  checkOutDate: string;
+  adults: number;
+  children: number;
+  currencyCode: string;
+  subtotalAmount: number;
+  discountAmount: number;
+  taxAmount: number;
+  feeAmount: number;
+  totalAmount: number;
+  source: string;
+  notes?: string | null;
+  createdAt: string;
+  guest: {
+    id?: string | null;
+    firstName: string;
+    lastName: string;
+    email?: string | null;
+    phone?: string | null;
+    countryCode?: string | null;
+  };
+  roomLines: Array<{
+    id: string;
+    roomTypeId: string;
+    ratePlanId: string;
+    checkInDate: string;
+    checkOutDate: string;
+    nights: number;
+    ratePerNight: number;
+    subtotalAmount: number;
+    status: string;
+  }>;
+  extras: Array<{
+    id: string;
+    extraId: string;
+    name: string;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+  }>;
+  charges: Array<{
+    id: string;
+    name: string;
+    chargeType: string;
+    amount: number;
+  }>;
+  cancellation?: {
+    id: string;
+    reason?: string | null;
+    reasonNote?: string | null;
+    isRefundable: boolean;
+    penaltyAmount: number;
+    refundAmount: number;
+    cancelledAt: string;
+  } | null;
 }
 
-const REF_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+/* ── Idempotency key ────────────────────────────────────────────────── */
 
-function genRef(): string {
-  let s = '';
-  for (let i = 0; i < 6; i++) s += REF_CHARS[Math.floor(Math.random() * REF_CHARS.length)];
-  return `RC-${s}`;
+export function generateIdempotencyKey(): string {
+  return `bk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function seedStore(): Reservation[] {
-  const existing = read<Reservation[]>(LS.res, []);
-  if (existing.length) return existing;
-  const seeds: Reservation[] = DATA.DEMO_RESERVATIONS.map((d) => ({ ...d, demo: true }));
-  write(LS.res, seeds);
-  return seeds;
-}
-
-export type CreateReservation = Omit<Reservation, 'ref' | 'status' | 'checkedIn' | 'createdAt'> &
-  Partial<Pick<Reservation, 'status' | 'checkedIn' | 'createdAt'>>;
+/* ── CRUD ───────────────────────────────────────────────────────────── */
 
 export const reservations = {
-  list(): Reservation[] {
-    return seedStore();
+  /** List all reservations for the current user. */
+  async list(): Promise<BackendReservation[]> {
+    const data = await gqlRequest(MyReservationsDocument, {});
+    return (data as MyReservationsQuery).myReservations as BackendReservation[];
   },
 
-  save(list: Reservation[]): void {
-    write(LS.res, list);
+  /** Look up a reservation by reference + email. */
+  async find(reference: string, email: string): Promise<BackendReservation | null> {
+    const input: ReservationLookupInput = { reference, email };
+    const data = await gqlRequest(ReservationLookupDocument, { input } as ReservationLookupQueryVariables);
+    return (data as ReservationLookupQuery).reservation as BackendReservation | null;
   },
 
-  find(ref: string, email: string): Reservation | null {
-    const r = String(ref || '')
-      .trim()
-      .toUpperCase();
-    const e = String(email || '')
-      .trim()
-      .toLowerCase();
-    return (
-      seedStore().find(
-        (x) => String(x.ref || '').toUpperCase() === r && String(x.email || '').toLowerCase() === e
-      ) || null
-    );
+  /** Create a reservation via backend. Transaction currency is always MAD
+      (TRANSACTION_CURRENCY) — the display currency the guest has selected is
+      never accepted here, so it cannot leak into the persisted reservation. */
+  async create(input: {
+    hotelId: string;
+    checkInDate: string;
+    checkOutDate: string;
+    adults: number;
+    children: number;
+    guest: { firstName: string; lastName: string; email: string; phone?: string; countryCode?: string };
+    rooms: Array<{ roomTypeId: string; ratePlanId: string }>;
+    extras?: Array<{ extraId: string; quantity: number }>;
+    promoCode?: string;
+    idempotencyKey: string;
+  }): Promise<{ reservation: BackendReservation; created: boolean }> {
+    const gqlInput: CreateReservationInput = {
+      hotelId: input.hotelId,
+      checkInDate: input.checkInDate,
+      checkOutDate: input.checkOutDate,
+      adults: input.adults,
+      children: input.children,
+      currencyCode: TRANSACTION_CURRENCY,
+      guest: input.guest,
+      rooms: input.rooms,
+      extras: input.extras,
+      promoCode: input.promoCode,
+      idempotencyKey: input.idempotencyKey,
+    };
+    const data = await gqlRequest(CreateReservationDocument, { input: gqlInput } as CreateReservationMutationVariables);
+    const result = data as CreateReservationMutation;
+    return { reservation: result.createReservation.reservation as BackendReservation, created: result.createReservation.created };
   },
 
-  byRef(ref: string): Reservation | null {
-    return (
-      seedStore().find(
-        (x) =>
-          String(x.ref || '').toUpperCase() ===
-          String(ref || '')
-            .trim()
-            .toUpperCase()
-      ) || null
-    );
-  },
-
-  byEmail(email: string): Reservation[] {
-    return seedStore().filter(
-      (x) =>
-        String(x.email || '').toLowerCase() ===
-        String(email || '')
-          .trim()
-          .toLowerCase()
-    );
-  },
-
-  create(data: CreateReservation): Reservation {
-    const list = seedStore();
-    const reservation = {
-      ref: genRef(),
-      status: 'confirmed',
-      checkedIn: false,
-      createdAt: toISODate(new Date()),
-      ...data,
-    } as Reservation;
-    list.unshift(reservation);
-    write(LS.res, list);
-    return reservation;
-  },
-
-  update(ref: string, patch: Partial<Reservation>): Reservation | null {
-    const list = seedStore();
-    const i = list.findIndex((x) => x.ref.toUpperCase() === String(ref).trim().toUpperCase());
-    const current = i < 0 ? null : (list[i] ?? null);
-    if (!current) return null;
-    const next = { ...current, ...patch } as Reservation;
-    list[i] = next;
-    write(LS.res, list);
-    return next;
-  },
-
-  setCheckedIn(ref: string, flag = true): Reservation | null {
-    return reservations.update(ref, {
-      checkedIn: flag,
-      checkedInAt: flag ? toISODate(new Date()) : null,
-      status: 'checked-in',
-    });
+  /** Cancel a reservation via backend. */
+  async cancel(reference: string, email: string, reasonCode?: string, reasonNote?: string): Promise<BackendReservation> {
+    const input: CancelReservationInput = { reference, email, reasonCode, reasonNote };
+    const data = await gqlRequest(CancelReservationDocument, { input } as CancelReservationMutationVariables);
+    const result = data as CancelReservationMutation;
+    return result.cancelReservation.reservation as BackendReservation;
   },
 };
 
-/* ============ booking idempotency key (BOOK-7) ============ */
+/* ── Legacy compatibility (bookingKey) ──────────────────────────────── */
+/* Kept for BookingFlow.tsx transition; will be removed once the flow
+   is fully rewritten to use backend idempotency. */
+
 const BK_KEY: { key: string; item: string; finished: boolean } = {
   key: '',
   item: '',
@@ -135,16 +164,8 @@ const BK_KEY: { key: string; item: string; finished: boolean } = {
 export const bookingKey = {
   begin(item: string): { key: string; exitRef: string | null } {
     BK_KEY.item = item;
-    BK_KEY.key = `bk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    BK_KEY.key = generateIdempotencyKey();
     BK_KEY.finished = false;
-    const done = read<{ item: string; key: string; ref: string; at: number } | null>(
-      BOOKING_DONE_KEY,
-      null
-    );
-    if (done && done.item === item && Date.now() - done.at < 30 * 60 * 1000) {
-      BK_KEY.finished = true;
-      return { key: done.key, exitRef: done.ref };
-    }
     return { key: BK_KEY.key, exitRef: null };
   },
 
@@ -152,17 +173,11 @@ export const bookingKey = {
     return BK_KEY;
   },
 
-  finish(ref: string): void {
-    write(BOOKING_DONE_KEY, { key: BK_KEY.key, item: BK_KEY.item, ref, at: Date.now() });
+  finish(_ref: string): void {
+    BK_KEY.finished = true;
   },
 
   clearDone(): void {
-    try {
-      localStorage.removeItem(BOOKING_DONE_KEY);
-    } catch {
-      /* noop */
-    }
+    BK_KEY.finished = false;
   },
 };
-
-export { read as storageRead, write as storageWrite };

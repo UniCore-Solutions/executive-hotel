@@ -61,6 +61,12 @@ public class Payment {
 
 	private String providerReference;
 
+	/** Idempotency key (C17-style, mirrors reservations.idempotency_key):
+	 * a retried createPayment with the same key resolves to this same row
+	 * (V23__payment_idempotency_and_pending_uniqueness.sql). */
+	@Column(name = "idempotency_key")
+	private String idempotencyKey;
+
 	@Column(nullable = false)
 	private Instant createdAt;
 

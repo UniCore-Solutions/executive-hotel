@@ -29,6 +29,7 @@ describe('filterEntries', () => {
     plans: [
       {
         id: `${room.id}::bb`,
+        backendRatePlanId: '00000000-0000-0000-0000-000000000011',
         name: 'Bed & Breakfast',
         mealPlan: 'Breakfast included',
         price: room.pricePerNight,

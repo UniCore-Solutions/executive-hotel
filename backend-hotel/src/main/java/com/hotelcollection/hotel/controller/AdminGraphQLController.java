@@ -21,6 +21,7 @@ import com.hotelcollection.hotel.dto.catalog.AdminHotelInput;
 import com.hotelcollection.hotel.dto.catalog.AdminHotelPage;
 import com.hotelcollection.hotel.dto.catalog.AdminRoomInput;
 import com.hotelcollection.hotel.dto.catalog.AdminRoomTypeInput;
+import com.hotelcollection.hotel.dto.catalog.HotelPolicyInput;
 import com.hotelcollection.hotel.dto.identity.AdminCreateUserInput;
 import com.hotelcollection.hotel.dto.identity.AdminRoleView;
 import com.hotelcollection.hotel.dto.identity.AdminUserView;
@@ -37,6 +38,7 @@ import com.hotelcollection.hotel.dto.review.ReviewPage;
 import com.hotelcollection.hotel.entity.Amenity;
 import com.hotelcollection.hotel.entity.Availability;
 import com.hotelcollection.hotel.entity.Hotel;
+import com.hotelcollection.hotel.entity.HotelPolicy;
 import com.hotelcollection.hotel.entity.Media;
 import com.hotelcollection.hotel.entity.RatePlan;
 import com.hotelcollection.hotel.entity.Review;
@@ -193,6 +195,12 @@ public class AdminGraphQLController {
 	@MutationMapping
 	public List<Media> setHotelMedia(@Argument UUID hotelId, @Argument List<MediaInput> media) {
 		return catalogAdmin.setHotelMedia(hotelId, media);
+	}
+
+	@MutationMapping
+	public List<HotelPolicy> setHotelPolicies(@Argument UUID hotelId,
+			@Argument List<HotelPolicyInput> policies) {
+		return catalogAdmin.setHotelPolicies(hotelId, policies);
 	}
 
 	// ---------------------------------------------------------------- room types
