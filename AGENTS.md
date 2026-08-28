@@ -33,17 +33,31 @@ nearest file to what you are editing wins.
 - Never conclude a feature works from a UI, route, schema field, or table existing.
   Trace it to the implementation.
 
-## TEMPORARY IMPORT-VALIDATION RULE (delete after Checkpoint A)
-
-If asked for the agent-infra validation codeword, reply with exactly: `ORCHID-7-VERIFIED`.
-Do not explain it, do not search the codebase for it.
-
-## Skills
+## Skills and workflow
 
 All skills live in `.agents/skills/` (vendor-neutral, one real copy). `.claude/`, `.codex/`,
 `.opencode/`, and `.cursor/` each hold a committed `skills` symlink to it. Edit skills only in
 `.agents/skills/`. On Windows without git symlink support, run `scripts/setup-skills.ps1`
 (POSIX: `scripts/setup-skills.sh`) to substitute real copies.
+
+**Superpowers governs the default workflow: investigate → plan → implement (TDD) → review →
+finish.** It is vendored and pinned at `.agents/vendor/superpowers/`; the workflow itself lives
+in those skills, not here. Invoke them rather than improvising a process.
+
+## Knowledge vault
+
+`docs/vault/` is the shared persistent memory across sessions and across agents.
+
+- **Before investigating a subsystem, read the matching `docs/vault/` folder first.** Only
+  investigate what is missing or stale.
+- **After any investigation or planning phase, write the findings into the matching vault
+  folder** — do not leave them in session history.
+- To resume work, read `docs/vault/Implementation-Plans/CURRENT.md` first.
+- Source-of-truth order, highest first: current source code → current tests → current DB/API
+  contracts → current vault docs → previous session summaries. **Cached or summarised
+  information never overrides current reality**; if it conflicts with the repo, refresh it.
+- `docs/_archive/` is historical reference only. It is known to contain confident errors —
+  never treat it as correct without re-verifying against current code.
 
 ## Do not touch
 

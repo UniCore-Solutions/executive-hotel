@@ -37,7 +37,15 @@ foreach ($h in $hosts) {
     }
 
     if ($item) { Remove-Item $target -Recurse -Force }
-    Copy-Item $src $target -Recurse
+    # .agents/skills holds symlinks into vendor/superpowers. On a checkout without
+    # symlink support those are text stubs, so copy from the vendor tree explicitly
+    # after copying the project skills, ensuring real files either way.
+    Copy-Item $src $target -Recurse -Force
+    Get-ChildItem ".agents/vendor/superpowers/skills" -Directory | ForEach-Object {
+        $dest = Join-Path $target $_.Name
+        if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+        Copy-Item $_.FullName $dest -Recurse
+    }
     # The symlink is tracked in git; a local copy would otherwise show as a dirty
     # working tree forever. Hide the substitution from git for this checkout only.
     git update-index --skip-worktree $target 2>$null

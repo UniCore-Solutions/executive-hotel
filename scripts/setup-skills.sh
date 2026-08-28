@@ -29,7 +29,9 @@ for host in "${HOSTS[@]}"; do
   # Broken symlink, checked-out-as-text symlink, or nothing at all.
   echo "fallback $target (symlinks unavailable) — copying"
   rm -rf "$target"
-  cp -R "$SRC" "$target"
+  # -L dereferences: .agents/skills contains symlinks into vendor/superpowers,
+  # and a symlink-less checkout must end up with real files, not dangling links.
+  cp -RL "$SRC" "$target"
   # The symlink is tracked in git; a local copy would otherwise show as a dirty
   # working tree forever. Hide the substitution from git for this checkout only.
   git update-index --skip-worktree "$target" 2>/dev/null || true
