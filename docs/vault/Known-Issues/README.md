@@ -41,12 +41,15 @@ review against on every admin resolver change.
 The archived documentation instructed contributors that `./mvnw test` was red on two ArchUnit
 rules and that those failures should be treated as pre-existing.
 
-**This is no longer true.** Verified 2026-08-28:
+**This is no longer true.** The *entire* backend suite was run on 2026-08-28:
 
 ```
-$ ./mvnw -Dtest=ModuleArchitectureTest test
-Tests run: 6, Failures: 0, Errors: 0, Skipped: 0
+$ ./mvnw test
+Tests run: 170, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
 ```
+
+Both frontends are green too — see [[Testing/test-topology]] for the full baseline.
 
 Recorded here rather than silently dropped because the obsolete guidance is actively
 dangerous: it trains people to dismiss architecture-test failures as expected noise, which

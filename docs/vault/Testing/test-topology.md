@@ -41,17 +41,38 @@ failing and instructed contributors to treat those two failures as pre-existing.
 is obsolete and following it would cause someone to ignore a real regression. See
 [[Known-Issues/README]].
 
-## Confidence and gaps
+## Baseline — all suites green (2026-08-28)
 
-- ArchUnit suite: **verified green** in this session.
-- **The full backend suite has not been run in this session** — only the architecture test.
-  The overall red/green state of `./mvnw test` is therefore unverified.
-- Frontend and back-office suites: not run in this session.
+Every unit/integration suite was run in full and passes:
 
-Establishing a trustworthy full-suite baseline is a queued task — see
-[[Implementation-Plans/CURRENT]]. Until that is done, do not assume any particular test is
-expected to fail. If something fails, investigate it rather than dismissing it as
-pre-existing.
+| Suite | Result |
+|---|---|
+| `backend-hotel` — `./mvnw test` | **170 tests, 0 failures, BUILD SUCCESS** |
+| `frontend-hotel` — `vitest run` | **15 files, 73 tests passed** |
+| `backoffice-hotel` — `vitest run` | **1 file, 10 tests passed** |
+
+**There are no known-failing tests. Any red test is a real regression** — do not dismiss
+anything as pre-existing.
+
+Playwright end-to-end suites were **not** run (they need the full stack up); their state is
+unverified.
+
+### Gotcha: stale `node_modules` looks like broken code
+
+On the first run, three `frontend-hotel` test files failed to collect:
+
+```
+Failed to resolve import "@apollo/client" from "src/api/apollo/client.ts"
+Failed to resolve import "axios" from "src/api/rest/client.ts"
+```
+
+Both packages were correctly declared in `package.json` (`@apollo/client ^4.2.12`,
+`axios ^1.20.0`) but absent from `node_modules`. `npm install` fixed it and the suite went to
+73/73.
+
+**If test files fail to *collect* rather than fail assertions, check the install before
+reading any code.** The error names an application source file, which makes it look like a
+code defect when it is an environment one.
 
 ## Related notes
 

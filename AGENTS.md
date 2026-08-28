@@ -73,3 +73,36 @@ Code via the Superpowers `code-review` skill before it is accepted into a Graphi
 delegated output merges without that review.** See
 [docs/vault/Decisions/0001-agent-delegation-model.md](docs/vault/Decisions/0001-agent-delegation-model.md)
 for what stays with Claude vs. what is delegated, and the invocation mechanism.
+
+Delegate non-interactively, e.g.
+`opencode run -m deepseek/deepseek-v4-flash "<task + acceptance criteria + relevant files>"`.
+Send only the task, its acceptance criteria, the relevant files and vault notes, and any
+needed test info — **never the whole repository.** Then inspect the real diff, not the
+delegate's summary.
+
+## Implementation workflow
+
+Once a Superpowers plan exists and is approved, implement it as **small stacked Graphite
+branches — one per task from the plan, not one large branch.**
+
+- `gt create` per task. **Do not use `git branch` or `git checkout -b` for feature work**;
+  route branch creation through Graphite so the stack stays reviewable.
+- Each stacked branch carries its own tests and its own review pass before merge:
+  `gt submit`, then merge only after the Superpowers code-review skill signs off and tests pass.
+- Task state lives in `docs/vault/Implementation-Plans/`, not in chat. Never assume the
+  current session stays open until a task finishes — see `TASK-TEMPLATE.md` there.
+- Full lifecycle is owned end to end: commit → `gt create`/`gt sync` → `gt submit` → open or
+  update the PR → monitor review feedback → fix → re-run tests → update the PR → merge.
+  **After merge, update the affected vault notes and `CURRENT.md`.**
+
+## Context discipline
+
+- Read only what is relevant. Search before opening large files; reuse vault notes and prior
+  investigation instead of re-deriving them. Do not re-explain architecture the vault covers.
+- Before building any custom caching, indexing, or memory system, check what already exists
+  (prompt caching, repo indexing, semantic retrieval, installed plugins/skills). Prefer a
+  mature existing capability. Add a plugin only if it materially improves retrieval, memory,
+  or token efficiency — see
+  [docs/vault/Decisions/0005-caching-and-retrieval.md](docs/vault/Decisions/0005-caching-and-retrieval.md).
+- Approaching a context or usage limit: stop and checkpoint. Update `CURRENT.md` and the
+  relevant vault notes, then end cleanly rather than being cut off mid-task.

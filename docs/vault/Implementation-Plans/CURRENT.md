@@ -1,9 +1,9 @@
 # CURRENT — Session Resume Point
 
 **The single file a new session reads first.** Read this, then the vault notes it links to,
-then continue. Do not re-run a full-project investigation because the session is new.
+then continue. **Do not re-run a full-project investigation because the session is new.**
 
-**Last updated:** 2026-08-28, during Checkpoint B of the agent-infrastructure restructure.
+**Last updated:** 2026-08-28, end of Checkpoint C of the agent-infrastructure restructure.
 
 ---
 
@@ -12,65 +12,81 @@ then continue. Do not re-run a full-project investigation because the session is
 Agent-infrastructure restructure — make instructions, skills, and workflow identical across
 Claude Code, OpenCode, Codex CLI, and Cursor, with no duplicated or agent-specific config.
 
-**This epic touches no application or feature code.** That separation is deliberate and must
-hold.
+**This epic touches no application or feature code.** That separation is deliberate and has
+been enforced: one delegated test file was produced during verification and deliberately
+removed from this branch (see [[DELEGATION-PROOF]]).
 
 ## Current phase
 
-Checkpoint B of three (A: instructions + skills · B: Superpowers + vault · C: Graphite,
-delegation, PR lifecycle, browser skill).
+Checkpoint C complete, awaiting user review. Checkpoints A and B approved.
 
 ## Current task
 
-Awaiting user review of Checkpoint B.
+None in progress. Awaiting user go-ahead to open the pull request.
 
 ## Graphite branch
 
-`chore/agent-infra`, stacked on `main`. Created with `gt create`.
-**Do not use raw `git checkout -b` for feature work** — route branch creation through Graphite.
+`chore/agent-infra`, stacked on `main`, tracked by Graphite. Created with `gt create`.
+
+**Do not use raw `git checkout -b` for feature work** — route branch creation through
+Graphite so the stack stays reviewable.
 
 ## Completed
 
-- **Step 0** — Graphite installed (v1.8.6), `gt init --trunk main`, branch created.
-  `docs/vault/.obsidian/` gitignored ahead of the vault. Windows symlink fallback agreed.
-- **Step 1** — Root `AGENTS.md` is the single source of truth. `CLAUDE.md` is now just
-  `@AGENTS.md`. Package-scoped `AGENTS.md` in all three deployables carry deltas only.
-  Import chain **proven**: a fresh `claude -p` obeyed a rule that existed only in `AGENTS.md`.
-- **Step 2** — All skills moved to `.agents/skills/`; `.claude`, `.codex`, `.opencode`,
-  `.cursor` each hold a committed `skills` symlink. All four verified resolving.
-  `scripts/setup-skills.{sh,ps1}` provides the Windows no-symlink fallback, tested against a
-  simulated symlink-less checkout.
-- **Step 3** — Superpowers 6.3.0 vendored and pinned at `.agents/vendor/superpowers/`
-  (commit `b36e082`). 14 skills symlinked into the shared home, so all four hosts see 21
-  skills total. `using-superpowers` **proven active**: a fresh session's first action was
-  `Skill(brainstorming)`, unprompted.
-- **Step 4** — All 71 pre-existing docs archived unedited into `docs/_archive/`. Vault
-  created at `docs/vault/` with 11 folders and notes written from fresh investigation of the
-  live system.
+| Step | Outcome |
+|---|---|
+| 0 | Graphite installed (1.8.6), `gt init --trunk main`, branch created. `docs/vault/.obsidian/` gitignored. Windows symlink fallback agreed and built. |
+| 1 | Root `AGENTS.md` is the single source of truth; `CLAUDE.md` is just `@AGENTS.md`; three package-scoped `AGENTS.md` carry deltas only. **Import chain proven** — a fresh `claude -p` obeyed a rule existing only in `AGENTS.md`. |
+| 2 | All skills in `.agents/skills/`; four host dirs hold committed symlinks. All verified resolving. `scripts/setup-skills.{sh,ps1}` fallback tested against a simulated symlink-less checkout. |
+| 3 | Superpowers 6.3.0 vendored and pinned (`b36e082`). 21 skills visible to all four hosts. **`using-superpowers` proven active** — a fresh session's first action was `Skill(brainstorming)`, unprompted. |
+| 4 | 71 legacy docs archived unedited to `docs/_archive/`. Vault built at `docs/vault/` from fresh investigation of the live system. |
+| 5 | Graphite workflow rules in `AGENTS.md`: one stacked branch per plan task, own tests, own review. |
+| 6 | [[TASK-TEMPLATE]] — task record format (ID, scope, acceptance, files, notes, deps, status, branch, tests, review, PR). |
+| 7 | This file. |
+| 8 | Context-discipline rules in `AGENTS.md`. |
+| 9 | [[../Decisions/0005-caching-and-retrieval]] — evaluated what exists; **build nothing custom**. |
+| 10 | PR lifecycle rules in `AGENTS.md`. Tooling checked — see Blockers. |
+| 11 | `browser-automation` skill in `.agents/skills/`, using existing Playwright + Chrome MCP, with the permission gates. |
+| 12 | Loop verified end to end, including a **real delegation round trip** — [[DELEGATION-PROOF]]. |
+
+## Test baseline — all green (2026-08-28)
+
+| Suite | Result |
+|---|---|
+| `backend-hotel` `./mvnw test` | 170 tests, 0 failures, BUILD SUCCESS |
+| `frontend-hotel` `vitest run` | 15 files, 73 tests passed |
+| `backoffice-hotel` `vitest run` | 1 file, 10 tests passed |
+
+**No known-failing tests. Any red test is a real regression.** Playwright e2e not run —
+state unverified. Details and the stale-`node_modules` gotcha: [[../Testing/test-topology]].
 
 ## Remaining
 
-| Step | Work |
-|---|---|
-| 5 | Graphite workflow rules into `AGENTS.md` (gt installed; `gt auth` **not** done) |
-| 6 | Long-running task format — ID, scope, acceptance criteria, files, notes, deps, status, branch, tests, review, PR |
-| 7 | Finish this file's steady-state format |
-| 8 | Context-minimisation rules into `AGENTS.md` |
-| 9 | Evaluate existing caching/retrieval before building anything custom |
-| 10 | PR lifecycle |
-| 11 | Browser automation as a shared, permission-aware skill |
-| 12 | Final end-to-end verification |
+- Open the PR for this branch (needs the two blockers below resolved).
+- **LINKS-1** — the queued follow-up task in [[DELEGATION-PROOF]]; belongs on a feature
+  stack, not here.
+- `Frontend/` and `Business-Flows/` vault folders hold scoped stubs; fill them in as those
+  subsystems are actually worked on rather than through a speculative audit.
 
 ## Blockers
 
 - **`gt auth` not configured.** `gt submit` needs a Graphite API token from the user.
-  Untested. Blocks step 10.
-- **GitHub push/PR access untested.** Committing works locally; pushing has not been tried.
-- **OpenCode/DeepSeek delegation unproven.** The `opencode` binary exists on PATH, but a
-  working binary is not a working subscription or model access. Step 12 requires a real
-  round-trip run before delegation may be considered functional.
-- `cursor` is not installed. Its symlink and manifests are wired but unverifiable. Agreed as
-  acceptable — install later if needed.
+  Until then, PR creation must fall back to `git push` plus opening the PR by hand.
+- **`gh` CLI is not installed**, so there is no scripted GitHub PR path either.
+- **Nothing has been pushed.** All work is local commits on `chore/agent-infra`.
+  GitHub SSH access is confirmed working (`git ls-remote origin` succeeds); push itself
+  is untested.
+
+Non-blocking: `cursor` is not installed, so its symlink and manifests are wired but
+unverified. Agreed as acceptable.
+
+## Remote topology — read before pushing
+
+Two remotes. **They are not interchangeable.**
+
+- `origin` → `git@github.com:UniCore-Solutions/executive-hotel.git` (**GitHub — the one
+  Graphite works with; Graphite's PR support is GitHub-only**)
+- `gitlab` → `https://gitlab.com/omar.azhari/executive-hotel.git`
 
 ## Key decisions
 
@@ -78,37 +94,39 @@ Awaiting user review of Checkpoint B.
 - [[../Decisions/0002-flat-layered-over-hexagonal]]
 - [[../Decisions/0003-graphql-read-rest-write]]
 - [[../Decisions/0004-per-resolver-authorization]]
+- [[../Decisions/0005-caching-and-retrieval]]
 
-Superpowers was **vendored rather than installed per-agent** because upstream's own install
-path is per-machine and per-harness — the exact duplication this epic removes. Rationale in
+Superpowers was **vendored rather than installed per-agent** because upstream's install path
+is per-machine and per-harness — the duplication this epic removes. See
 `.agents/vendor/superpowers/VENDORED.md`.
 
 ## Review status
 
-Checkpoints A and B presented to the user. A approved. B pending.
+Checkpoints A and B approved by the user. Checkpoint C presented, pending.
 
 ## PR status
 
-None opened. Branch is local and unpushed.
+**None opened.** Branch is local and unpushed. Two commits at time of writing, plus the
+Checkpoint C commit.
 
 ## Findings worth carrying forward
 
-Re-investigation contradicted the archived documentation in two places:
+Re-investigation contradicted the archived documentation three times — the reason those docs
+were archived rather than merged:
 
-1. **Migrations are `V1–V30`**, not V1–V27 as the old agent instructions stated. Confirmed by
-   30 rows in `flyway_schema_history`.
-2. **The ArchUnit suite passes 6/6.** The old instructions said two rules were failing and to
-   treat them as pre-existing. Following that guidance now would mask a real regression.
-   Recorded in [[../Known-Issues/README]].
-
-Both support the archive-don't-merge approach: the old docs were confidently wrong.
+1. **Migrations are `V1–V30`**, not V1–V27.
+2. **The full backend suite passes (170 tests).** The old instructions said two ArchUnit
+   rules were failing and to treat them as pre-existing; following that now would mask a real
+   regression.
+3. Frontend test files failing to *collect* were **stale `node_modules`**, not code defects —
+   the error names an application source file and looks like one.
 
 ---
 
 ## Next action
 
-**Wait for the user's go-ahead on Checkpoint B**, then begin step 5.
+**Ask the user whether to push `chore/agent-infra` to `origin` and open the PR**, since that
+is the first outward-facing step of this epic and needs either a Graphite token or a manual
+PR.
 
-The first substantive act of Checkpoint C should be establishing a trustworthy full-test-suite
-baseline (`./mvnw test` plus both frontend suites), since [[../Testing/test-topology]]
-currently records the full-suite state as unverified.
+Do not push without that go-ahead.

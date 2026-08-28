@@ -41,7 +41,8 @@ Notes must be readable cold, by someone with no history on this project:
 - Record the **why**, not only the what — the reasoning and the trade-offs considered.
   A note that says what the code does is worth little; the code already says that.
 - Back claims with evidence: a `file:line`, a command, a query result.
-- Link related notes with `[[wiki-links]]`.
+- Link related notes with Obsidian wiki-link syntax: double square brackets around the
+  note's path relative to `docs/vault/`.
 - State a note's confidence when it is not verified. Say "unverified" rather than implying
   certainty you do not have.
 
