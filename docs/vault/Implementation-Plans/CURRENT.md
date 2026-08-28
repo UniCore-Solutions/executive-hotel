@@ -18,18 +18,28 @@ removed from this branch (see [[DELEGATION-PROOF]]).
 
 ## Current phase
 
-Checkpoint C complete, awaiting user review. Checkpoints A and B approved.
+Agent-infrastructure epic complete (PR #2). Now using the workflow on real work.
 
 ## Current task
 
-None in progress. Awaiting user go-ahead to open the pull request.
+**Next up:** document the booking flow end to end into `Business-Flows/`
+(search → quote → reserve → pay → confirm), then plan the currency fix (KI-1).
 
-## Graphite branch
+Just completed: **LINKS-1** — first real pass through the new workflow. See
+[[DELEGATION-PROOF]].
 
-`chore/agent-infra`, stacked on `main`, tracked by Graphite. Created with `gt create`.
+## Graphite stack
+
+```
+feat/links-url-tests   PR #3  (LINKS-1)
+└── chore/agent-infra  PR #2  (agent infrastructure)
+    └── main
+```
 
 **Do not use raw `git checkout -b` for feature work** — route branch creation through
-Graphite so the stack stays reviewable.
+Graphite so the stack stays reviewable. Note: `gt checkout main` reverts the working tree to
+pre-infra state, so stack feature branches **on top of** `chore/agent-infra` while it is
+unmerged, not off `main`.
 
 ## Completed
 
@@ -108,8 +118,14 @@ Checkpoints A and B approved by the user. Checkpoint C presented, pending.
 
 ## PR status
 
-**PR #2 open and ready for review** —
-https://app.graphite.com/github/pr/UniCore-Solutions/executive-hotel/2
+- **PR #2** — agent infrastructure, ready for review:
+  https://app.graphite.com/github/pr/UniCore-Solutions/executive-hotel/2
+  **Its title is wrong** (still commit 1's subject); `gt submit --edit-title` cannot fix it —
+  rename in the GitHub UI.
+- **PR #3** — LINKS-1, stacked on #2:
+  https://app.graphite.com/github/pr/UniCore-Solutions/executive-hotel/3
+
+Merge #2 before #3.
 
 Submitted with `gt submit` against `main` in `UniCore-Solutions/executive-hotel`.
 Graphite auth is configured (`gt auth`, authenticated as AZOMARDEV); the Graphite GitHub App
