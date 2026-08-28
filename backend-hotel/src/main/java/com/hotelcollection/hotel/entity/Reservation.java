@@ -114,6 +114,14 @@ public class Reservation {
 
 	private String notes;
 
+	/** Guest-selected arrival window (e.g. "15:00 – 18:00") — V29. */
+	@Column(name = "arrival_slot")
+	private String arrivalSlot;
+
+	/** Free-text special requests collected on the booking form — V29. */
+	@Column(name = "special_requests")
+	private String specialRequests;
+
 	@Column(nullable = false)
 	private Instant createdAt;
 

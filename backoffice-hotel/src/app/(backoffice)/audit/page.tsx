@@ -1,7 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { proxyRequest } from '@/lib/api';
+import { useQuery } from '@apollo/client/react';
 import { formatDateTime, statusLabel } from '@/lib/format';
 import { AdminAuditLogsDocument } from '@/graphql/generated/graphql';
 import { Card, CardContent } from '@/components/ui/card';
@@ -17,9 +16,8 @@ import {
 import { PageHeader, StatusBadge } from '@/components/admin/page';
 
 export default function AuditLogPage() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['adminAuditLogs'],
-    queryFn: () => proxyRequest(AdminAuditLogsDocument, { page: { page: 0, size: 100 } }),
+  const { data, loading } = useQuery(AdminAuditLogsDocument, {
+    variables: { page: { page: 0, size: 100 } },
   });
 
   const entries = data?.adminAuditLogs.items ?? [];
@@ -30,7 +28,7 @@ export default function AuditLogPage() {
         title="Audit Log"
         description="Platform-wide administrative actions (super admin only)"
       />
-      {isLoading ? (
+      {loading ? (
         <Skeleton className="h-72 w-full" />
       ) : entries.length === 0 ? (
         <Card>

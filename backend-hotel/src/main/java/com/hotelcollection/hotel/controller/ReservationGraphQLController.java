@@ -1,55 +1,49 @@
 package com.hotelcollection.hotel.controller;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.graphql.data.method.annotation.Argument;
-import org.springframework.graphql.data.method.annotation.MutationMapping;
+import org.springframework.graphql.data.method.annotation.BatchMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.graphql.data.method.annotation.SchemaMapping;
 import org.springframework.stereotype.Controller;
 
 import com.hotelcollection.hotel.dto.PageInput;
-import com.hotelcollection.hotel.dto.reservation.CancelReservationInput;
-import com.hotelcollection.hotel.dto.reservation.CreateReservationInput;
 import com.hotelcollection.hotel.dto.reservation.ReservationLookupInput;
 import com.hotelcollection.hotel.dto.reservation.ReservationPageResult;
-import com.hotelcollection.hotel.dto.reservation.ReservationResult;
 import com.hotelcollection.hotel.entity.Guest;
+import com.hotelcollection.hotel.entity.Media;
 import com.hotelcollection.hotel.entity.Reservation;
 import com.hotelcollection.hotel.entity.ReservationCancellation;
+import com.hotelcollection.hotel.entity.ReservationRoom;
 import com.hotelcollection.hotel.entity.ReservationStatus;
 import com.hotelcollection.hotel.service.BookingService;
+import com.hotelcollection.hotel.service.CatalogQueryService;
+import com.hotelcollection.hotel.service.PricingService;
 
 /**
- * Reservation GraphQL controller: booking creation, cancellation (guest and
- * back-office), reservation lookups and guest-related field resolvers.
- * Authorization is enforced inside the service layer.
+ * Reservation GraphQL controller — READ side only (API rule: GraphQL =
+ * READ, REST = WRITE/ACTION). Creation and cancellation are REST writes
+ * (POST /api/v1/reservations, .../{reference}/cancel,
+ * /api/v1/admin/reservations/{id}/cancel). Authorization is enforced inside
+ * the service layer.
  */
 @Controller
 public class ReservationGraphQLController {
 
 	private final BookingService booking;
+	private final CatalogQueryService catalog;
+	private final PricingService pricing;
 
-	public ReservationGraphQLController(BookingService booking) {
+	public ReservationGraphQLController(BookingService booking, CatalogQueryService catalog,
+			PricingService pricing) {
 		this.booking = booking;
-	}
-
-	@MutationMapping
-	public ReservationResult createReservation(@Argument CreateReservationInput input) {
-		var result = booking.create(input);
-		return new ReservationResult(result.reservation(), result.created());
-	}
-
-	@MutationMapping
-	public ReservationResult cancelReservation(@Argument CancelReservationInput input) {
-		return new ReservationResult(booking.cancel(input), false);
-	}
-
-	@MutationMapping
-	public Reservation adminCancelReservation(@Argument UUID reservationId,
-			@Argument String reasonCode, @Argument String reasonNote) {
-		return booking.adminCancel(reservationId, reasonCode, reasonNote);
+		this.catalog = catalog;
+		this.pricing = pricing;
 	}
 
 	@QueryMapping
@@ -76,5 +70,33 @@ public class ReservationGraphQLController {
 	@SchemaMapping(typeName = "ReservationCancellation", field = "reason")
 	public String cancellationReason(ReservationCancellation c) {
 		return booking.cancellationReasonLabel(c.getCancellationReasonId());
+	}
+
+	// Room identity on reservation lines: roomLines persist only the room-type
+	// id (a snapshot), so the display name and a representative image are
+	// resolved from the current catalog (batch, no N+1).
+	@BatchMapping(typeName = "ReservationRoomLine", field = "roomTypeName")
+	public Map<ReservationRoom, String> roomLineNames(Collection<ReservationRoom> lines) {
+		Map<UUID, String> names = catalog.roomTypeNamesByIds(
+				lines.stream().map(ReservationRoom::getRoomTypeId).collect(Collectors.toSet()));
+		return lines.stream().collect(Collectors.toMap(l -> l,
+				l -> names.getOrDefault(l.getRoomTypeId(), "Room")));
+	}
+
+	@BatchMapping(typeName = "ReservationRoomLine", field = "roomTypeImageUrl")
+	public Map<ReservationRoom, String> roomLineImages(Collection<ReservationRoom> lines) {
+		Map<UUID, List<Media>> media = catalog.mediaByRoomTypeIds(
+				lines.stream().map(ReservationRoom::getRoomTypeId).collect(Collectors.toSet()));
+		return lines.stream().collect(Collectors.toMap(l -> l,
+				l -> media.getOrDefault(l.getRoomTypeId(), List.of()).stream()
+						.findFirst().map(Media::getUrl).orElse(null)));
+	}
+
+	@BatchMapping(typeName = "ReservationRoomLine", field = "ratePlanName")
+	public Map<ReservationRoom, String> roomLineRatePlans(Collection<ReservationRoom> lines) {
+		Map<UUID, String> names = pricing.ratePlanNamesByIds(
+				lines.stream().map(ReservationRoom::getRatePlanId).collect(Collectors.toSet()));
+		return lines.stream().collect(Collectors.toMap(l -> l,
+				l -> names.get(l.getRatePlanId())));
 	}
 }

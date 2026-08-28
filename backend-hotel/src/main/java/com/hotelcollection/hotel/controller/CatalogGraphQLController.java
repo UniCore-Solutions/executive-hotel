@@ -18,6 +18,7 @@ import com.hotelcollection.hotel.dto.catalog.HotelDetails;
 import com.hotelcollection.hotel.dto.catalog.HotelSearchInput;
 import com.hotelcollection.hotel.dto.catalog.HotelSearchResult;
 import com.hotelcollection.hotel.entity.Amenity;
+import com.hotelcollection.hotel.entity.Country;
 import com.hotelcollection.hotel.entity.Experience;
 import com.hotelcollection.hotel.entity.Extra;
 import com.hotelcollection.hotel.entity.Faq;
@@ -28,6 +29,7 @@ import com.hotelcollection.hotel.entity.RoomType;
 import com.hotelcollection.hotel.exception.DomainException;
 import com.hotelcollection.hotel.service.CatalogQueryService;
 import com.hotelcollection.hotel.service.HotelPolicyQueryService;
+import com.hotelcollection.hotel.service.ReferenceQueryService;
 import com.hotelcollection.hotel.service.ReviewService;
 
 /**
@@ -41,12 +43,14 @@ public class CatalogGraphQLController {
 	private final CatalogQueryService catalog;
 	private final ReviewService review;
 	private final HotelPolicyQueryService policies;
+	private final ReferenceQueryService reference;
 
 	public CatalogGraphQLController(CatalogQueryService catalog, ReviewService review,
-			HotelPolicyQueryService policies) {
+			HotelPolicyQueryService policies, ReferenceQueryService reference) {
 		this.catalog = catalog;
 		this.review = review;
 		this.policies = policies;
+		this.reference = reference;
 	}
 
 	@QueryMapping
@@ -57,6 +61,12 @@ public class CatalogGraphQLController {
 				: (input.page().size() == null ? 20 : input.page().size());
 		return catalog.search(input == null ? null : input.query(), p, s,
 				input == null ? null : input.sort());
+	}
+
+	/** The platform's single property (exactly one active hotel must exist). */
+	@QueryMapping
+	public Hotel canonicalHotel() {
+		return catalog.canonicalHotel();
 	}
 
 	@QueryMapping
@@ -118,6 +128,11 @@ public class CatalogGraphQLController {
 	public List<Faq> faqs(@Argument UUID hotelId) {
 		requireActiveHotel(hotelId);
 		return catalog.faqs(hotelId);
+	}
+
+	@QueryMapping
+	public List<Country> countries() {
+		return reference.countries();
 	}
 
 	/** Public Hotel type: drafts are not exposed (back-office uses adminHotel). */

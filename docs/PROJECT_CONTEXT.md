@@ -1,17 +1,25 @@
 # PROJECT_CONTEXT
 
 > Compressed, factual model of this repository. Verified against source, config, the
-> live database and the running backend on **2026-08-27** (HEAD `82c4414` + a large
-> uncommitted working tree — see [CURRENT_STATE.md](CURRENT_STATE.md)).
+> live database and the running backend on **2026-08-27** (branch
+> `feature/canonical-single-hotel`).
 > Source code and runtime behaviour are authoritative; the `docs/` folders inside each
 > sub-project are historical (see [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §Documentation).
 
 ## 1. What this is
 
-A **direct-booking hotel platform** for a small multi-hotel collection: a guest-facing
-website (browse hotels → check live availability → get a server-priced quote → book →
-pay → look up / cancel / check in) plus a staff back-office (catalog, rates, promotions,
-inventory, reservations, guests, payments, invoices, reviews, users, audit).
+A **direct-booking single-property hotel platform**: a guest-facing website (browse the
+one hotel → check live availability computed from physical room inventory → get a
+server-priced quote → book → pay → look up / cancel / check in) plus a staff back-office
+(catalog, rates, promotions, inventory, reservations, guests, payments, invoices,
+reviews, users, audit).
+
+**The platform operates exactly ONE hotel** (canonical model, V26+V30):
+Executive Hotel, Lisbon. Non-canonical hotels were deactivated; `canonicalHotel`
+is the enforcing
+contract. Room types are sellable categories; physical rooms are the inventory;
+reservations consume one unit per room line per night for their exact dates.
+See [ARCHITECTURE.md](ARCHITECTURE.md) §8 for the full business model.
 
 Money is denominated in **MAD** (migration `V21__convert_eur_to_mad.sql`); other
 currencies are display-only FX conversions applied client-side.
@@ -41,13 +49,13 @@ own lockfile and is built independently; the root only holds Docker Compose + sc
 | Layer | Actual |
 |---|---|
 | Backend | Spring Boot **4.1.0**, Java **21**, Maven wrapper (`./mvnw`; no system `mvn`) |
-| API | **GraphQL primary** (spring-boot-starter-graphql, schema split per domain) + a small REST surface |
+| API | **GraphQL read-only** (spring-boot-starter-graphql, schema split per domain) + **REST writes** (`/api/v1/**`) — API rule: GraphQL = READ, REST = WRITE/ACTION (see [API_GUIDELINES.md](API_GUIDELINES.md)) |
 | Persistence | PostgreSQL **16.4**, Spring Data JPA/Hibernate, `ddl-auto: validate` |
-| Migrations | **Flyway V1 → V22**, all applied and green in the live DB |
+| Migrations | **Flyway V1 → V26**, all applied and green in the live DB |
 | Messaging | Apache **Kafka 3.9.1** (KRaft, single node) — **producer only, zero consumers** |
 | Auth | bcrypt(12) + **JJWT 0.11.5** HS256, stateless, role+hotel scoping |
 | Frontends | **Next.js 16**, React 19, TypeScript 5.9 strict, Tailwind v4, Radix UI, lucide |
-| FE data | `graphql-codegen` client preset; guest = hand-rolled fetch client, back-office = `@tanstack/react-query` + `graphql-request` |
+| FE data | `graphql-codegen` client preset; guest = **Apollo Client** (reads) + **Axios** (writes via `/api/rest` BFF proxy); back-office = **Apollo Client** (reads) + **Axios** (writes) + `@tanstack/react-query` (mutation lifecycle only) |
 | Tests | JUnit 5 + **Testcontainers** + **ArchUnit** (backend); **Vitest** + **Playwright** (both frontends) |
 | Deploy | **Docker Compose only.** No CI/CD, no Kubernetes, no Terraform, no cloud config |
 
@@ -80,12 +88,14 @@ A **layered monolith**, single deployable, single database.
 
 ```
 Browser ──HTTP──► frontend-hotel (Next)
-   │                 └─ /graphql rewrite ──► backend :8180/graphql
-   └─ direct fetch to :8180/api/v1/auth/*        (REST, login/register)
+   │                 ├─ /api/graphql (BFF proxy, reads; injects cookie Bearer)
+   │                 ├─ /api/rest/... (BFF proxy, writes)
+   │                 └─ /api/auth/*   (BFF; httpOnly guest_session cookie)
 
 Browser ──HTTP──► backoffice-hotel (Next BFF)
                      ├─ /api/auth/{login,me,logout}   sets httpOnly `bo_session` cookie
-                     └─ /api/graphql  ──► backend :8180/graphql  (injects Bearer)
+                     ├─ /api/graphql  ──► backend :8180/graphql  (reads, injects Bearer)
+                     └─ /api/rest/... ──► backend :8180/api/v1/** (writes, injects Bearer)
 
 backend ──JPA──► PostgreSQL
 backend ──outbox table──► OutboxRelay (@Scheduled 1s) ──► Kafka   (nothing consumes)
@@ -123,13 +133,17 @@ Backend boot hard-depends on both Postgres *and* Kafka being healthy.
 
 ## 9. Current development state (one paragraph)
 
-The backend is substantially complete and real. The back-office is fully wired to it.
-The guest frontend is mid-migration from static fixtures to the live API: auth,
-reservations, payment, pricing/quote, search, availability and the booking/confirmation/
-account flows are done; the marketing surface (home, `/hotel` without a `hotelid`,
-`/index-2`, header/footer/FAQ/offers copy) still renders `src/data/index.ts` fixtures
-describing a hotel ("Executive Hotel", Rabat) that **does not exist in the database**
-(the seed has Azure Bay Resort / Dar Zellij / Villa Aurelia). Work stopped mid-stream:
-a ~2.2k-line change set is uncommitted, and `./mvnw test` is **red** on two ArchUnit
-rules. Details and evidence: [CURRENT_STATE.md](CURRENT_STATE.md),
-[KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+The platform is a **canonical single-hotel system** (branch
+`feature/canonical-single-hotel`): one active hotel (Executive Hotel, Lisbon), inventory
+derived from physical rooms (V26 triggers), availability = physical rooms − reservations
+per night (sparse rows), reservations consumed/released transactionally with overbooking
+blocked at the database. The guest frontend no longer offers a hotel picker, the index
+page renders the canonical property from the backend (no collection section, no fixture
+fallbacks), `/hotel` without a `hotelid` redirects to the canonical property, and a new
+`canonicalHotel` GraphQL query is the single-property contract. Backend: 152/152 tests
+green (including all 5 ArchUnit rules, previously 2 red). Frontend: typecheck/lint/build
+clean, 72/72 vitest. Remaining known gaps: no payment provider (mock gateway references),
+no email/SMS, no Kafka consumer, the stale Playwright e2e suite still targets the retired
+fixture world, and `frontend-hotel/src/data/index.ts` remains as unit-test fixtures plus
+the legacy `img()` utility. Details: [CURRENT_STATE.md](CURRENT_STATE.md),
+[KNOWN_ISSUES.md](KNOWN_ISSUES.md), [FRONTEND.md](FRONTEND.md).

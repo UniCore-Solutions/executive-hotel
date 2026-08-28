@@ -64,28 +64,3 @@ query AdminReservations(
     }
   }
 }
-
-mutation AdminCancelReservation(
-  $reservationId: ID!
-  $reasonCode: String
-  $reasonNote: String
-) {
-  adminCancelReservation(
-    reservationId: $reservationId
-    reasonCode: $reasonCode
-    reasonNote: $reasonNote
-  ) {
-    id
-    reference
-    status
-    cancellation {
-      id
-      reason
-      reasonNote
-      isRefundable
-      penaltyAmount
-      refundAmount
-      cancelledAt
-    }
-  }
-}

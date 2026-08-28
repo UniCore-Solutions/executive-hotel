@@ -1,5 +1,8 @@
 extend type Query {
 	hotels(input: HotelSearchInput): HotelSearchResult!
+	# The platform's single property: the one active hotel. Fails when zero or
+	# more than one hotel is active (single-hotel platform contract).
+	canonicalHotel: Hotel!
 	hotel(id: ID!): Hotel
 	hotelDetails(id: ID!): HotelDetails
 	roomType(id: ID!): RoomType
@@ -8,23 +11,12 @@ extend type Query {
 	restaurants(hotelId: ID!): [Restaurant!]!
 	extras(hotelId: ID!): [Extra!]!
 	faqs(hotelId: ID!): [Faq!]!
+	# Reference countries (ISO code + name + calling code) — the single source
+	# for the guest country and phone selectors.
+	countries: [Country!]!
 	adminHotel(hotelId: ID!): AdminHotel
 	adminHotels(page: PageInput): AdminHotelPage!
 	adminAmenities: [Amenity!]!
-}
-
-extend type Mutation {
-	createHotel(input: AdminHotelInput!): Hotel!
-	updateHotel(id: ID!, input: AdminHotelInput!): Hotel!
-	setHotelAmenities(hotelId: ID!, amenityIds: [ID!]!): [Amenity!]!
-	setHotelMedia(hotelId: ID!, media: [MediaInput!]!): [Media!]!
-	setHotelPolicies(hotelId: ID!, policies: [HotelPolicyInput!]!): [HotelPolicy!]!
-	createRoomType(hotelId: ID!, input: AdminRoomTypeInput!): RoomType!
-	updateRoomType(id: ID!, input: AdminRoomTypeInput!): RoomType!
-	setRoomTypeAmenities(roomTypeId: ID!, amenityIds: [ID!]!): [Amenity!]!
-	setRoomTypeMedia(roomTypeId: ID!, media: [MediaInput!]!): [Media!]!
-	createRoom(hotelId: ID!, input: AdminRoomInput!): Room!
-	updateRoom(id: ID!, input: AdminRoomInput!): Room!
 }
 
 input HotelSearchInput {
@@ -169,6 +161,14 @@ type Faq {
 	answer: String!
 	category: String
 	sortOrder: Int!
+}
+
+type Country {
+	code: ID!
+	name: String!
+	# E.164 calling code without the '+' (e.g. '212' for Morocco) — nullable
+	# for reference rows without a dialing prefix.
+	callingCode: String
 }
 
 type HotelPolicy {

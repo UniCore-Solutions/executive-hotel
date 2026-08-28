@@ -3,11 +3,6 @@ extend type Query {
 	adminReviews(hotelId: ID!, status: ReviewModerationStatus, page: PageInput): ReviewPage!
 }
 
-extend type Mutation {
-	createReview(input: CreateReviewInput!): Review!
-	moderateReview(id: ID!, status: ReviewModerationStatus!, response: String): Review!
-}
-
 input CreateReviewInput {
 	hotelId: ID!
 	reservationId: ID

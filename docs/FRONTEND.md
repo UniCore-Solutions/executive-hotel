@@ -1,9 +1,100 @@
 # FRONTEND (guest site) — verified state
 
 **App:** `frontend-hotel/` · Next.js 16 App Router · 125 TS/TSX files · ~19 300 lines
-**Audited:** 2026-08-27, against the on-disk working tree (which includes ~2 200 lines of
-uncommitted integration work), the running backend on :8180, the seeded database, and a
-live dev server on :3001.
+**Audited:** 2026-08-27, against the on-disk working tree, the running backend on :8180,
+the seeded database, and a live dev server on :3000.
+
+> **Update (hotel identity + gallery, 2026-08-28).** The single-property identity is
+> now ONE hotel entity: **Executive Hotel** (backend V30 renamed the canonical hotel
+> record, its media alt texts, the platform description and the hero copy; `seed.sql`
+> matches). The guest frontend was aligned to the same source of truth:
+> - `layout.tsx` metadata + JSON-LD are derived from the canonical hotel
+>   (`generateMetadata`), not hardcoded — the old "Azure Bay Resort" strings are gone
+>   everywhere (offers/faq/booking page metadata too).
+> - Header/Footer brand come from the canonical hotel entity first (`hotel?.name ??
+>   platform?.name`), with no hardcoded brand fallback; the logo alt is dynamic.
+> - `HotelDetail` switched from the dark transparent-header hero to a solid light
+>   header: the gallery now sits below the navigation (`pt-28`), reads as one
+>   self-contained section, and no longer mixes with the nav. Room page got the
+>   same fixed-header offset.
+> - `PhotoGallery` layout: desktop/tablet = one large + exactly two stacked tiles
+>   (object-cover, one rounded container, gap); mobile = main photo + horizontal
+>   snap carousel of all photos; "View all N photos" sits over the bottom-right
+>   tile and opens the lightbox with the real count.
+
+> **Update (hotel→room→booking redesign, 2026-08-28):** the guest journey was
+> redesigned and the data plumbing completed end to end:
+> - **`/booking` no longer crashes.** It 500'd on SSR (`useApollo must be used inside
+>   <ApolloProvider>`): `useApollo()` threw because the root `ApolloProvider` hands out
+>   `null` during SSR (the Apollo cache is browser-only), and `/booking` — unlike
+>   `/reservation`/`/confirmation` — rendered `BookingFlow` outside a `<Suspense>`
+>   boundary. Fixed both ways: the page now wraps it in Suspense, and `useApollo()`
+>   returns `null` instead of throwing (`api/apollo/provider.tsx`).
+> - **No fake "0 MAD" prices.** The room page's date-less placeholder total was
+>   removed; without dates the booking card shows an explicit "choose your dates"
+>   state instead of a locally-computed total (`RoomDetails.tsx`).
+> - **Taxes are fully backend-itemized.** `Quote.charges[]` (name/type/amount from
+>   `tax_fee_types`) is exposed in the GraphQL schema (`rate/rate.graphqls`) and
+>   rendered as itemized rows; the client-side "Taxes & fees (17%)" percentage label
+>   is gone. The backend remains the only money source.
+> - **Countries are backend-served.** New `countries` GraphQL query (code + name +
+>   calling code; `V28__country_calling_codes.sql` seeds calling codes from
+>   libphonenumber-js). `CountrySelect` is now a searchable combobox
+>   (`ui/CountryCombobox.tsx`) fed by the backend; `PhoneField` was rebuilt on the
+>   same data + libphonenumber-js formatting (E.164 output unchanged).
+> - **Arrival slot + special requests are persisted.** New `arrivalSlot`/
+>   `specialRequests` on `CreateReservationInput` (`V29`), sent by `BookingFlow`
+>   (they were previously collected and silently dropped).
+> - **Reservation views show the real room.** `ReservationRoomLine.roomTypeName` +
+>   `roomTypeImageUrl` (backend field resolvers) replace the hardcoded "Room" /
+>   broken image; confirmation JSON-LD and the .ics use the real hotel name.
+> - **Room view is a dedicated experience.** When `?roomId=` is set, the hotel
+>   gallery, hotel identity block and the duplicated breadcrumb are hidden
+>   (`HotelDetail.tsx`); `RoomDetails` leads with a room header (badges/title/
+>   facts/description), then gallery + booking card, with "Room essentials" and
+>   "Good to know" stacked vertically instead of side-by-side.
+> - **Booking page context.** Breadcrumb is now Home / hotel / room / Booking
+>   (client-rendered from the resolved stay); the sidebar shows the hotel name;
+>   guest-details groups were restructured ("Arrival & requests" no longer uses the
+>   floating-legend hack).
+> - **Hotel page:** room-grid cards carry the stay state (`hotelRoomURL`) and show
+>   "from X/night" instead of a locally-multiplied `price × nights` total.
+> - **Cleanup:** one FX table (`lib/format.ts` env-driven; `catalog.ts` imports it),
+>   room-level cancellation hardcode removed, fixture-slug extras caps removed,
+>   offer mapping (`NIGHT`/`eligiblePlans`) simplified, header/footer phone comes
+>   from the hotel record, mock constants deleted, stale booking-page breadcrumb
+>   removed.
+> - Verified: `tsc --noEmit`, `eslint`, `vitest` (73/73), `next build` all clean;
+>   live SSR checks on all guest routes (booking/hotel/room/search/reservation/
+>   confirmation/account/checkin → 200). Backend schema changes are built, tested
+>   (169/169), deployed and live-verified (countries, Quote.charges, room identity,
+>   arrival/requests round-trip).
+
+> **Update (GraphQL read consolidation, 2026-08-28):** guest reads now flow through
+> the Apollo cache where it matters (`reservations.find/list` via `client.query`
+> cache-first; REST writes evict via `src/api/invalidation.ts`), `getStayRoom`/
+> `getStay` were rebuilt on a single `staySearch` round trip (was 5 queries), the
+> runtime string-built `StayBatch` query was deleted, `HotelSummary`/
+> `RoomTypeSummary` fragments replaced the duplicated selections, dead queries
+> (`HotelReviews`, `HotelExperiences`, `Hotels`) and the unrendered
+> `Homepage.featuredHotels` selection were removed, `PlatformBySlug` is memoized
+> per session, and promo hydration is one cached offers request via the canonical
+> hotel. Room page first load: 9 → 4 requests; stay-edit refresh: 5 → 1. The
+> Apollo hooks module (`src/api/graphql/hooks.ts`) remains available for future
+> component-level migration; RSC reads stay on the server helper.
+
+> **Update (canonical single-hotel task):** the guest site is now a single-property
+> platform. The hotel picker / destination selector is GONE (SearchBar shows a static
+> canonical-hotel segment; `DestinationPicker.tsx`, `services/hotelList.ts` and
+> `graphql/hotelList.graphql` were deleted; `SearchState.destination` removed). The
+> index page renders the canonical property entirely from the backend — no collection
+> section, no fixture fallbacks for hero facts/rooms/offers/reviews, and
+> `services/homepage.ts` no longer swallows backend failures. `/hotel` without a
+> `hotelid` redirects server-side to the canonical property (the fixture "Executive
+> Hotel, Rabat" legacy page is gone, as are `RoomsGrid.tsx`, `FeaturedHotels.tsx`,
+> `/index-2`, `DiscoverSection.tsx` and `services/siteSearch.ts`). FAQ and offers pages
+> are backend-driven. `canonicalHotel` is the new single-property contract. Matrix rows
+> and defects marked below reflect this.
 
 Every claim below was traced UI → hook/context → service → GraphQL document → backend
 resolver → database, or reproduced against the running system. Where something could not
@@ -64,12 +155,12 @@ Legend: **REAL** = reaches the backend and uses the response · **STATIC** = loc
 
 | # | Feature | Entry point | Data source | Endpoint | Status | Evidence |
 |---|---|---|---|---|---|---|
-| 1 | Hotel list / destination picker | `DestinationPicker` | backend | `hotels(input)` | **REAL** | `services/hotelList.ts`; live query returns 3 hotels |
-| 2 | Stay search | `SearchResults` | backend | `staySearch(input)` | **REAL** | `catalog.searchStay()`; skeleton + error + empty states present |
+| 1 | ~~Hotel list / destination picker~~ | — | — | — | **REMOVED** (single-hotel) | `DestinationPicker.tsx`, `hotelList.ts` deleted; SearchBar shows a static canonical-hotel segment |
+| 2 | Stay search | `SearchResults` | backend | `staySearch(input)` | **REAL** | always scopes to the canonical hotel (no hotel selection anywhere) |
 | 3 | Hotel detail (`?hotelid=`) | `HotelDetail` (RSC) | backend | `hotel · roomTypes · availability · rates · experiences · reviews` | **REAL** | server-side `Promise.all`, `notFound()` on inactive |
-| 4 | Hotel detail (legacy `/hotel`) | `HotelLegacyPage` | fixture | none | **STATIC** | `app/hotel/page.tsx:96` `const P = PROPERTY` |
-| 5 | Room detail | `RoomDetails` | backend | `roomType · availability · rates · roomTypes` | **REAL** (2 defects: F-3, F-5) | `catalog.getStayRoom()` |
-| 6 | Quote / pricing | `quote.ts` | backend | `quote(input)` | **REAL** | no client-side price math since `82c4414` |
+| 4 | Hotel detail (legacy `/hotel`) | — | — | — | **REMOVED** | `/hotel` without a `hotelid` redirects server-side to the canonical property (query params preserved) |
+| 5 | Room detail | `RoomDetails` | backend | `roomType · availability · rates · roomTypes` | **REAL** | `catalog.getStayRoom()`; redesigned: own room header, hotel chrome hidden, essentials/good-to-know vertical |
+| 6 | Quote / pricing | `quote.ts` | backend | `quote(input)` | **REAL** | no client-side price math since `82c4414`; `Quote.charges[]` (itemized tax/fee lines) now exposed and rendered |
 | 7 | Extras catalog | `extras.ts` | backend | `extras(hotelId)` | **REAL** (F-5 in RoomDetails) | UUID ids confirmed live |
 | 8 | Reservation create | `BookingFlow` | backend | `createReservation` | **REAL** (F-1, F-2) | persists, sells inventory, emits outbox event |
 | 9 | Payment | `payment.ts` | backend | `createPayment` + `capturePayment` | **REAL call, MOCK gateway** | backend invents `MOCK-XXXXXXXX` |
@@ -80,25 +171,25 @@ Legend: **REAL** = reaches the backend and uses the response · **STATIC** = loc
 | 14 | Login / register | `AccountFlow` → `auth.ts` | backend REST | `/api/v1/auth/{login,register}` | **REAL** (F-8) | bcrypt+JWT verified |
 | 15 | Password reset | `auth.reset()` | none | none | **SIMULATED** | returns a canned success string, no request |
 | 16 | My bookings | `AccountFlow` | backend | `myReservations` | **REAL, conditional (F-13)** | needs a `guests.user_id` link |
-| 17 | Homepage featured | `page.tsx` | backend | `homepage` | **REAL, silent fallback (F-10)** | live: 3 hotels + 6 room types |
-| 18 | Platform identity / hero | `layout.tsx` | backend | `platform(slug)` | **REAL, silent fallback** | RSC fetch |
-| 19 | Home hero facts (rating, review count, room count) | `page.tsx` | fixture | none | **STATIC** | `P.rating`, `P.reviewCount`, `P.rooms.length` |
-| 20 | **Offers page** | `OffersGrid` | fixture | none | **STATIC + BROKEN (F-1)** | 5 fixture codes; backend has 3 different ones |
-| 21 | Promo validation | `pricing.validatePromo` | backend-hydrated | `offers(hotelId)` per hotel | **PARTIAL / order-dependent (F-11)** | hydration not called on `/search` or `/offers` |
+| 17 | Homepage featured | `page.tsx` | backend | `homepage` | **REAL, errors propagate** | live: canonical hotel + 3 room types; backend outage → error boundary, no fixture fallback |
+| 18 | Platform identity / hero | `layout.tsx` | backend | `platform(slug)` | **REAL** | RSC fetch; header/footer degrade to brand constants on failure |
+| 19 | Home hero facts (rating, review count, room count) | `page.tsx` | backend | `canonicalHotel` + `hotelDetails` + `roomTypes` | **REAL** | no fixture facts; live: 4.7 · 3 reviews · 3 room types |
+| 20 | **Offers page** | `OffersGrid` | backend-hydrated | `ensurePricingSources()` | **REAL** | promo catalog from the backend (SPRING25); feasibility probes use a real room of the canonical hotel |
+| 21 | Promo validation | `pricing.validatePromo` | backend-hydrated | `offers(hotelId)` per hotel | **REAL** | hydration called on search/offers/booking/room pages |
 | 22 | Reviews | `HotelDetail` | backend | `reviews(hotelId, page)` | **REAL** (read); write path unreachable | backend needs `checked_out` |
-| 23 | FAQ | `faq-client.tsx` | fixture | none | **STATIC** | backend `faqs(hotelId)` exists and is unused |
-| 24 | Restaurants | legacy `/hotel` | fixture | none | **STATIC** | backend `restaurants(hotelId)` exists and is unused |
+| 23 | FAQ | `faq/page.tsx` | backend | `hotelDetails(id)` faqs | **REAL** | wired in the canonical task (was fixture) |
+| 24 | Restaurants | `HotelDetail` | backend | `hotelDetails(id)` | **REAL** | aggregation query renders restaurants |
 | 25 | Newsletter | `newsletter.ts` | localStorage | none | **SIMULATED** | toast advertises promo `WELCOME5` (does not exist) |
 | 26 | Contact form | `contact-form.tsx` | none | none | **SIMULATED** (honest: *"Prototype: messages are not sent anywhere"*) | |
-| 27 | Site search | `siteSearch.ts` | fixture | none | **DEAD** — no consumer | unreferenced module |
-| 28 | Recently viewed rooms | `RecentActivity` | localStorage + fixture | none | **DEAD (F-12)** | UUIDs looked up in `PROPERTY.rooms` → always empty |
+| 27 | Site search | `siteSearch.ts` | — | — | **DELETED** | unreferenced dead module removed in the canonical task |
+| 28 | Recently viewed rooms | `RecentActivity` | localStorage + backend | `roomType(id)` | **REAL** | UUIDs resolved via `getRoomTypeById` (was a dead fixture lookup) |
 | 29 | Recent searches | `RecentActivity` | localStorage | none | **REAL (client-only, by design)** | |
 | 30 | Cookie consent | `consent.ts` | localStorage | none | **REAL (client-only, by design)** | |
 | 31 | Demand / "Recommended" sort | `availability.demandFor` | hash | none | **SIMULATED** | `hashStr(room.id) % 1000` |
 | 32 | Currency conversion | `lib/format.ts` | hardcoded | none | **STATIC + WRONG (F-2)** | ignores `NEXT_PUBLIC_FX_*` |
 | 33 | i18n (en/fr/ar) | `useLang` | fixture dict | none | **PARTIAL** | ~17 chrome strings only; all content stays English |
 | 34 | Chatbot | — | — | — | **NOT IMPLEMENTED** | `components/chatbot/` is an empty directory |
-| 35 | `/index-2` alternate landing | `index-2/page.tsx` | fixture | none | **STATIC** | |
+| 35 | `/index-2` alternate landing | — | — | — | **REMOVED** | fixture page for the fictional hotel deleted |
 
 ---
 
@@ -245,61 +336,28 @@ schema** at all, so no client can read it.
 `SessionContext`, so **after signing in the header still says "Account"** until the user
 navigates.
 
-**F-9 · The reservation view shows a literal "Room" and a broken image.**
-`ReservationFlow.tsx:270` renders `<p>Room</p>` — the room-type **name is hardcoded**,
-because `roomLines[]` carry only `roomTypeId` and nothing resolves it.
-`ReservationFlow.tsx:278` / `ConfirmationFlow.tsx:344` / `CheckinFlow.tsx:143` pass that
-**UUID** to `image()` (= `data/index.ts` `img`), producing
-`https://images.unsplash.com/00000000-0000-0000-0000-000000000001?q=80&w=400…` → a 404.
-`ConfirmationFlow.tsx:79` also emits JSON-LD with `roomName = 'Room'` and a hardcoded
-`"Executive Hotel Rabat"` regardless of which hotel was booked.
+**F-9 · ~~The reservation view shows a literal "Room" and a broken image~~ RESOLVED.**
+`ReservationRoomLine.roomTypeName` + `roomTypeImageUrl` (backend field resolvers,
+`ReservationGraphQLController`) now feed `ReservationFlow`, the confirmation JSON-LD
+and the .ics file; the hardcoded "Room" / "Executive Hotel Rabat" strings are gone.
 
-**F-10 · Homepage silent fallback hides outages *and* substitutes dead links.**
-`services/homepage.ts:36` catches everything and returns `EMPTY_HOMEPAGE`. `page.tsx:180`
-then renders `<RoomsGrid />` — the **fixture** grid, whose links are
-`/hotel?roomId=superior-double-or-twin` with no `hotelid`, which the backend cannot
-resolve (verified live: `NOT_FOUND`). So a backend outage silently degrades the home page
-into a set of room cards that all lead to an error screen.
-*(With the backend healthy the home page correctly renders `FeaturedRooms` with UUID
-links — verified live on :3001.)*
-`services/catalog.ts:2` documents the opposite policy — *"no silent mock fallbacks"*. The
-two seams are inconsistent.
+**F-10 · ~~Homepage silent fallback~~ RESOLVED (canonical task).**
+`services/homepage.ts` no longer catches; the index page renders the canonical property
+from the backend only, with no fixture sections to fall back to.
 
-**F-11 · Promo codes are broken end to end.**
-Three compounding faults:
-1. **Wrong codes.** `/offers` advertises `SUMMER2026 · STAY4PAY3 · BESTRATE · CORP10 ·
-   WELCOME5` (verified live on :3001). The database has `SPRING25 · MADINA15 · SUMMER10`.
-   **Zero overlap.**
-2. **No hydration.** `validatePromo` reads a module-level `offersSource` that starts
-   empty and is only filled by `ensurePricingSources()`. That is called in
-   `PromoField` and `RoomDetails` — but **not** in `SearchResults.tsx:146,421` or
-   `OffersGrid.tsx:40`. A deep link to `/search?promo=X` therefore always reports
-   "not a valid promo code"; whether it works at all depends on which pages the user
-   visited first in the SPA session. `PromoField.handleSubmit` also does not `await`
-   the hydration promise it kicked off — clicking Apply quickly races it.
-3. **Hard failure downstream.** `PricingServiceImpl.applyPromo` **throws** on an unknown
-   code. Verified live:
-   `promoCode:"SUMMER2026"` → `errors:[{code:VALIDATION}], data:null`;
-   `promoCode:"MADINA15"` (right code, wrong hotel) → `"promo code is not valid for this
-   hotel"`. So carrying an offers-page code into a room page kills the **entire quote**,
-   and the user sees only *"Could not calculate price — please try again"* (F-7) with no
-   hint that the promo chip is the cause and no way to discover it.
-   `STAY4PAY3` maps to `stay_x_pay_y`, which the backend rejects as unimplemented even if
-   it were seeded.
-
-**F-12 · "Recently viewed rooms" can never display anything.**
-`RecentActivity.tsx:41`: `recentRoomIds(3).map(id => PROPERTY.rooms.find(r => r.id === id))`.
-`recordRoomView()` now stores backend **UUIDs**; `PROPERTY.rooms` holds fixture slugs.
-The lookup always returns `undefined` and is filtered out.
+**F-11 · Promo codes — MOSTLY RESOLVED.** Wrong codes and the no-hydration paths are
+fixed: `/offers` and the home offers section render the backend promo catalog
+(`SPRING25`); `OffersGrid` probes feasibility against a real room of the canonical
+hotel; the fake `WELCOME5` newsletter promo copy was removed. Remaining: an invalid
+promo still hard-fails the quote (F-7's backend `Quote.valid` contract is still
+unimplemented server-side).
 
 ### P2 — important, not blocking
 
-**F-13 · "My bookings" depends on a fragile guest↔user link.**
-`myReservations` resolves through `guests.user_id`. That link is created only by
-`AuthServiceImpl:88` at **registration**. `BookingServiceImpl.findOrCreateGuest()` matches
-by email and does **not** set `userId`. So it works when a self-registered user books with
-their account email, and silently returns `[]` if they change the email on the booking
-form (which is editable and merely pre-filled from the session).
+**F-13 · ~~"My bookings" depends on a fragile guest↔user link~~ RESOLVED (V27).**
+Accountless bookings now provision a passwordless `provisioned` user account linked to the
+guest; registering with that email completes the account and the bookings show up.
+The registration flow also links an existing guest record by email instead of duplicating it.
 
 **F-14 · Price facets are non-functional against real data.**
 `lib/filters.ts:28` — brackets are `Under MAD 1,000 / 1,000–1,499 / 1,500+`. Live seeded
@@ -307,30 +365,25 @@ nightly rates are **1 813 · 2 077 · 2 308 · 2 638 MAD**. Every room lands in 
 the other two brackets match nothing. The labels also stay hardcoded "MAD" when the user
 has selected EUR/USD/GBP.
 
-**F-15 · Choosing a hotel does not re-run the search.**
-`SearchContext.setDestination` (line 168) updates state but never calls `syncUrl`.
-`SearchResults.stayKey` reads `destination` from the **URL**, so picking a different hotel
-on `/search` changes the segment label and nothing else until the user clicks "Search
-rooms" again. Every other stay mutation behaves the same way by design — but destination
-is the only one whose label updates while the results silently disagree.
+**F-15 · ~~Choosing a hotel does not re-run the search~~ RESOLVED (canonical task).**
+There is no hotel to choose — the destination state was removed from `SearchState`/URL;
+every search targets the canonical hotel.
 
-**F-16 · Mobile users cannot change hotel on `/search`.**
-`SearchBar.tsx:83`: `isHome = pathname === '/' || pathname === '/search'` → desktop shows
-the Hotel segment on both. `SearchSheet.tsx:42,46`: `isHome = pathname === '/'`;
-`showDestination = isHome` → the mobile sheet shows it **only on the home page**.
+**F-16 · ~~Mobile users cannot change hotel on `/search`~~ RESOLVED (canonical task).**
+No hotel selector exists on any viewport.
 
-**F-17 · Backend capabilities the frontend ignores.**
-`faqs(hotelId)`, `restaurants(hotelId)` and `hotelDetails(id)` all exist and are never
-called. FAQ and restaurants render fixtures instead; `HotelDetail` issues 6 separate
-round trips where `hotelDetails` was purpose-built to aggregate them.
+**F-17 · Backend capabilities the frontend ignores — MOSTLY RESOLVED.** FAQ now renders
+backend FAQs (canonical task); restaurants render via `HotelDetail`'s aggregation query.
+`hotelDetails` is used by the hotel page and the FAQ page.
 
-**F-18 · Breadcrumb crumb never renders.**
-`HotelDetail.tsx:198` checks `searchParams.roomid` (lowercase); every link emits
-`roomId` (camelCase). The "Room details" crumb is unreachable.
+**F-18 · ~~Breadcrumb crumb never renders~~ RESOLVED.** The duplicated hotel-page
+breadcrumb ("Room details" crumb) was removed entirely — when a room is selected
+`RoomDetails` owns a single breadcrumb (Home / hotel / room).
 
-**F-19 · Featured cards drop the stay state.**
-`FeaturedRooms` / `FeaturedHotels` link to `/hotel?hotelid=…&roomId=…` with no
-`checkin/checkout/adults`. Dates picked in the hero search bar are lost on click.
+**F-19 · Hotel room-grid cards drop the stay state — PARTLY RESOLVED.** The hotel
+"Rooms & suites" cards now carry the stay (`hotelRoomURL`); the homepage
+`FeaturedRooms` cards still link without dates (they land on the room view whose
+stay strip prompts for dates).
 
 **F-20 · Destination picker has no error path.**
 `DestinationPicker.tsx:21` — `getHotelList().then(...)` with **no `.catch`**. If the
@@ -338,25 +391,28 @@ query rejects, `loading` stays `true` and the panel shows "Loading hotels…" fo
 
 ### P3 — polish, cleanup, copy
 
-- **F-21** Single-hotel SEO on a multi-hotel platform: `app/layout.tsx` metadata, keywords
-  and JSON-LD hardcode "Executive Hotel, Rabat" for **every** route.
-- **F-22** Stale copy: `app/booking/page.tsx:9` still advertises *"secure (simulated)
-  payment"*; `data/index.ts:205` FAQ says *"In this prototype, payment is simulated"*.
-  (These are currently the only honest statement about the mock gateway.)
+- **F-21** ~~Single-hotel SEO on a multi-hotel platform~~ **RESOLVED**: layout metadata,
+  keywords and JSON-LD now describe Executive Hotel (the canonical property — the hotel
+  record itself, unified in V30, is the single identity: header brand, breadcrumb, H1
+  and gallery alt texts all come from it).
+- **F-22** Stale copy: `app/booking/page.tsx` metadata fixed in the canonical task;
+  `data/index.ts` fixture FAQ ("prototype, simulated payment") no longer renders anywhere
+  in the app (fixture remains only for unit tests).
 - **F-23** i18n is chrome-only — ~17 strings in `constants/i18n.ts`. Selecting Arabic sets
   `dir="rtl"` on a page whose entire content stays English LTR.
-- **F-24** Duplicated FX tables: `lib/format.ts:4` hardcodes `{EUR:0.091, USD:0.1,
-  GBP:0.078}` and **ignores `NEXT_PUBLIC_FX_*` entirely**, while `services/catalog.ts:40`
-  reads those env vars. Changing the env var moves search-card prices but not quote
-  displays.
-- **F-25** Dead code: `services/siteSearch.ts`, `components/layout/StickyDock.tsx`
-  (unreferenced); `graphql/hotelList.graphql` + generated `HotelListDocument` (superseded
-  by a hand-written string in `services/hotelList.ts`); `bookingKey` shim in
-  `services/reservations.ts:163` (self-documented as transitional).
+- **F-24** ~~Duplicated FX tables~~ **RESOLVED**: one env-driven `FX` table in
+  `lib/format.ts`; `services/catalog.ts` imports it (was: two divergent tables).
+- **F-25** ~~Dead code~~ **PARTLY RESOLVED**: `services/siteSearch.ts`,
+  `components/layout/StickyDock.tsx` (unreferenced), `graphql/hotelList.graphql` +
+  `services/hotelList.ts` were removed in the canonical task; `bookingKey` shim in
+  `services/reservations.ts:163` remains (self-documented as transitional).
 - **F-26** Empty committed directories (§1) imply an architecture that was never built.
-- **F-27** `RoomDetails.tsx:495` `bookingURL(state, roomId, plan?.id ?? '')` — when no plan
-  resolves, `/booking` renders "Nothing to book yet" (`BookingFlow.tsx:255` requires a
-  non-empty `planId`) with no explanation.
+- **F-27** ~~`/booking` crashed on SSR~~ **RESOLVED (2026-08-28 redesign).** The page
+  500'd with `useApollo must be used inside <ApolloProvider>` (Apollo is browser-only,
+  so the root provider hands out `null` during SSR; `/booking` — unlike the other
+  flows — rendered `BookingFlow` without a `<Suspense>` boundary). Fixed via Suspense
+  + `useApollo()` returning `null` (`api/apollo/provider.tsx`). Remaining edge: when
+  `planId` is empty the page still shows "Nothing to book yet" with no explanation.
 - **F-28** Hardcoded alt text `"— Executive Hotel"` on search and home room cards
   regardless of the actual hotel (`SearchResults.tsx:440`, `RoomsGrid.tsx:46`).
 
@@ -477,18 +533,16 @@ F-17 (wire `faqs`/`restaurants`, adopt `hotelDetails`), F-18, F-19, then the P3 
 
 ## 7. Tests
 
-- **Vitest: 11 files, 63 tests, all green** (run 2026-08-27). Coverage is `lib/*` and
-  service shims; `services.test.ts` deliberately makes `gqlRequest` reject. **No test
-  covers the quote/booking/payment chain**, the currency path, or promo handling.
-- **Playwright: 12 specs — stale and almost certainly failing.** `e2e/helpers.ts:5`
+- **Vitest: 15 files, 72 tests, all green** (run 2026-08-27 after the canonical task).
+  Coverage is `lib/*`, service shims, `BookingFlow` idempotency and — new — a `SearchBar`
+  test proving the single-hotel search bar renders a static hotel label and no picker.
+  `services.test.ts` deliberately makes `gqlRequest` reject. **No test covers the
+  quote/booking/payment chain**, the currency path, or promo handling.
+- **Playwright: 12 specs — stale and superseded by the canonical task.** `e2e/helpers.ts:5`
   exports `ROOM_IDS = ['superior-double-or-twin', 'double-or-twin', 'executive-suite']`
-  (fixture ids the backend rejects) and re-implements `availabilityOf()` as an FNV-1a hash
-  "mirroring `availabilityFor` determinism" — a function that **no longer exists**
-  (`services/availability.ts` states "All mock data functions have been removed").
-  `booking.spec.ts:10` drives `roomId=executive-suite` and asserts the text
-  "Executive Suite". The whole suite still targets the retired fixture world.
-  **UNVERIFIED:** not executed this session (needs a built app + installed browsers).
-- No test asserts anything about F-1 … F-12.
+  (fixture ids the backend rejects), `index-2.spec.ts` targets a deleted route, and the
+  booking spec drives `roomId=executive-suite`. The suite needs a rewrite against the
+  canonical single-hotel flow (search → availability → book → verify inventory → sell-out).
 
 ---
 

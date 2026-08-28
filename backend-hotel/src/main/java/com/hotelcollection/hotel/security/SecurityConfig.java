@@ -87,6 +87,13 @@ public class SecurityConfig {
 						.requestMatchers("/api/v1/reservations",
 								"/api/v1/reservations/*/cancel",
 								"/api/v1/reservations/*/invoice").permitAll()
+						// Accountless booking: payments are created/captured with
+						// the guest email as proof of possession. The filter chain
+						// stays open like the reservation endpoints; PaymentService
+						// enforces owner-or-staff-or-guest-email authorization
+						// itself (see PaymentServiceImpl.ensurePaymentAccess).
+						.requestMatchers("/api/v1/payments",
+								"/api/v1/payments/*/capture").permitAll()
 						.requestMatchers("/api/v1/**").authenticated()
 						.anyRequest().denyAll())
 				.addFilterBefore(traceIdFilter, UsernamePasswordAuthenticationFilter.class)
@@ -111,7 +118,7 @@ public class SecurityConfig {
 				.map(String::trim)
 				.filter(s -> !s.isBlank())
 				.toList());
-		cfg.setAllowedMethods(List.of("GET", "POST", "OPTIONS"));
+		cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
 		cfg.setAllowedHeaders(List.of("Authorization", "Content-Type"));
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 		source.registerCorsConfiguration("/**", cfg);

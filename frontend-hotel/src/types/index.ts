@@ -95,6 +95,12 @@ export interface QuoteExtraLine {
   totalPrice: number;
 }
 
+export interface QuoteChargeLine {
+  name: string;
+  chargeType: 'tax' | 'fee';
+  amount: number;
+}
+
 export interface PriceBreakdown {
   perNight: number;
   nights: number;
@@ -118,6 +124,10 @@ export interface PriceBreakdown {
   /** Effective combined tax+fee rate over the taxed base (0..1). Optional —
       clients must render the generic "Taxes & fees" label unless this is set. */
   taxRate?: number;
+  /** Itemized tax/fee lines as priced by the backend (tax_fee_types) — the
+      only legitimate source for a tax breakdown. Undefined for locally-built
+      breakdowns; QuoteTable falls back to the generic aggregate row. */
+  charges?: QuoteChargeLine[];
 }
 
 export type ReservationStatus = 'confirmed' | 'checked-in' | 'cancelled';
@@ -165,10 +175,6 @@ export interface SearchState {
   rooms: number;
   promo: string;
   currency: CurrencyCode;
-  /** Hotel ID for destination — empty string means "any/all". */
-  destination: string;
-  /** Human-readable destination name (not persisted in URL, display only). */
-  destinationName?: string;
 }
 
 export type CurrencyCode = 'MAD' | 'EUR' | 'USD' | 'GBP';

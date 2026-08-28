@@ -1,13 +1,7 @@
 package com.hotelcollection.hotel.integration;
 import com.hotelcollection.hotel.dto.availability.AvailabilityInput;
-import com.hotelcollection.hotel.dto.billing.CapturePaymentInput;
-import com.hotelcollection.hotel.dto.billing.CreatePaymentInput;
 import com.hotelcollection.hotel.dto.catalog.HotelSearchInput;
-import com.hotelcollection.hotel.dto.identity.RegisterInput;
 import com.hotelcollection.hotel.dto.rate.QuoteInput;
-import com.hotelcollection.hotel.dto.reservation.CancelReservationInput;
-import com.hotelcollection.hotel.dto.reservation.CreateReservationInput;
-import com.hotelcollection.hotel.dto.reservation.ReservationLookupInput;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -28,17 +22,23 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.ContextConfiguration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hotelcollection.hotel.entity.Review;
-import com.hotelcollection.hotel.entity.ReviewModerationStatus;
 import com.hotelcollection.hotel.repository.HotelRepository;
 import com.hotelcollection.hotel.repository.ReviewRepository;
+import com.hotelcollection.hotel.repository.ExperienceRepository;
+import com.hotelcollection.hotel.repository.RestaurantRepository;
+import com.hotelcollection.hotel.repository.ExtraRepository;
+import com.hotelcollection.hotel.repository.FaqRepository;
+import com.hotelcollection.hotel.repository.PromotionRepository;
+import com.hotelcollection.hotel.repository.ReservationRepository;
+import com.hotelcollection.hotel.repository.GuestRepository;
 import com.hotelcollection.hotel.security.CurrentUser;
 import com.hotelcollection.hotel.security.JwtService;
 
 /**
- * GraphQL over real HTTP with Spring Security: anonymous discovery works,
- * booking mutations work, auth errors map to GraphQL errors with codes,
- * and adminHotel is hotel-scoped (403 for outsiders).
+ * GraphQL over real HTTP with Spring Security — READ side only (API rule:
+ * GraphQL = READ, REST = WRITE/ACTION). Queries, error taxonomy
+ * (extensions.code), hotel scoping on admin reads. Writes are exercised
+ * through REST in RestApiIntegrationTest / AdminRestApiIntegrationTest.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ContextConfiguration(classes = TestcontainersConfiguration.class)
@@ -52,25 +52,25 @@ class GraphqlApiIntegrationTest {
 	@Autowired
 	TestFixtures fixtures;
 	@Autowired
-	com.hotelcollection.hotel.security.JwtService jwtService;
+	JwtService jwtService;
 	@Autowired
-	com.hotelcollection.hotel.repository.HotelRepository hotelRepository;
+	HotelRepository hotelRepository;
 	@Autowired
-	com.hotelcollection.hotel.repository.ReviewRepository reviewRepository;
+	ReviewRepository reviewRepository;
 	@Autowired
-	com.hotelcollection.hotel.repository.ExperienceRepository experienceRepository;
+	ExperienceRepository experienceRepository;
 	@Autowired
-	com.hotelcollection.hotel.repository.RestaurantRepository restaurantRepository;
+	RestaurantRepository restaurantRepository;
 	@Autowired
-	com.hotelcollection.hotel.repository.ExtraRepository extraRepository;
+	ExtraRepository extraRepository;
 	@Autowired
-	com.hotelcollection.hotel.repository.FaqRepository faqRepository;
+	FaqRepository faqRepository;
 	@Autowired
-	com.hotelcollection.hotel.repository.PromotionRepository promotionRepository;
+	PromotionRepository promotionRepository;
 	@Autowired
-	com.hotelcollection.hotel.repository.ReservationRepository reservationRepository;
+	ReservationRepository reservationRepository;
 	@Autowired
-	com.hotelcollection.hotel.repository.GuestRepository guestRepository;
+	GuestRepository guestRepository;
 
 	private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -93,6 +93,46 @@ class GraphqlApiIntegrationTest {
 				HttpResponse.BodyHandlers.ofString());
 		assertThat(response.statusCode()).isEqualTo(200);
 		return objectMapper.readValue(response.body(), Map.class);
+	}
+
+	/** REST helper for the write-side assertions (status + parsed envelope). */
+	@SuppressWarnings("unchecked")
+	private Map<String, Object> rest(String method, String path, Object body, String bearer)
+			throws Exception {
+		HttpRequest.Builder builder = HttpRequest.newBuilder()
+				.uri(URI.create("http://localhost:" + port + path))
+				.header("Content-Type", "application/json");
+		if (body == null) {
+			builder.method(method, HttpRequest.BodyPublishers.noBody());
+		} else {
+			builder.method(method,
+					HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)));
+		}
+		if (bearer != null) {
+			builder.header("Authorization", "Bearer " + bearer);
+		}
+		HttpResponse<String> response = http.send(builder.build(),
+				HttpResponse.BodyHandlers.ofString());
+		Map<String, Object> parsed = objectMapper.readValue(response.body(), Map.class);
+		parsed.put("__status", response.statusCode());
+		return parsed;
+	}
+
+	@Test
+	void graphqlSchemaHasNoMutations() throws Exception {
+		// API rule: GraphQL = READ. Introspection must expose no Mutation type.
+		Map<String, Object> body = post("""
+				{ __schema { mutationType { name } } }
+				""", null, null);
+		assertThat(body.get("errors")).isNull();
+		assertThat(((Map<String, Object>) body.get("data")).get("mutationType")).isNull();
+
+		// and a write-shaped field on the Query root simply does not exist
+		Map<String, Object> createAttempt = post("""
+				mutation { createHotel(input: { name: "X" }) { id } }
+				""", null, null);
+		List<Map<String, Object>> errors = (List<Map<String, Object>>) createAttempt.get("errors");
+		assertThat(errors).isNotEmpty();
 	}
 
 	@Test
@@ -118,10 +158,6 @@ class GraphqlApiIntegrationTest {
 
 	@Test
 	void quoteWithBadPromoCodeSoftFailsWithMessageOverGraphql() throws Exception {
-		// Task 6: an unknown promo code must come back as a normal 200 response
-		// with valid:false + message (never a GraphQL error) — and the message
-		// field must resolve from Quote.promoMessage() (Quote.message() isn't a
-		// real record accessor, see RateGraphQLController#quoteMessage).
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
 		LocalDate checkIn = LocalDate.now().plusDays(7);
 		Map<String, Object> input = new java.util.HashMap<>(quoteInput(fx, checkIn));
@@ -141,7 +177,7 @@ class GraphqlApiIntegrationTest {
 	}
 
 	@Test
-	void anonymousCanQuoteAndBook() throws Exception {
+	void anonymousCanQuoteViaGraphqlAndBookViaRest() throws Exception {
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
 		LocalDate checkIn = LocalDate.now().plusDays(7);
 
@@ -156,23 +192,14 @@ class GraphqlApiIntegrationTest {
 		assertThat(quoteData.get("valid")).isEqualTo(true);
 		assertThat(((Number) quoteData.get("totalAmount")).doubleValue()).isEqualTo(3360.0);
 
-		String idempotencyKey = "graphql-" + System.nanoTime();
-		Map<String, Object> created = post("""
-				mutation($input: CreateReservationInput!) {
-				  createReservation(input: $input) {
-				    created
-				    reservation { reference status totalAmount }
-				  }
-				}
-				""", Map.of("input", createInput(fx, checkIn, idempotencyKey)), null);
-		assertThat(created.get("errors")).isNull();
-		Map<String, Object> createdData = (Map<String, Object>) created.get("data");
-		Map<String, Object> createResult = (Map<String, Object>) createdData.get("createReservation");
-		assertThat(createResult.get("created")).isEqualTo(true);
-		Map<String, Object> reservation = (Map<String, Object>) createResult.get("reservation");
-		assertThat(reservation.get("status")).isEqualTo("confirmed");
-		assertThat(((Number) reservation.get("totalAmount")).doubleValue()).isEqualTo(3360.0);
-		String reference = (String) reservation.get("reference");
+		// booking is a WRITE → REST (POST /api/v1/reservations, Idempotency-Key)
+		String idempotencyKey = "gql-book-" + System.nanoTime();
+		Map<String, Object> created = restWithHeaders("POST", "/api/v1/reservations",
+				createInput(fx, checkIn, idempotencyKey), null,
+				Map.of("Idempotency-Key", idempotencyKey));
+		assertThat(created.get("__status")).isEqualTo(201);
+		assertThat(created.get("status")).isEqualTo("confirmed");
+		String reference = (String) created.get("reference");
 
 		Map<String, Object> lookedUp = post("""
 				query($input: ReservationLookupInput!) {
@@ -183,13 +210,12 @@ class GraphqlApiIntegrationTest {
 		assertThat(((Map<String, Object>) ((Map<String, Object>) lookedUp.get("data")).get("reservation"))
 				.get("reference")).isEqualTo(reference);
 
-		Map<String, Object> duplicate = post("""
-				mutation($input: CreateReservationInput!) {
-				  createReservation(input: $input) { created }
-				}
-				""", Map.of("input", createInput(fx, checkIn, idempotencyKey)), null);
-		assertThat(((Map<String, Object>) ((Map<String, Object>) duplicate.get("data"))
-				.get("createReservation")).get("created")).isEqualTo(false);
+		// idempotent replay → 200 with the same reservation
+		Map<String, Object> duplicate = restWithHeaders("POST", "/api/v1/reservations",
+				createInput(fx, checkIn, idempotencyKey), null,
+				Map.of("Idempotency-Key", idempotencyKey));
+		assertThat(duplicate.get("__status")).isEqualTo(200);
+		assertThat(duplicate.get("reference")).isEqualTo(reference);
 	}
 
 	@Test
@@ -203,21 +229,15 @@ class GraphqlApiIntegrationTest {
 	}
 
 	@Test
-	void loginAndRegisterWork() throws Exception {
+	void loginAndRegisterWorkOverRest() throws Exception {
 		String email = "guest-" + System.nanoTime() + "@example.com";
-		Map<String, Object> body = post("""
-				mutation($input: RegisterInput!) {
-				  register(input: $input) { token me { email } }
-				}
-				""", Map.of("input", Map.of(
-						"firstName", "Zahra", "lastName", "Bennani",
-						"email", email, "password", "secret123")), null);
-		assertThat(body.get("errors")).isNull();
-		Map<String, Object> register = (Map<String, Object>) ((Map<String, Object>) body.get("data"))
-				.get("register");
-		String token = (String) register.get("token");
+		Map<String, Object> registered = rest("POST", "/api/v1/auth/register",
+				Map.of("firstName", "Zahra", "lastName", "Bennani",
+						"email", email, "password", "secret123"),
+				null);
+		assertThat(registered.get("__status")).isEqualTo(201);
+		String token = (String) registered.get("token");
 		assertThat(token).isNotBlank();
-		assertThat(((Map<String, Object>) register.get("me")).get("email")).isEqualTo(email);
 
 		Map<String, Object> me = post("{ me { email roles } }", null, token);
 		assertThat(((Map<String, Object>) ((Map<String, Object>) me.get("data")).get("me"))
@@ -225,47 +245,32 @@ class GraphqlApiIntegrationTest {
 	}
 
 	@Test
-	void meExposesNamePhoneAndUpdateMyProfilePersistsThem() throws Exception {
+	void meExposesNamePhoneAndProfileUpdatePersistsThem() throws Exception {
 		String email = "profile-" + System.nanoTime() + "@example.com";
-		Map<String, Object> registered = post("""
-				mutation($input: RegisterInput!) {
-				  register(input: $input) { token me { id firstName lastName phone } }
-				}
-				""", Map.of("input", Map.of(
-						"firstName", "Youssef", "lastName", "Amrani",
-						"email", email, "password", "secret123")), null);
-		assertThat(registered.get("errors")).isNull();
-		Map<String, Object> registerData = (Map<String, Object>) ((Map<String, Object>) registered
-				.get("data")).get("register");
-		String token = (String) registerData.get("token");
-		Map<String, Object> registeredMe = (Map<String, Object>) registerData.get("me");
-		assertThat(registeredMe.get("firstName")).isEqualTo("Youssef");
-		assertThat(registeredMe.get("lastName")).isEqualTo("Amrani");
-		assertThat(registeredMe.get("phone")).isNull();
+		Map<String, Object> registered = rest("POST", "/api/v1/auth/register",
+				Map.of("firstName", "Youssef", "lastName", "Amrani",
+						"email", email, "password", "secret123"),
+				null);
+		assertThat(registered.get("__status")).isEqualTo(201);
+		String token = (String) registered.get("token");
 
-		Map<String, Object> updated = post("""
-				mutation($input: UpdateProfileInput!) {
-				  updateMyProfile(input: $input) { firstName lastName phone }
-				}
-				""", Map.of("input", Map.of(
-						"firstName", "Youssef", "lastName", "Amrani", "phone", "+212600112233")),
+		Map<String, Object> updated = rest("POST", "/api/v1/auth/me/profile",
+				Map.of("firstName", "Youssef", "lastName", "Amrani", "phone", "+212600112233"),
 				token);
-		assertThat(updated.get("errors")).isNull();
-		Map<String, Object> updatedMe = (Map<String, Object>) ((Map<String, Object>) updated
-				.get("data")).get("updateMyProfile");
-		assertThat(updatedMe.get("phone")).isEqualTo("+212600112233");
+		assertThat(updated.get("__status")).isEqualTo(200);
 
 		// persisted, not just echoed: a fresh `me` query reflects it too
 		Map<String, Object> reread = post("{ me { firstName lastName phone } }", null, token);
 		Map<String, Object> rereadMe = (Map<String, Object>) ((Map<String, Object>) reread
 				.get("data")).get("me");
+		assertThat(rereadMe.get("firstName")).isEqualTo("Youssef");
+		assertThat(rereadMe.get("lastName")).isEqualTo("Amrani");
 		assertThat(rereadMe.get("phone")).isEqualTo("+212600112233");
 
-		// updateMyProfile requires authentication like any other mutating call
-		Map<String, Object> anon = post("""
-				mutation($input: UpdateProfileInput!) { updateMyProfile(input: $input) { id } }
-				""", Map.of("input", Map.of("phone", "+212600000000")), null);
-		assertThat(extensionsCode(anon)).isEqualTo("UNAUTHORIZED");
+		// profile update requires authentication like any other write
+		Map<String, Object> anon = rest("POST", "/api/v1/auth/me/profile",
+				Map.of("phone", "+212600000000"), null);
+		assertThat(anon.get("__status")).isEqualTo(401);
 	}
 
 	@Test
@@ -315,14 +320,13 @@ class GraphqlApiIntegrationTest {
 	}
 
 	@Test
-	void anonymousPaymentRejected() throws Exception {
+	void anonymousPaymentRejectedOverRest() throws Exception {
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
 		Map<String, Object> created = book(fx, LocalDate.now().plusDays(7),
 				"anon-pay-" + System.nanoTime(), null);
-		Map<String, Object> body = post("""
-				mutation($input: CreatePaymentInput!) { createPayment(input: $input) { id } }
-				""", Map.of("input", payInput(created)), null);
-		assertThat(extensionsCode(body)).isEqualTo("UNAUTHORIZED");
+		Map<String, Object> body = rest("POST", "/api/v1/payments", payInput(created), null);
+		assertThat(body.get("__status")).isEqualTo(401);
+		assertThat(body.get("code")).isEqualTo("UNAUTHORIZED");
 	}
 
 	@Test
@@ -333,27 +337,20 @@ class GraphqlApiIntegrationTest {
 		Map<String, Object> created = book(fx, LocalDate.now().plusDays(7),
 				"owner-pay-" + System.nanoTime(), tokenA);
 
-		Map<String, Object> payAsB = post("""
-				mutation($input: CreatePaymentInput!) { createPayment(input: $input) { id } }
-				""", Map.of("input", payInput(created)), tokenB);
-		assertThat(extensionsCode(payAsB)).isEqualTo("FORBIDDEN");
+		Map<String, Object> payAsB = rest("POST", "/api/v1/payments", payInput(created), tokenB);
+		assertThat(payAsB.get("__status")).isEqualTo(403);
 
-		Map<String, Object> payAsOwner = post("""
-				mutation($input: CreatePaymentInput!) { createPayment(input: $input) { id } }
-				""", Map.of("input", payInput(created)), tokenA);
-		assertThat(payAsOwner.get("errors")).isNull();
-		String paymentId = (String) ((Map<String, Object>) ((Map<String, Object>) payAsOwner
-				.get("data")).get("createPayment")).get("id");
+		Map<String, Object> payAsOwner = rest("POST", "/api/v1/payments", payInput(created), tokenA);
+		assertThat(payAsOwner.get("__status")).isEqualTo(201);
+		String paymentId = (String) payAsOwner.get("id");
 
-		Map<String, Object> captureAsB = post("""
-				mutation($input: CapturePaymentInput!) { capturePayment(input: $input) { id } }
-				""", Map.of("input", Map.of("paymentId", paymentId)), tokenB);
-		assertThat(extensionsCode(captureAsB)).isEqualTo("FORBIDDEN");
+		Map<String, Object> captureAsB = rest("POST", "/api/v1/payments/" + paymentId + "/capture",
+				Map.of(), tokenB);
+		assertThat(captureAsB.get("__status")).isEqualTo(403);
 
-		Map<String, Object> captureAsOwner = post("""
-				mutation($input: CapturePaymentInput!) { capturePayment(input: $input) { id } }
-				""", Map.of("input", Map.of("paymentId", paymentId)), tokenA);
-		assertThat(captureAsOwner.get("errors")).isNull();
+		Map<String, Object> captureAsOwner = rest("POST", "/api/v1/payments/" + paymentId + "/capture",
+				Map.of(), tokenA);
+		assertThat(captureAsOwner.get("__status")).isEqualTo(200);
 	}
 
 	@Test
@@ -361,42 +358,32 @@ class GraphqlApiIntegrationTest {
 		String email = "cancel-owner-" + System.nanoTime() + "@example.com";
 		String token = register(email);
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
-		String reference = (String) ((Map<String, Object>) bookWithEmail(fx,
-				LocalDate.now().plusDays(7), "cancel-bind-" + System.nanoTime(), email, token)
-				.get("reservation")).get("reference");
+		Map<String, Object> created = bookWithEmail(fx, LocalDate.now().plusDays(7),
+				"cancel-bind-" + System.nanoTime(), email, token);
+		String reference = (String) created.get("reference");
 
-		Map<String, Object> anonymous = post("""
-				mutation($input: CancelReservationInput!) {
-				  cancelReservation(input: $input) { reservation { status } }
-				}
-				""", Map.of("input", Map.of("reference", reference, "email", email)), null);
-		assertThat(extensionsCode(anonymous)).isEqualTo("FORBIDDEN");
+		Map<String, Object> anonymous = rest("POST", "/api/v1/reservations/" + reference + "/cancel",
+				Map.of("email", email), null);
+		assertThat(anonymous.get("__status")).isEqualTo(403);
 
-		Map<String, Object> asOwner = post("""
-				mutation($input: CancelReservationInput!) {
-				  cancelReservation(input: $input) { reservation { status } }
-				}
-				""", Map.of("input", Map.of("reference", reference, "email", email)), token);
-		assertThat(asOwner.get("errors")).isNull();
-		assertThat(((Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) asOwner
-				.get("data")).get("cancelReservation")).get("reservation")).get("status"))
-				.isEqualTo("cancelled");
+		Map<String, Object> asOwner = rest("POST", "/api/v1/reservations/" + reference + "/cancel",
+				Map.of("email", email), token);
+		assertThat(asOwner.get("__status")).isEqualTo(200);
+		assertThat(asOwner.get("status")).isEqualTo("cancelled");
 	}
 
 	@Test
 	void registerDuplicateEmailDoesNotEnumerate() throws Exception {
 		String email = "dup-" + System.nanoTime() + "@example.com";
 		register(email);
-		Map<String, Object> body = post("""
-				mutation($input: RegisterInput!) { register(input: $input) { token } }
-				""", Map.of("input", Map.of(
-						"firstName", "Zahra", "lastName", "Bennani",
-						"email", email, "password", "secret123")), null);
-		List<Map<String, Object>> errors = (List<Map<String, Object>>) body.get("errors");
-		assertThat(errors).isNotEmpty();
-		assertThat((String) errors.get(0).get("message"))
+		Map<String, Object> body = rest("POST", "/api/v1/auth/register",
+				Map.of("firstName", "Zahra", "lastName", "Bennani",
+						"email", email, "password", "secret123"),
+				null);
+		assertThat(body.get("__status")).isEqualTo(400);
+		assertThat((String) body.get("message"))
 				.contains("registration failed").doesNotContain(email);
-		assertThat(extensionsCode(body)).isEqualTo("VALIDATION");
+		assertThat(body.get("code")).isEqualTo("VALIDATION");
 	}
 
 	@Test
@@ -445,12 +432,14 @@ class GraphqlApiIntegrationTest {
 		Map<String, Object> body = post("""
 				query($input: HotelSearchInput) { hotels(input: $input) { items { id } } }
 				""", Map.of("input", Map.of("sort", "RATING_DESC",
-						"page", Map.of("page", 0, "size", 10))), null);
+						"page", Map.of("page", 0, "size", 50))), null);
 		assertThat(body.get("errors")).isNull();
 		List<Map<String, Object>> items = (List<Map<String, Object>>) ((Map<String, Object>) (
 				(Map<String, Object>) body.get("data")).get("hotels")).get("items");
-		assertThat(items.get(0).get("id")).isEqualTo(fx1.hotelId().toString());
-		assertThat(items.get(1).get("id")).isEqualTo(fx2.hotelId().toString());
+		// relative order, not index 0: the shared test DB may hold other
+		// equally-rated hotels from sibling tests
+		assertThat(items).extracting(m -> m.get("id"))
+				.containsSubsequence(fx1.hotelId().toString(), fx2.hotelId().toString());
 	}
 
 	@Test
@@ -470,32 +459,20 @@ class GraphqlApiIntegrationTest {
 	}
 
 	@Test
-	void issueInvoiceMutationIsIdempotent() throws Exception {
+	void issueInvoiceOverRestIsIdempotent() throws Exception {
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
 		Map<String, Object> created = book(fx, LocalDate.now().plusDays(7),
 				"invoice-" + System.nanoTime(), null);
-		String reference = (String) ((Map<String, Object>) created.get("reservation"))
-				.get("reference");
-		Map<String, Object> variables = Map.of("input",
-				Map.of("reference", reference, "email", "graphql@example.com"));
+		String reference = (String) created.get("reference");
 
-		Map<String, Object> body = post("""
-				mutation($input: ReservationLookupInput!) {
-				  issueInvoice(input: $input) { invoiceNumber }
-				}
-				""", variables, null);
-		assertThat(body.get("errors")).isNull();
-		assertThat(((Map<String, Object>) ((Map<String, Object>) body.get("data"))
-				.get("issueInvoice")).get("invoiceNumber")).isEqualTo("INV-" + reference);
+		Map<String, Object> body = rest("POST", "/api/v1/reservations/" + reference + "/invoice",
+				Map.of("email", "graphql@example.com"), null);
+		assertThat(body.get("__status")).isEqualTo(200);
+		assertThat(body.get("invoiceNumber")).isEqualTo("INV-" + reference);
 
-		Map<String, Object> again = post("""
-				mutation($input: ReservationLookupInput!) {
-				  issueInvoice(input: $input) { invoiceNumber }
-				}
-				""", variables, null);
-		assertThat(again.get("errors")).isNull();
-		assertThat(((Map<String, Object>) ((Map<String, Object>) again.get("data"))
-				.get("issueInvoice")).get("invoiceNumber")).isEqualTo("INV-" + reference);
+		Map<String, Object> again = rest("POST", "/api/v1/reservations/" + reference + "/invoice",
+				Map.of("email", "graphql@example.com"), null);
+		assertThat(again.get("invoiceNumber")).isEqualTo("INV-" + reference);
 	}
 
 	@Test
@@ -590,36 +567,27 @@ class GraphqlApiIntegrationTest {
 				.get("data")).get("reviews");
 		assertThat(((Number) reviewPage.get("total")).intValue()).isEqualTo(1);
 
+		// review creation is a WRITE → REST (POST /api/v1/hotels/{id}/reviews)
 		String email = "reviewer-" + System.nanoTime() + "@example.com";
-		Map<String, Object> reg = post("""
-				mutation($input: RegisterInput!) { register(input: $input) { token me { id } } }
-				""", Map.of("input", Map.of("firstName", "Rania", "lastName", "Idrissi",
-						"email", email, "password", "secret123")), null);
-		assertThat(reg.get("errors")).isNull();
-		Map<String, Object> payload = (Map<String, Object>) ((Map<String, Object>) reg.get("data"))
-				.get("register");
-		String token = (String) payload.get("token");
-		UUID userId = UUID.fromString((String) ((Map<String, Object>) payload.get("me")).get("id"));
-		seedCompletedStay(fx.hotelId(), userId);
+		Map<String, Object> reg = rest("POST", "/api/v1/auth/register",
+				Map.of("firstName", "Rania", "lastName", "Idrissi",
+						"email", email, "password", "secret123"),
+				null);
+		assertThat(reg.get("__status")).isEqualTo(201);
+		String token = (String) reg.get("token");
+		String userId = (String) ((Map<String, Object>) reg.get("me")).get("userId");
+		seedCompletedStay(fx.hotelId(), UUID.fromString(userId));
 
-		Map<String, Object> created = post("""
-				mutation($input: CreateReviewInput!) {
-				  createReview(input: $input) { rating title comment moderationStatus }
-				}
-				""", Map.of("input", Map.of("hotelId", hotelId, "rating", 4,
-						"title", "Lovely stay", "comment", "Great hospitality")), token);
-		assertThat(created.get("errors")).isNull();
-		Map<String, Object> review = (Map<String, Object>) ((Map<String, Object>) created.get("data"))
-				.get("createReview");
-		assertThat(review.get("rating")).isEqualTo(4);
-		assertThat(review.get("moderationStatus")).isEqualTo("pending");
+		Map<String, Object> created = rest("POST", "/api/v1/hotels/" + hotelId + "/reviews",
+				Map.of("rating", 4, "title", "Lovely stay", "comment", "Great hospitality"), token);
+		assertThat(created.get("__status")).isEqualTo(201);
+		assertThat(created.get("rating")).isEqualTo(4);
+		assertThat(created.get("moderationStatus")).isEqualTo("pending");
 
-		Map<String, Object> duplicate = post("""
-				mutation($input: CreateReviewInput!) {
-				  createReview(input: $input) { id }
-				}
-				""", Map.of("input", Map.of("hotelId", hotelId, "rating", 2)), token);
-		assertThat(extensionsCode(duplicate)).isEqualTo("CONFLICT");
+		Map<String, Object> duplicate = rest("POST", "/api/v1/hotels/" + hotelId + "/reviews",
+				Map.of("rating", 2), token);
+		assertThat(duplicate.get("__status")).isEqualTo(409);
+		assertThat(duplicate.get("code")).isEqualTo("CONFLICT");
 	}
 
 	private Map<String, Object> book(TestFixtures.HotelFixture fx, LocalDate checkIn, String key,
@@ -629,36 +597,48 @@ class GraphqlApiIntegrationTest {
 
 	private Map<String, Object> bookWithEmail(TestFixtures.HotelFixture fx, LocalDate checkIn,
 			String key, String email, String token) throws Exception {
-		Map<String, Object> created = post("""
-				mutation($input: CreateReservationInput!) {
-				  createReservation(input: $input) {
-				    created
-				    reservation { id reference status totalAmount }
-				  }
-				}
-				""", Map.of("input", createInput(fx, checkIn, key, email)), token);
-		assertThat(created.get("errors")).isNull();
-		return (Map<String, Object>) ((Map<String, Object>) created.get("data"))
-				.get("createReservation");
+		Map<String, Object> created = restWithHeaders("POST", "/api/v1/reservations",
+				createInput(fx, checkIn, key, email), token, Map.of("Idempotency-Key", key));
+		assertThat(created.get("__status")).isIn(200, 201);
+		return created;
+	}
+
+	private Map<String, Object> restWithHeaders(String method, String path, Object body,
+			String bearer, Map<String, String> headers) throws Exception {
+		HttpRequest.Builder builder = HttpRequest.newBuilder()
+				.uri(URI.create("http://localhost:" + port + path))
+				.header("Content-Type", "application/json");
+		headers.forEach(builder::header);
+		if (body == null) {
+			builder.method(method, HttpRequest.BodyPublishers.noBody());
+		} else {
+			builder.method(method,
+					HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)));
+		}
+		if (bearer != null) {
+			builder.header("Authorization", "Bearer " + bearer);
+		}
+		HttpResponse<String> response = http.send(builder.build(),
+				HttpResponse.BodyHandlers.ofString());
+		Map<String, Object> parsed = objectMapper.readValue(response.body(), Map.class);
+		parsed.put("__status", response.statusCode());
+		return parsed;
 	}
 
 	private Map<String, Object> payInput(Map<String, Object> created) {
-		String reservationId = (String) ((Map<String, Object>) created.get("reservation"))
-				.get("id");
+		String reservationId = (String) created.get("id");
 		return Map.of("reservationId", reservationId, "amount", 3360.0,
 				"currencyCode", TestFixtures.CURRENCY, "provider", "mock",
 				"idempotencyKey", "gql-pay-" + java.util.UUID.randomUUID());
 	}
 
 	private String register(String email) throws Exception {
-		Map<String, Object> body = post("""
-				mutation($input: RegisterInput!) { register(input: $input) { token } }
-				""", Map.of("input", Map.of(
-						"firstName", "Zahra", "lastName", "Bennani",
-						"email", email, "password", "secret123")), null);
-		assertThat(body.get("errors")).isNull();
-		return (String) ((Map<String, Object>) ((Map<String, Object>) body.get("data"))
-				.get("register")).get("token");
+		Map<String, Object> body = rest("POST", "/api/v1/auth/register",
+				Map.of("firstName", "Zahra", "lastName", "Bennani",
+						"email", email, "password", "secret123"),
+				null);
+		assertThat(body.get("__status")).isEqualTo(201);
+		return (String) body.get("token");
 	}
 
 	private void seedReview(UUID hotelId, short rating) {

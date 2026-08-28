@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ToastProvider } from '@/context/ToastContext';
+import { ApolloProvider } from '@/api/apollo/provider';
 import BookingFlow from './BookingFlow';
 
 /**
@@ -20,7 +21,6 @@ const fixtures = vi.hoisted(() => {
     rooms: 1,
     promo: '',
     currency: 'MAD' as const,
-    destination: '',
   };
 
   const stayRoom = {
@@ -156,9 +156,11 @@ const { createMock, chargeMock } = fixtures;
 
 function wrap() {
   return (
-    <ToastProvider>
-      <BookingFlow roomId="room-1" planId="room-1::bb" initialExtras="" />
-    </ToastProvider>
+    <ApolloProvider>
+      <ToastProvider>
+        <BookingFlow roomId="room-1" planId="room-1::bb" initialExtras="" />
+      </ToastProvider>
+    </ApolloProvider>
   );
 }
 

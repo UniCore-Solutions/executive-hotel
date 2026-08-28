@@ -24,6 +24,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 @Entity
 @Table(name = "hotels")
 @Getter
@@ -97,6 +99,10 @@ public class Hotel {
 	@Column(nullable = false)
 	private Instant updatedAt;
 
+	/** Lazy association — not serialized on REST responses (GraphQL resolves
+	 * it via repository BatchMapping). A loaded entity's lazy collection
+	 * cannot be initialized after the transaction closes. */
+	@JsonIgnore
 	@ManyToMany
 	@JoinTable(name = "hotel_amenities",
 			joinColumns = @JoinColumn(name = "hotel_id"),

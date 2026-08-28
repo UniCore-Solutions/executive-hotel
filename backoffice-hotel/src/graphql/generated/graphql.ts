@@ -248,7 +248,9 @@ export type AdminRoomType = {
   name: Scalars["String"]["output"];
   rooms: Array<Room>;
   sizeSqm?: Maybe<Scalars["Float"]["output"]>;
+  slug: Scalars["String"]["output"];
   status: RoomTypeStatus;
+  totalInventory: Scalars["Int"]["output"];
   viewType?: Maybe<Scalars["String"]["output"]>;
 };
 
@@ -261,6 +263,7 @@ export type AdminRoomTypeInput = {
   name?: InputMaybe<Scalars["String"]["input"]>;
   sizeSqm?: InputMaybe<Scalars["Float"]["input"]>;
   status?: InputMaybe<RoomTypeStatus>;
+  totalInventory?: InputMaybe<Scalars["Int"]["input"]>;
   viewType?: InputMaybe<Scalars["String"]["input"]>;
 };
 
@@ -330,6 +333,15 @@ export type AvailabilityInput = {
   rooms: Scalars["Int"]["input"];
 };
 
+export type AvailabilityRangeInput = {
+  blocked?: InputMaybe<Scalars["Int"]["input"]>;
+  fromDate: Scalars["LocalDate"]["input"];
+  outOfOrder?: InputMaybe<Scalars["Int"]["input"]>;
+  roomTypeId: Scalars["ID"]["input"];
+  toDate: Scalars["LocalDate"]["input"];
+  totalInventory?: InputMaybe<Scalars["Int"]["input"]>;
+};
+
 export type AvailabilityRow = {
   __typename?: "AvailabilityRow";
   blocked: Scalars["Int"]["output"];
@@ -364,12 +376,40 @@ export type CancelReservationInput = {
 };
 
 export type CapturePaymentInput = {
+  /**
+   * See CreatePaymentInput.guestEmail — the same proof is re-checked here
+   * since capture independently re-validates access.
+   */
+  guestEmail?: InputMaybe<Scalars["String"]["input"]>;
   paymentId: Scalars["ID"]["input"];
+};
+
+/** Base fields shared by every content block (platform_content_blocks row). */
+export type ContentBlock = {
+  id: Scalars["ID"]["output"];
+  isEnabled: Scalars["Boolean"]["output"];
+  position: Scalars["Int"]["output"];
+  type: PlatformBlockType;
+};
+
+export type Country = {
+  __typename?: "Country";
+  callingCode?: Maybe<Scalars["String"]["output"]>;
+  code: Scalars["ID"]["output"];
+  name: Scalars["String"]["output"];
 };
 
 export type CreatePaymentInput = {
   amount: Scalars["Float"]["input"];
   currencyCode: Scalars["String"]["input"];
+  /**
+   * Guest email on file for an accountless reservation — required proof of
+   * possession when the caller is not authenticated as the reservation's owner
+   * or hotel staff, mirroring the reference+email pattern used by reservation
+   * lookup/cancel.
+   */
+  guestEmail?: InputMaybe<Scalars["String"]["input"]>;
+  idempotencyKey: Scalars["String"]["input"];
   provider: Scalars["String"]["input"];
   reservationId: Scalars["ID"]["input"];
 };
@@ -438,11 +478,53 @@ export type Faq = {
   sortOrder: Scalars["Int"]["output"];
 };
 
+/** Ordered curation row referencing a real Experience (single source of truth). */
+export type FeaturedExperienceItem = {
+  __typename?: "FeaturedExperienceItem";
+  experience: Experience;
+  id: Scalars["ID"]["output"];
+  position: Scalars["Int"]["output"];
+};
+
+export type FeaturedExperiencesBlock = ContentBlock & {
+  __typename?: "FeaturedExperiencesBlock";
+  id: Scalars["ID"]["output"];
+  isEnabled: Scalars["Boolean"]["output"];
+  items: Array<FeaturedExperienceItem>;
+  position: Scalars["Int"]["output"];
+  title: Scalars["String"]["output"];
+  type: PlatformBlockType;
+};
+
+export type HeroBlock = ContentBlock & {
+  __typename?: "HeroBlock";
+  ctaLabel?: Maybe<Scalars["String"]["output"]>;
+  ctaTarget?: Maybe<Scalars["String"]["output"]>;
+  eyebrow?: Maybe<Scalars["String"]["output"]>;
+  id: Scalars["ID"]["output"];
+  image?: Maybe<Media>;
+  isEnabled: Scalars["Boolean"]["output"];
+  mobileImage?: Maybe<Media>;
+  position: Scalars["Int"]["output"];
+  subtitle?: Maybe<Scalars["String"]["output"]>;
+  title: Scalars["String"]["output"];
+  type: PlatformBlockType;
+};
+
+export type Homepage = {
+  __typename?: "Homepage";
+  featuredExperiences: Array<Experience>;
+  featuredHotels: Array<Hotel>;
+  featuredReviews: Array<Review>;
+  featuredRoomTypes: Array<RoomType>;
+};
+
 export type Hotel = {
   __typename?: "Hotel";
   addressLine1?: Maybe<Scalars["String"]["output"]>;
   addressLine2?: Maybe<Scalars["String"]["output"]>;
   amenities: Array<Amenity>;
+  averageRating?: Maybe<Scalars["Float"]["output"]>;
   brand?: Maybe<Scalars["String"]["output"]>;
   checkInTime?: Maybe<Scalars["String"]["output"]>;
   checkOutTime?: Maybe<Scalars["String"]["output"]>;
@@ -470,9 +552,27 @@ export type HotelDetails = {
   experiences: Array<Experience>;
   faqs: Array<Faq>;
   hotel: Hotel;
+  policies: Array<HotelPolicy>;
   restaurants: Array<Restaurant>;
   reviews: ReviewPage;
   reviewsCount: Scalars["Int"]["output"];
+};
+
+export type HotelPolicy = {
+  __typename?: "HotelPolicy";
+  hotelId: Scalars["ID"]["output"];
+  icon?: Maybe<Scalars["String"]["output"]>;
+  id: Scalars["ID"]["output"];
+  name: Scalars["String"]["output"];
+  sortOrder: Scalars["Int"]["output"];
+  value: Scalars["String"]["output"];
+};
+
+export type HotelPolicyInput = {
+  icon?: InputMaybe<Scalars["String"]["input"]>;
+  name: Scalars["String"]["input"];
+  sortOrder?: InputMaybe<Scalars["Int"]["input"]>;
+  value: Scalars["String"]["input"];
 };
 
 export type HotelSearchInput = {
@@ -544,8 +644,11 @@ export type LoginInput = {
 export type Me = {
   __typename?: "Me";
   email: Scalars["String"]["output"];
+  firstName?: Maybe<Scalars["String"]["output"]>;
   hotelIds: Array<Scalars["ID"]["output"]>;
   id: Scalars["ID"]["output"];
+  lastName?: Maybe<Scalars["String"]["output"]>;
+  phone?: Maybe<Scalars["String"]["output"]>;
   roles: Array<Scalars["String"]["output"]>;
 };
 
@@ -565,193 +668,6 @@ export type MediaInput = {
   isPrimary?: InputMaybe<Scalars["Boolean"]["input"]>;
   sortOrder?: InputMaybe<Scalars["Int"]["input"]>;
   url: Scalars["String"]["input"];
-};
-
-export type Mutation = {
-  __typename?: "Mutation";
-  adminCancelReservation: Reservation;
-  assignRole: AdminUser;
-  cancelReservation: ReservationResult;
-  capturePayment: Payment;
-  createHotel: Hotel;
-  createPayment: Payment;
-  createPromotion: AdminPromotion;
-  createRatePlan: RatePlan;
-  createReservation: ReservationResult;
-  createReview: Review;
-  createRoom: Room;
-  createRoomType: RoomType;
-  createUser: AdminUser;
-  issueInvoice: Invoice;
-  linkRoomTypeRatePlan: RoomTypeRatePlanInfo;
-  login: AuthPayload;
-  moderateReview: Review;
-  register: AuthPayload;
-  revokeRole: AdminUser;
-  setHotelAmenities: Array<Amenity>;
-  setHotelMedia: Array<Media>;
-  setPromotionStatus: AdminPromotion;
-  setRatePlanPrices: Array<RatePlanPriceInfo>;
-  setRoomTypeAmenities: Array<Amenity>;
-  setRoomTypeMedia: Array<Media>;
-  unlinkRoomTypeRatePlan: Scalars["Boolean"]["output"];
-  updateAvailability: Array<AvailabilityRow>;
-  updateHotel: Hotel;
-  updatePromotion: AdminPromotion;
-  updateRatePlan: RatePlan;
-  updateRoom: Room;
-  updateRoomType: RoomType;
-};
-
-export type MutationAdminCancelReservationArgs = {
-  reasonCode?: InputMaybe<Scalars["String"]["input"]>;
-  reasonNote?: InputMaybe<Scalars["String"]["input"]>;
-  reservationId: Scalars["ID"]["input"];
-};
-
-export type MutationAssignRoleArgs = {
-  hotelId?: InputMaybe<Scalars["ID"]["input"]>;
-  roleName: Scalars["String"]["input"];
-  userId: Scalars["ID"]["input"];
-};
-
-export type MutationCancelReservationArgs = {
-  input: CancelReservationInput;
-};
-
-export type MutationCapturePaymentArgs = {
-  input: CapturePaymentInput;
-};
-
-export type MutationCreateHotelArgs = {
-  input: AdminHotelInput;
-};
-
-export type MutationCreatePaymentArgs = {
-  input: CreatePaymentInput;
-};
-
-export type MutationCreatePromotionArgs = {
-  hotelId?: InputMaybe<Scalars["ID"]["input"]>;
-  input: AdminPromotionInput;
-};
-
-export type MutationCreateRatePlanArgs = {
-  hotelId: Scalars["ID"]["input"];
-  input: AdminRatePlanInput;
-};
-
-export type MutationCreateReservationArgs = {
-  input: CreateReservationInput;
-};
-
-export type MutationCreateReviewArgs = {
-  input: CreateReviewInput;
-};
-
-export type MutationCreateRoomArgs = {
-  hotelId: Scalars["ID"]["input"];
-  input: AdminRoomInput;
-};
-
-export type MutationCreateRoomTypeArgs = {
-  hotelId: Scalars["ID"]["input"];
-  input: AdminRoomTypeInput;
-};
-
-export type MutationCreateUserArgs = {
-  input: AdminCreateUserInput;
-};
-
-export type MutationIssueInvoiceArgs = {
-  input: ReservationLookupInput;
-};
-
-export type MutationLinkRoomTypeRatePlanArgs = {
-  ratePlanId: Scalars["ID"]["input"];
-  roomTypeId: Scalars["ID"]["input"];
-};
-
-export type MutationLoginArgs = {
-  input: LoginInput;
-};
-
-export type MutationModerateReviewArgs = {
-  id: Scalars["ID"]["input"];
-  response?: InputMaybe<Scalars["String"]["input"]>;
-  status: ReviewModerationStatus;
-};
-
-export type MutationRegisterArgs = {
-  input: RegisterInput;
-};
-
-export type MutationRevokeRoleArgs = {
-  userRoleId: Scalars["ID"]["input"];
-};
-
-export type MutationSetHotelAmenitiesArgs = {
-  amenityIds: Array<Scalars["ID"]["input"]>;
-  hotelId: Scalars["ID"]["input"];
-};
-
-export type MutationSetHotelMediaArgs = {
-  hotelId: Scalars["ID"]["input"];
-  media: Array<MediaInput>;
-};
-
-export type MutationSetPromotionStatusArgs = {
-  id: Scalars["ID"]["input"];
-  status: PromotionStatus;
-};
-
-export type MutationSetRatePlanPricesArgs = {
-  linkId: Scalars["ID"]["input"];
-  prices: Array<RatePlanPriceInput>;
-};
-
-export type MutationSetRoomTypeAmenitiesArgs = {
-  amenityIds: Array<Scalars["ID"]["input"]>;
-  roomTypeId: Scalars["ID"]["input"];
-};
-
-export type MutationSetRoomTypeMediaArgs = {
-  media: Array<MediaInput>;
-  roomTypeId: Scalars["ID"]["input"];
-};
-
-export type MutationUnlinkRoomTypeRatePlanArgs = {
-  linkId: Scalars["ID"]["input"];
-};
-
-export type MutationUpdateAvailabilityArgs = {
-  hotelId: Scalars["ID"]["input"];
-  rows: Array<AvailabilityUpdateInput>;
-};
-
-export type MutationUpdateHotelArgs = {
-  id: Scalars["ID"]["input"];
-  input: AdminHotelInput;
-};
-
-export type MutationUpdatePromotionArgs = {
-  id: Scalars["ID"]["input"];
-  input: AdminPromotionInput;
-};
-
-export type MutationUpdateRatePlanArgs = {
-  id: Scalars["ID"]["input"];
-  input: AdminRatePlanInput;
-};
-
-export type MutationUpdateRoomArgs = {
-  id: Scalars["ID"]["input"];
-  input: AdminRoomInput;
-};
-
-export type MutationUpdateRoomTypeArgs = {
-  id: Scalars["ID"]["input"];
-  input: AdminRoomTypeInput;
 };
 
 export type Notification = {
@@ -832,6 +748,35 @@ export enum PaymentStatus {
   Refunded = "refunded",
 }
 
+/** The collection / brand tenant; identity + site-level content blocks. */
+export type Platform = {
+  __typename?: "Platform";
+  contentBlocks: Array<ContentBlock>;
+  createdAt: Scalars["DateTime"]["output"];
+  defaultCurrency?: Maybe<Scalars["String"]["output"]>;
+  description?: Maybe<Scalars["String"]["output"]>;
+  hotels: Array<Hotel>;
+  id: Scalars["ID"]["output"];
+  media: Array<Media>;
+  name: Scalars["String"]["output"];
+  slug: Scalars["String"]["output"];
+  status: PlatformStatus;
+  tagline?: Maybe<Scalars["String"]["output"]>;
+  updatedAt: Scalars["DateTime"]["output"];
+};
+
+/** Closed block-type enum; new types require a migration + GraphQL type. */
+export enum PlatformBlockType {
+  Experiences = "EXPERIENCES",
+  Hero = "HERO",
+}
+
+export enum PlatformStatus {
+  Active = "active",
+  Draft = "draft",
+  Inactive = "inactive",
+}
+
 export enum PromotionStatus {
   Active = "active",
   Expired = "expired",
@@ -855,21 +800,28 @@ export type Query = {
   adminRoles: Array<AdminRole>;
   adminUsers: Array<AdminUser>;
   availability: Array<RoomAvailability>;
+  canonicalHotel: Hotel;
+  countries: Array<Country>;
   experiences: Array<Experience>;
   extras: Array<Extra>;
   faqs: Array<Faq>;
+  /** Curated homepage sections for the guest frontend (database-driven flags). */
+  homepage: Homepage;
   hotel?: Maybe<Hotel>;
   hotelDetails?: Maybe<HotelDetails>;
   hotels: HotelSearchResult;
   me: Me;
   myReservations: Array<Reservation>;
   offers: Array<Offer>;
+  platform: Platform;
   quote: Quote;
   rates: Array<RoomRateOption>;
   reservation?: Maybe<Reservation>;
   restaurants: Array<Restaurant>;
   reviews: ReviewPage;
+  roomType?: Maybe<RoomType>;
   roomTypes: Array<RoomType>;
+  staySearch: Array<StaySearchRoom>;
 };
 
 export type QueryAdminAuditLogsArgs = {
@@ -957,6 +909,10 @@ export type QueryOffersArgs = {
   hotelId?: InputMaybe<Scalars["ID"]["input"]>;
 };
 
+export type QueryPlatformArgs = {
+  slug: Scalars["String"]["input"];
+};
+
 export type QueryQuoteArgs = {
   input: QuoteInput;
 };
@@ -978,14 +934,24 @@ export type QueryReviewsArgs = {
   page?: InputMaybe<PageInput>;
 };
 
+export type QueryRoomTypeArgs = {
+  id: Scalars["ID"]["input"];
+};
+
 export type QueryRoomTypesArgs = {
   hotelId: Scalars["ID"]["input"];
 };
 
+export type QueryStaySearchArgs = {
+  input: StaySearchInput;
+};
+
 export type Quote = {
   __typename?: "Quote";
+  charges: Array<QuoteChargeLine>;
   currencyCode: Scalars["String"]["output"];
   discountAmount: Scalars["Float"]["output"];
+  extras: Array<QuoteExtraLine>;
   feeAmount: Scalars["Float"]["output"];
   lines: Array<QuoteLine>;
   message?: Maybe<Scalars["String"]["output"]>;
@@ -996,9 +962,25 @@ export type Quote = {
   valid: Scalars["Boolean"]["output"];
 };
 
+export type QuoteChargeLine = {
+  __typename?: "QuoteChargeLine";
+  amount: Scalars["Float"]["output"];
+  chargeType: Scalars["String"]["output"];
+  name: Scalars["String"]["output"];
+  taxFeeTypeId: Scalars["ID"]["output"];
+};
+
 export type QuoteExtraInput = {
   extraId: Scalars["ID"]["input"];
   quantity: Scalars["Int"]["input"];
+};
+
+export type QuoteExtraLine = {
+  __typename?: "QuoteExtraLine";
+  extraId: Scalars["ID"]["output"];
+  quantity: Scalars["Int"]["output"];
+  totalPrice: Scalars["Float"]["output"];
+  unitPrice: Scalars["Float"]["output"];
 };
 
 export type QuoteInput = {
@@ -1193,6 +1175,8 @@ export type ReservationRoomLine = {
   ratePerNight: Scalars["Float"]["output"];
   ratePlanId: Scalars["ID"]["output"];
   roomTypeId: Scalars["ID"]["output"];
+  roomTypeImageUrl?: Maybe<Scalars["String"]["output"]>;
+  roomTypeName: Scalars["String"]["output"];
   status: Scalars["String"]["output"];
   subtotalAmount: Scalars["Float"]["output"];
 };
@@ -1263,6 +1247,7 @@ export type RoomAvailability = {
   __typename?: "RoomAvailability";
   available: Scalars["Boolean"]["output"];
   capacityFits: Scalars["Boolean"]["output"];
+  free: Scalars["Int"]["output"];
   roomTypeId: Scalars["ID"]["output"];
   status: AvailabilityStatus;
 };
@@ -1284,8 +1269,10 @@ export type RoomType = {
   __typename?: "RoomType";
   amenities: Array<Amenity>;
   bedConfiguration?: Maybe<Scalars["String"]["output"]>;
+  currencyCode?: Maybe<Scalars["String"]["output"]>;
   description?: Maybe<Scalars["String"]["output"]>;
   hotelId: Scalars["ID"]["output"];
+  hotelName?: Maybe<Scalars["String"]["output"]>;
   id: Scalars["ID"]["output"];
   maxAdults: Scalars["Int"]["output"];
   maxChildren: Scalars["Int"]["output"];
@@ -1293,6 +1280,7 @@ export type RoomType = {
   name: Scalars["String"]["output"];
   pricePerNight?: Maybe<Scalars["Int"]["output"]>;
   sizeSqm?: Maybe<Scalars["Float"]["output"]>;
+  slug: Scalars["String"]["output"];
   status: RoomTypeStatus;
   viewType?: Maybe<Scalars["String"]["output"]>;
 };
@@ -1312,6 +1300,31 @@ export enum RoomTypeStatus {
   Draft = "draft",
   Inactive = "inactive",
 }
+
+export type StaySearchInput = {
+  adults: Scalars["Int"]["input"];
+  checkInDate: Scalars["LocalDate"]["input"];
+  checkOutDate: Scalars["LocalDate"]["input"];
+  children: Scalars["Int"]["input"];
+  hotelId?: InputMaybe<Scalars["ID"]["input"]>;
+  rooms: Scalars["Int"]["input"];
+};
+
+export type StaySearchRoom = {
+  __typename?: "StaySearchRoom";
+  capacityFits: Scalars["Boolean"]["output"];
+  hotelId: Scalars["ID"]["output"];
+  hotelName: Scalars["String"]["output"];
+  rates: Array<RoomRateOption>;
+  roomType: RoomType;
+  status: AvailabilityStatus;
+};
+
+export type UpdateProfileInput = {
+  firstName?: InputMaybe<Scalars["String"]["input"]>;
+  lastName?: InputMaybe<Scalars["String"]["input"]>;
+  phone?: InputMaybe<Scalars["String"]["input"]>;
+};
 
 export type AdminAuditLogsQueryVariables = Exact<{
   page?: InputMaybe<PageInput>;
@@ -1340,25 +1353,6 @@ export type AdminAuditLogsQuery = {
   };
 };
 
-export type LoginMutationVariables = Exact<{
-  input: LoginInput;
-}>;
-
-export type LoginMutation = {
-  __typename?: "Mutation";
-  login: {
-    __typename?: "AuthPayload";
-    token: string;
-    me: {
-      __typename?: "Me";
-      id: string;
-      email: string;
-      roles: Array<string>;
-      hotelIds: Array<string>;
-    };
-  };
-};
-
 export type MeQueryVariables = Exact<{ [key: string]: never }>;
 
 export type MeQuery = {
@@ -1370,26 +1364,6 @@ export type MeQuery = {
     roles: Array<string>;
     hotelIds: Array<string>;
   };
-};
-
-export type UpdateAvailabilityMutationVariables = Exact<{
-  hotelId: Scalars["ID"]["input"];
-  rows: Array<AvailabilityUpdateInput> | AvailabilityUpdateInput;
-}>;
-
-export type UpdateAvailabilityMutation = {
-  __typename?: "Mutation";
-  updateAvailability: Array<{
-    __typename?: "AvailabilityRow";
-    id: string;
-    roomTypeId: string;
-    stayDate: string;
-    totalInventory: number;
-    roomsSold: number;
-    outOfOrder: number;
-    blocked: number;
-    free: number;
-  }>;
 };
 
 export type AdminDashboardQueryVariables = Exact<{
@@ -1650,65 +1624,6 @@ export type AdminAmenitiesQuery = {
   }>;
 };
 
-export type CreateHotelMutationVariables = Exact<{
-  input: AdminHotelInput;
-}>;
-
-export type CreateHotelMutation = {
-  __typename?: "Mutation";
-  createHotel: {
-    __typename?: "Hotel";
-    id: string;
-    name: string;
-    status: HotelStatus;
-  };
-};
-
-export type UpdateHotelMutationVariables = Exact<{
-  id: Scalars["ID"]["input"];
-  input: AdminHotelInput;
-}>;
-
-export type UpdateHotelMutation = {
-  __typename?: "Mutation";
-  updateHotel: {
-    __typename?: "Hotel";
-    id: string;
-    name: string;
-    status: HotelStatus;
-  };
-};
-
-export type SetHotelAmenitiesMutationVariables = Exact<{
-  hotelId: Scalars["ID"]["input"];
-  amenityIds: Array<Scalars["ID"]["input"]> | Scalars["ID"]["input"];
-}>;
-
-export type SetHotelAmenitiesMutation = {
-  __typename?: "Mutation";
-  setHotelAmenities: Array<{
-    __typename?: "Amenity";
-    id: string;
-    name: string;
-  }>;
-};
-
-export type SetHotelMediaMutationVariables = Exact<{
-  hotelId: Scalars["ID"]["input"];
-  media: Array<MediaInput> | MediaInput;
-}>;
-
-export type SetHotelMediaMutation = {
-  __typename?: "Mutation";
-  setHotelMedia: Array<{
-    __typename?: "Media";
-    id: string;
-    url: string;
-    altText?: string | null;
-    isPrimary: boolean;
-  }>;
-};
-
 export type AdminInvoicesQueryVariables = Exact<{
   hotelId: Scalars["ID"]["input"];
   page?: InputMaybe<PageInput>;
@@ -1836,136 +1751,6 @@ export type AdminPromotionsQuery = {
   }>;
 };
 
-export type CreatePromotionMutationVariables = Exact<{
-  hotelId?: InputMaybe<Scalars["ID"]["input"]>;
-  input: AdminPromotionInput;
-}>;
-
-export type CreatePromotionMutation = {
-  __typename?: "Mutation";
-  createPromotion: {
-    __typename?: "AdminPromotion";
-    id: string;
-    code: string;
-    name: string;
-    status: PromotionStatus;
-  };
-};
-
-export type UpdatePromotionMutationVariables = Exact<{
-  id: Scalars["ID"]["input"];
-  input: AdminPromotionInput;
-}>;
-
-export type UpdatePromotionMutation = {
-  __typename?: "Mutation";
-  updatePromotion: {
-    __typename?: "AdminPromotion";
-    id: string;
-    code: string;
-    name: string;
-    status: PromotionStatus;
-  };
-};
-
-export type SetPromotionStatusMutationVariables = Exact<{
-  id: Scalars["ID"]["input"];
-  status: PromotionStatus;
-}>;
-
-export type SetPromotionStatusMutation = {
-  __typename?: "Mutation";
-  setPromotionStatus: {
-    __typename?: "AdminPromotion";
-    id: string;
-    code: string;
-    name: string;
-    status: PromotionStatus;
-  };
-};
-
-export type CreateRatePlanMutationVariables = Exact<{
-  hotelId: Scalars["ID"]["input"];
-  input: AdminRatePlanInput;
-}>;
-
-export type CreateRatePlanMutation = {
-  __typename?: "Mutation";
-  createRatePlan: {
-    __typename?: "RatePlan";
-    id: string;
-    name: string;
-    code: string;
-    currencyCode: string;
-    status: RatePlanStatus;
-  };
-};
-
-export type UpdateRatePlanMutationVariables = Exact<{
-  id: Scalars["ID"]["input"];
-  input: AdminRatePlanInput;
-}>;
-
-export type UpdateRatePlanMutation = {
-  __typename?: "Mutation";
-  updateRatePlan: {
-    __typename?: "RatePlan";
-    id: string;
-    name: string;
-    code: string;
-    currencyCode: string;
-    status: RatePlanStatus;
-  };
-};
-
-export type LinkRoomTypeRatePlanMutationVariables = Exact<{
-  roomTypeId: Scalars["ID"]["input"];
-  ratePlanId: Scalars["ID"]["input"];
-}>;
-
-export type LinkRoomTypeRatePlanMutation = {
-  __typename?: "Mutation";
-  linkRoomTypeRatePlan: {
-    __typename?: "RoomTypeRatePlanInfo";
-    id: string;
-    roomTypeId: string;
-    roomTypeName: string;
-    currencyCode: string;
-    prices: Array<{
-      __typename?: "RatePlanPriceInfo";
-      id: string;
-      validFrom: string;
-      validTo: string;
-      priceAmount: number;
-    }>;
-  };
-};
-
-export type UnlinkRoomTypeRatePlanMutationVariables = Exact<{
-  linkId: Scalars["ID"]["input"];
-}>;
-
-export type UnlinkRoomTypeRatePlanMutation = {
-  __typename?: "Mutation";
-  unlinkRoomTypeRatePlan: boolean;
-};
-
-export type SetRatePlanPricesMutationVariables = Exact<{
-  linkId: Scalars["ID"]["input"];
-  prices: Array<RatePlanPriceInput> | RatePlanPriceInput;
-}>;
-
-export type SetRatePlanPricesMutation = {
-  __typename?: "Mutation";
-  setRatePlanPrices: Array<{
-    __typename?: "RatePlanPriceInfo";
-    id: string;
-    validFrom: string;
-    validTo: string;
-    priceAmount: number;
-  }>;
-};
-
 export type AdminReservationsQueryVariables = Exact<{
   hotelId: Scalars["ID"]["input"];
   status?: InputMaybe<ReservationStatus>;
@@ -2043,32 +1828,6 @@ export type AdminReservationsQuery = {
   };
 };
 
-export type AdminCancelReservationMutationVariables = Exact<{
-  reservationId: Scalars["ID"]["input"];
-  reasonCode?: InputMaybe<Scalars["String"]["input"]>;
-  reasonNote?: InputMaybe<Scalars["String"]["input"]>;
-}>;
-
-export type AdminCancelReservationMutation = {
-  __typename?: "Mutation";
-  adminCancelReservation: {
-    __typename?: "Reservation";
-    id: string;
-    reference: string;
-    status: ReservationStatus;
-    cancellation?: {
-      __typename?: "ReservationCancellation";
-      id: string;
-      reason?: string | null;
-      reasonNote?: string | null;
-      isRefundable: boolean;
-      penaltyAmount: number;
-      refundAmount: number;
-      cancelledAt: string;
-    } | null;
-  };
-};
-
 export type AdminReviewsQueryVariables = Exact<{
   hotelId: Scalars["ID"]["input"];
   status?: InputMaybe<ReviewModerationStatus>;
@@ -2094,118 +1853,6 @@ export type AdminReviewsQuery = {
       responseText?: string | null;
       createdAt: string;
     }>;
-  };
-};
-
-export type ModerateReviewMutationVariables = Exact<{
-  id: Scalars["ID"]["input"];
-  status: ReviewModerationStatus;
-  response?: InputMaybe<Scalars["String"]["input"]>;
-}>;
-
-export type ModerateReviewMutation = {
-  __typename?: "Mutation";
-  moderateReview: {
-    __typename?: "Review";
-    id: string;
-    moderationStatus: string;
-    responseText?: string | null;
-  };
-};
-
-export type CreateRoomTypeMutationVariables = Exact<{
-  hotelId: Scalars["ID"]["input"];
-  input: AdminRoomTypeInput;
-}>;
-
-export type CreateRoomTypeMutation = {
-  __typename?: "Mutation";
-  createRoomType: {
-    __typename?: "RoomType";
-    id: string;
-    name: string;
-    status: RoomTypeStatus;
-  };
-};
-
-export type UpdateRoomTypeMutationVariables = Exact<{
-  id: Scalars["ID"]["input"];
-  input: AdminRoomTypeInput;
-}>;
-
-export type UpdateRoomTypeMutation = {
-  __typename?: "Mutation";
-  updateRoomType: {
-    __typename?: "RoomType";
-    id: string;
-    name: string;
-    status: RoomTypeStatus;
-  };
-};
-
-export type SetRoomTypeAmenitiesMutationVariables = Exact<{
-  roomTypeId: Scalars["ID"]["input"];
-  amenityIds: Array<Scalars["ID"]["input"]> | Scalars["ID"]["input"];
-}>;
-
-export type SetRoomTypeAmenitiesMutation = {
-  __typename?: "Mutation";
-  setRoomTypeAmenities: Array<{
-    __typename?: "Amenity";
-    id: string;
-    name: string;
-  }>;
-};
-
-export type SetRoomTypeMediaMutationVariables = Exact<{
-  roomTypeId: Scalars["ID"]["input"];
-  media: Array<MediaInput> | MediaInput;
-}>;
-
-export type SetRoomTypeMediaMutation = {
-  __typename?: "Mutation";
-  setRoomTypeMedia: Array<{
-    __typename?: "Media";
-    id: string;
-    url: string;
-    altText?: string | null;
-    isPrimary: boolean;
-  }>;
-};
-
-export type CreateRoomMutationVariables = Exact<{
-  hotelId: Scalars["ID"]["input"];
-  input: AdminRoomInput;
-}>;
-
-export type CreateRoomMutation = {
-  __typename?: "Mutation";
-  createRoom: {
-    __typename?: "Room";
-    id: string;
-    roomNumber: string;
-    floor?: string | null;
-    status: string;
-    housekeepingStatus: string;
-    maintenanceStatus: string;
-  };
-};
-
-export type UpdateRoomMutationVariables = Exact<{
-  id: Scalars["ID"]["input"];
-  input: AdminRoomInput;
-}>;
-
-export type UpdateRoomMutation = {
-  __typename?: "Mutation";
-  updateRoom: {
-    __typename?: "Room";
-    id: string;
-    roomNumber: string;
-    floor?: string | null;
-    status: string;
-    housekeepingStatus: string;
-    maintenanceStatus: string;
   };
 };
 
@@ -2242,69 +1889,6 @@ export type AdminRolesQuery = {
     name: string;
     hotelScoped: boolean;
   }>;
-};
-
-export type CreateUserMutationVariables = Exact<{
-  input: AdminCreateUserInput;
-}>;
-
-export type CreateUserMutation = {
-  __typename?: "Mutation";
-  createUser: {
-    __typename?: "AdminUser";
-    id: string;
-    email: string;
-    status: string;
-    roles: Array<{
-      __typename?: "AdminUserRole";
-      id: string;
-      roleName: string;
-      hotelId?: string | null;
-      hotelName?: string | null;
-    }>;
-  };
-};
-
-export type AssignRoleMutationVariables = Exact<{
-  userId: Scalars["ID"]["input"];
-  roleName: Scalars["String"]["input"];
-  hotelId?: InputMaybe<Scalars["ID"]["input"]>;
-}>;
-
-export type AssignRoleMutation = {
-  __typename?: "Mutation";
-  assignRole: {
-    __typename?: "AdminUser";
-    id: string;
-    email: string;
-    roles: Array<{
-      __typename?: "AdminUserRole";
-      id: string;
-      roleName: string;
-      hotelId?: string | null;
-      hotelName?: string | null;
-    }>;
-  };
-};
-
-export type RevokeRoleMutationVariables = Exact<{
-  userRoleId: Scalars["ID"]["input"];
-}>;
-
-export type RevokeRoleMutation = {
-  __typename?: "Mutation";
-  revokeRole: {
-    __typename?: "AdminUser";
-    id: string;
-    email: string;
-    roles: Array<{
-      __typename?: "AdminUserRole";
-      id: string;
-      roleName: string;
-      hotelId?: string | null;
-      hotelName?: string | null;
-    }>;
-  };
 };
 
 export const AdminAuditLogsDocument = {
@@ -2400,73 +1984,6 @@ export const AdminAuditLogsDocument = {
     },
   ],
 } as unknown as DocumentNode<AdminAuditLogsQuery, AdminAuditLogsQueryVariables>;
-export const LoginDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "Login" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "input" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "NamedType",
-              name: { kind: "Name", value: "LoginInput" },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "login" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "input" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "input" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "token" } },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "me" },
-                  selectionSet: {
-                    kind: "SelectionSet",
-                    selections: [
-                      { kind: "Field", name: { kind: "Name", value: "id" } },
-                      { kind: "Field", name: { kind: "Name", value: "email" } },
-                      { kind: "Field", name: { kind: "Name", value: "roles" } },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "hotelIds" },
-                      },
-                    ],
-                  },
-                },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<LoginMutation, LoginMutationVariables>;
 export const MeDocument = {
   kind: "Document",
   definitions: [
@@ -2495,92 +2012,6 @@ export const MeDocument = {
     },
   ],
 } as unknown as DocumentNode<MeQuery, MeQueryVariables>;
-export const UpdateAvailabilityDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "UpdateAvailability" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "hotelId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: { kind: "Variable", name: { kind: "Name", value: "rows" } },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "ListType",
-              type: {
-                kind: "NonNullType",
-                type: {
-                  kind: "NamedType",
-                  name: { kind: "Name", value: "AvailabilityUpdateInput" },
-                },
-              },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "updateAvailability" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "hotelId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "hotelId" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "rows" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "rows" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "roomTypeId" } },
-                { kind: "Field", name: { kind: "Name", value: "stayDate" } },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "totalInventory" },
-                },
-                { kind: "Field", name: { kind: "Name", value: "roomsSold" } },
-                { kind: "Field", name: { kind: "Name", value: "outOfOrder" } },
-                { kind: "Field", name: { kind: "Name", value: "blocked" } },
-                { kind: "Field", name: { kind: "Name", value: "free" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  UpdateAvailabilityMutation,
-  UpdateAvailabilityMutationVariables
->;
 export const AdminDashboardDocument = {
   kind: "Document",
   definitions: [
@@ -3460,290 +2891,6 @@ export const AdminAmenitiesDocument = {
     },
   ],
 } as unknown as DocumentNode<AdminAmenitiesQuery, AdminAmenitiesQueryVariables>;
-export const CreateHotelDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "CreateHotel" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "input" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "NamedType",
-              name: { kind: "Name", value: "AdminHotelInput" },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "createHotel" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "input" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "input" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "name" } },
-                { kind: "Field", name: { kind: "Name", value: "status" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<CreateHotelMutation, CreateHotelMutationVariables>;
-export const UpdateHotelDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "UpdateHotel" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: { kind: "Variable", name: { kind: "Name", value: "id" } },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "input" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "NamedType",
-              name: { kind: "Name", value: "AdminHotelInput" },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "updateHotel" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "id" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "id" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "input" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "input" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "name" } },
-                { kind: "Field", name: { kind: "Name", value: "status" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<UpdateHotelMutation, UpdateHotelMutationVariables>;
-export const SetHotelAmenitiesDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "SetHotelAmenities" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "hotelId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "amenityIds" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "ListType",
-              type: {
-                kind: "NonNullType",
-                type: {
-                  kind: "NamedType",
-                  name: { kind: "Name", value: "ID" },
-                },
-              },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "setHotelAmenities" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "hotelId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "hotelId" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "amenityIds" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "amenityIds" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "name" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  SetHotelAmenitiesMutation,
-  SetHotelAmenitiesMutationVariables
->;
-export const SetHotelMediaDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "SetHotelMedia" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "hotelId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "media" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "ListType",
-              type: {
-                kind: "NonNullType",
-                type: {
-                  kind: "NamedType",
-                  name: { kind: "Name", value: "MediaInput" },
-                },
-              },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "setHotelMedia" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "hotelId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "hotelId" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "media" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "media" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "url" } },
-                { kind: "Field", name: { kind: "Name", value: "altText" } },
-                { kind: "Field", name: { kind: "Name", value: "isPrimary" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  SetHotelMediaMutation,
-  SetHotelMediaMutationVariables
->;
 export const AdminInvoicesDocument = {
   kind: "Document",
   definitions: [
@@ -4225,610 +3372,6 @@ export const AdminPromotionsDocument = {
   AdminPromotionsQuery,
   AdminPromotionsQueryVariables
 >;
-export const CreatePromotionDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "CreatePromotion" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "hotelId" },
-          },
-          type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "input" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "NamedType",
-              name: { kind: "Name", value: "AdminPromotionInput" },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "createPromotion" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "hotelId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "hotelId" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "input" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "input" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "code" } },
-                { kind: "Field", name: { kind: "Name", value: "name" } },
-                { kind: "Field", name: { kind: "Name", value: "status" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  CreatePromotionMutation,
-  CreatePromotionMutationVariables
->;
-export const UpdatePromotionDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "UpdatePromotion" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: { kind: "Variable", name: { kind: "Name", value: "id" } },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "input" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "NamedType",
-              name: { kind: "Name", value: "AdminPromotionInput" },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "updatePromotion" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "id" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "id" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "input" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "input" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "code" } },
-                { kind: "Field", name: { kind: "Name", value: "name" } },
-                { kind: "Field", name: { kind: "Name", value: "status" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  UpdatePromotionMutation,
-  UpdatePromotionMutationVariables
->;
-export const SetPromotionStatusDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "SetPromotionStatus" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: { kind: "Variable", name: { kind: "Name", value: "id" } },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "status" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "NamedType",
-              name: { kind: "Name", value: "PromotionStatus" },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "setPromotionStatus" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "id" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "id" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "status" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "status" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "code" } },
-                { kind: "Field", name: { kind: "Name", value: "name" } },
-                { kind: "Field", name: { kind: "Name", value: "status" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  SetPromotionStatusMutation,
-  SetPromotionStatusMutationVariables
->;
-export const CreateRatePlanDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "CreateRatePlan" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "hotelId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "input" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "NamedType",
-              name: { kind: "Name", value: "AdminRatePlanInput" },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "createRatePlan" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "hotelId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "hotelId" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "input" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "input" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "name" } },
-                { kind: "Field", name: { kind: "Name", value: "code" } },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "currencyCode" },
-                },
-                { kind: "Field", name: { kind: "Name", value: "status" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  CreateRatePlanMutation,
-  CreateRatePlanMutationVariables
->;
-export const UpdateRatePlanDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "UpdateRatePlan" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: { kind: "Variable", name: { kind: "Name", value: "id" } },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "input" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "NamedType",
-              name: { kind: "Name", value: "AdminRatePlanInput" },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "updateRatePlan" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "id" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "id" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "input" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "input" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "name" } },
-                { kind: "Field", name: { kind: "Name", value: "code" } },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "currencyCode" },
-                },
-                { kind: "Field", name: { kind: "Name", value: "status" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  UpdateRatePlanMutation,
-  UpdateRatePlanMutationVariables
->;
-export const LinkRoomTypeRatePlanDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "LinkRoomTypeRatePlan" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "roomTypeId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "ratePlanId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "linkRoomTypeRatePlan" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "roomTypeId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "roomTypeId" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "ratePlanId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "ratePlanId" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "roomTypeId" } },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "roomTypeName" },
-                },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "currencyCode" },
-                },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "prices" },
-                  selectionSet: {
-                    kind: "SelectionSet",
-                    selections: [
-                      { kind: "Field", name: { kind: "Name", value: "id" } },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "validFrom" },
-                      },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "validTo" },
-                      },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "priceAmount" },
-                      },
-                    ],
-                  },
-                },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  LinkRoomTypeRatePlanMutation,
-  LinkRoomTypeRatePlanMutationVariables
->;
-export const UnlinkRoomTypeRatePlanDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "UnlinkRoomTypeRatePlan" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "linkId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "unlinkRoomTypeRatePlan" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "linkId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "linkId" },
-                },
-              },
-            ],
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  UnlinkRoomTypeRatePlanMutation,
-  UnlinkRoomTypeRatePlanMutationVariables
->;
-export const SetRatePlanPricesDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "SetRatePlanPrices" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "linkId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "prices" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "ListType",
-              type: {
-                kind: "NonNullType",
-                type: {
-                  kind: "NamedType",
-                  name: { kind: "Name", value: "RatePlanPriceInput" },
-                },
-              },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "setRatePlanPrices" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "linkId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "linkId" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "prices" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "prices" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "validFrom" } },
-                { kind: "Field", name: { kind: "Name", value: "validTo" } },
-                { kind: "Field", name: { kind: "Name", value: "priceAmount" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  SetRatePlanPricesMutation,
-  SetRatePlanPricesMutationVariables
->;
 export const AdminReservationsDocument = {
   kind: "Document",
   definitions: [
@@ -5140,125 +3683,6 @@ export const AdminReservationsDocument = {
   AdminReservationsQuery,
   AdminReservationsQueryVariables
 >;
-export const AdminCancelReservationDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "AdminCancelReservation" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "reservationId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "reasonCode" },
-          },
-          type: { kind: "NamedType", name: { kind: "Name", value: "String" } },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "reasonNote" },
-          },
-          type: { kind: "NamedType", name: { kind: "Name", value: "String" } },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "adminCancelReservation" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "reservationId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "reservationId" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "reasonCode" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "reasonCode" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "reasonNote" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "reasonNote" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "reference" } },
-                { kind: "Field", name: { kind: "Name", value: "status" } },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "cancellation" },
-                  selectionSet: {
-                    kind: "SelectionSet",
-                    selections: [
-                      { kind: "Field", name: { kind: "Name", value: "id" } },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "reason" },
-                      },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "reasonNote" },
-                      },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "isRefundable" },
-                      },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "penaltyAmount" },
-                      },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "refundAmount" },
-                      },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "cancelledAt" },
-                      },
-                    ],
-                  },
-                },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  AdminCancelReservationMutation,
-  AdminCancelReservationMutationVariables
->;
 export const AdminReviewsDocument = {
   kind: "Document",
   definitions: [
@@ -5383,568 +3807,6 @@ export const AdminReviewsDocument = {
     },
   ],
 } as unknown as DocumentNode<AdminReviewsQuery, AdminReviewsQueryVariables>;
-export const ModerateReviewDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "ModerateReview" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: { kind: "Variable", name: { kind: "Name", value: "id" } },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "status" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "NamedType",
-              name: { kind: "Name", value: "ReviewModerationStatus" },
-            },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "response" },
-          },
-          type: { kind: "NamedType", name: { kind: "Name", value: "String" } },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "moderateReview" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "id" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "id" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "status" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "status" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "response" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "response" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "moderationStatus" },
-                },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "responseText" },
-                },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  ModerateReviewMutation,
-  ModerateReviewMutationVariables
->;
-export const CreateRoomTypeDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "CreateRoomType" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "hotelId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "input" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "NamedType",
-              name: { kind: "Name", value: "AdminRoomTypeInput" },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "createRoomType" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "hotelId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "hotelId" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "input" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "input" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "name" } },
-                { kind: "Field", name: { kind: "Name", value: "status" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  CreateRoomTypeMutation,
-  CreateRoomTypeMutationVariables
->;
-export const UpdateRoomTypeDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "UpdateRoomType" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: { kind: "Variable", name: { kind: "Name", value: "id" } },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "input" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "NamedType",
-              name: { kind: "Name", value: "AdminRoomTypeInput" },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "updateRoomType" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "id" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "id" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "input" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "input" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "name" } },
-                { kind: "Field", name: { kind: "Name", value: "status" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  UpdateRoomTypeMutation,
-  UpdateRoomTypeMutationVariables
->;
-export const SetRoomTypeAmenitiesDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "SetRoomTypeAmenities" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "roomTypeId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "amenityIds" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "ListType",
-              type: {
-                kind: "NonNullType",
-                type: {
-                  kind: "NamedType",
-                  name: { kind: "Name", value: "ID" },
-                },
-              },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "setRoomTypeAmenities" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "roomTypeId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "roomTypeId" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "amenityIds" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "amenityIds" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "name" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  SetRoomTypeAmenitiesMutation,
-  SetRoomTypeAmenitiesMutationVariables
->;
-export const SetRoomTypeMediaDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "SetRoomTypeMedia" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "roomTypeId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "media" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "ListType",
-              type: {
-                kind: "NonNullType",
-                type: {
-                  kind: "NamedType",
-                  name: { kind: "Name", value: "MediaInput" },
-                },
-              },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "setRoomTypeMedia" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "roomTypeId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "roomTypeId" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "media" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "media" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "url" } },
-                { kind: "Field", name: { kind: "Name", value: "altText" } },
-                { kind: "Field", name: { kind: "Name", value: "isPrimary" } },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<
-  SetRoomTypeMediaMutation,
-  SetRoomTypeMediaMutationVariables
->;
-export const CreateRoomDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "CreateRoom" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "hotelId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "input" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "NamedType",
-              name: { kind: "Name", value: "AdminRoomInput" },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "createRoom" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "hotelId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "hotelId" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "input" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "input" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "roomNumber" } },
-                { kind: "Field", name: { kind: "Name", value: "floor" } },
-                { kind: "Field", name: { kind: "Name", value: "status" } },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "housekeepingStatus" },
-                },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "maintenanceStatus" },
-                },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<CreateRoomMutation, CreateRoomMutationVariables>;
-export const UpdateRoomDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "UpdateRoom" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: { kind: "Variable", name: { kind: "Name", value: "id" } },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "input" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "NamedType",
-              name: { kind: "Name", value: "AdminRoomInput" },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "updateRoom" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "id" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "id" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "input" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "input" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "roomNumber" } },
-                { kind: "Field", name: { kind: "Name", value: "floor" } },
-                { kind: "Field", name: { kind: "Name", value: "status" } },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "housekeepingStatus" },
-                },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "maintenanceStatus" },
-                },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<UpdateRoomMutation, UpdateRoomMutationVariables>;
 export const AdminUsersDocument = {
   kind: "Document",
   definitions: [
@@ -6025,258 +3887,3 @@ export const AdminRolesDocument = {
     },
   ],
 } as unknown as DocumentNode<AdminRolesQuery, AdminRolesQueryVariables>;
-export const CreateUserDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "CreateUser" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "input" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "NamedType",
-              name: { kind: "Name", value: "AdminCreateUserInput" },
-            },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "createUser" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "input" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "input" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "email" } },
-                { kind: "Field", name: { kind: "Name", value: "status" } },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "roles" },
-                  selectionSet: {
-                    kind: "SelectionSet",
-                    selections: [
-                      { kind: "Field", name: { kind: "Name", value: "id" } },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "roleName" },
-                      },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "hotelId" },
-                      },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "hotelName" },
-                      },
-                    ],
-                  },
-                },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<CreateUserMutation, CreateUserMutationVariables>;
-export const AssignRoleDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "AssignRole" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "userId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "roleName" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: {
-              kind: "NamedType",
-              name: { kind: "Name", value: "String" },
-            },
-          },
-        },
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "hotelId" },
-          },
-          type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "assignRole" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "userId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "userId" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "roleName" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "roleName" },
-                },
-              },
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "hotelId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "hotelId" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "email" } },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "roles" },
-                  selectionSet: {
-                    kind: "SelectionSet",
-                    selections: [
-                      { kind: "Field", name: { kind: "Name", value: "id" } },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "roleName" },
-                      },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "hotelId" },
-                      },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "hotelName" },
-                      },
-                    ],
-                  },
-                },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<AssignRoleMutation, AssignRoleMutationVariables>;
-export const RevokeRoleDocument = {
-  kind: "Document",
-  definitions: [
-    {
-      kind: "OperationDefinition",
-      operation: "mutation",
-      name: { kind: "Name", value: "RevokeRole" },
-      variableDefinitions: [
-        {
-          kind: "VariableDefinition",
-          variable: {
-            kind: "Variable",
-            name: { kind: "Name", value: "userRoleId" },
-          },
-          type: {
-            kind: "NonNullType",
-            type: { kind: "NamedType", name: { kind: "Name", value: "ID" } },
-          },
-        },
-      ],
-      selectionSet: {
-        kind: "SelectionSet",
-        selections: [
-          {
-            kind: "Field",
-            name: { kind: "Name", value: "revokeRole" },
-            arguments: [
-              {
-                kind: "Argument",
-                name: { kind: "Name", value: "userRoleId" },
-                value: {
-                  kind: "Variable",
-                  name: { kind: "Name", value: "userRoleId" },
-                },
-              },
-            ],
-            selectionSet: {
-              kind: "SelectionSet",
-              selections: [
-                { kind: "Field", name: { kind: "Name", value: "id" } },
-                { kind: "Field", name: { kind: "Name", value: "email" } },
-                {
-                  kind: "Field",
-                  name: { kind: "Name", value: "roles" },
-                  selectionSet: {
-                    kind: "SelectionSet",
-                    selections: [
-                      { kind: "Field", name: { kind: "Name", value: "id" } },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "roleName" },
-                      },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "hotelId" },
-                      },
-                      {
-                        kind: "Field",
-                        name: { kind: "Name", value: "hotelName" },
-                      },
-                    ],
-                  },
-                },
-              ],
-            },
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as DocumentNode<RevokeRoleMutation, RevokeRoleMutationVariables>;

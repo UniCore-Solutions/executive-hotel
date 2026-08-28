@@ -1,20 +1,19 @@
-/** Reservation service — calls backend GraphQL API. */
-import { gqlRequest, TRANSACTION_CURRENCY } from './graphqlClient';
+/** Reservation service — reads via GraphQL (through the Apollo cache in the
+    browser), writes via REST (API rule: GraphQL = READ, REST = WRITE/ACTION).
+    The cache is evicted by src/api/invalidation.ts after every REST write,
+    so cached reads never go stale. */
+import { gqlRequest } from './graphqlClient';
+import { getApolloClient } from '@/api/apollo/client';
+import { cancelReservation as cancelReservationRest, createReservation as createReservationRest } from '@/api/rest/endpoints';
 import type {
-  CreateReservationMutation,
-  CreateReservationMutationVariables,
   MyReservationsQuery,
   ReservationLookupQuery,
   ReservationLookupQueryVariables,
-  CancelReservationMutation,
-  CancelReservationMutationVariables,
-  CreateReservationInput,
-  CancelReservationInput,
   ReservationLookupInput,
   ReservationStatus,
   PaymentStatus,
 } from '@/graphql/generated/graphql';
-import { CreateReservationDocument, MyReservationsDocument, ReservationLookupDocument, CancelReservationDocument } from '@/graphql/generated/graphql';
+import { MyReservationsDocument, ReservationLookupDocument } from '@/graphql/generated/graphql';
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 
@@ -61,6 +60,9 @@ export interface BackendReservation {
     ratePerNight: number;
     subtotalAmount: number;
     status: string;
+    roomTypeName?: string;
+    roomTypeImageUrl?: string | null;
+    ratePlanName?: string | null;
   }>;
   extras: Array<{
     id: string;
@@ -95,9 +97,22 @@ export function generateIdempotencyKey(): string {
 
 /* ── CRUD ───────────────────────────────────────────────────────────── */
 
+/** Browser reads go through the Apollo cache (cache-first); REST writes
+    evict the affected queries via src/api/invalidation.ts, so a later read
+    refetches. Server-side (no Apollo) falls back to the stateless helper. */
+
 export const reservations = {
   /** List all reservations for the current user. */
   async list(): Promise<BackendReservation[]> {
+    const client = getApolloClient();
+    if (client) {
+      const { data } = await client.query({
+        query: MyReservationsDocument,
+        variables: {},
+        fetchPolicy: 'cache-first',
+      });
+      return (data as MyReservationsQuery).myReservations as BackendReservation[];
+    }
     const data = await gqlRequest(MyReservationsDocument, {});
     return (data as MyReservationsQuery).myReservations as BackendReservation[];
   },
@@ -105,12 +120,22 @@ export const reservations = {
   /** Look up a reservation by reference + email. */
   async find(reference: string, email: string): Promise<BackendReservation | null> {
     const input: ReservationLookupInput = { reference, email };
-    const data = await gqlRequest(ReservationLookupDocument, { input } as ReservationLookupQueryVariables);
+    const variables = { input } as ReservationLookupQueryVariables;
+    const client = getApolloClient();
+    if (client) {
+      const { data } = await client.query({
+        query: ReservationLookupDocument,
+        variables,
+        fetchPolicy: 'cache-first',
+      });
+      return (data as ReservationLookupQuery).reservation as BackendReservation | null;
+    }
+    const data = await gqlRequest(ReservationLookupDocument, variables);
     return (data as ReservationLookupQuery).reservation as BackendReservation | null;
   },
 
-  /** Create a reservation via backend. Transaction currency is always MAD
-      (TRANSACTION_CURRENCY) — the display currency the guest has selected is
+  /** Create a reservation via REST (POST /api/v1/reservations). Transaction
+      currency is always MAD — the display currency the guest has selected is
       never accepted here, so it cannot leak into the persisted reservation. */
   async create(input: {
     hotelId: string;
@@ -122,32 +147,21 @@ export const reservations = {
     rooms: Array<{ roomTypeId: string; ratePlanId: string }>;
     extras?: Array<{ extraId: string; quantity: number }>;
     promoCode?: string;
+    arrivalSlot?: string;
+    specialRequests?: string;
     idempotencyKey: string;
   }): Promise<{ reservation: BackendReservation; created: boolean }> {
-    const gqlInput: CreateReservationInput = {
-      hotelId: input.hotelId,
-      checkInDate: input.checkInDate,
-      checkOutDate: input.checkOutDate,
-      adults: input.adults,
-      children: input.children,
-      currencyCode: TRANSACTION_CURRENCY,
-      guest: input.guest,
-      rooms: input.rooms,
-      extras: input.extras,
-      promoCode: input.promoCode,
-      idempotencyKey: input.idempotencyKey,
+    const result = await createReservationRest(input);
+    return {
+      reservation: result.reservation as unknown as BackendReservation,
+      created: result.created,
     };
-    const data = await gqlRequest(CreateReservationDocument, { input: gqlInput } as CreateReservationMutationVariables);
-    const result = data as CreateReservationMutation;
-    return { reservation: result.createReservation.reservation as BackendReservation, created: result.createReservation.created };
   },
 
-  /** Cancel a reservation via backend. */
+  /** Cancel a reservation via REST (POST /api/v1/reservations/{reference}/cancel). */
   async cancel(reference: string, email: string, reasonCode?: string, reasonNote?: string): Promise<BackendReservation> {
-    const input: CancelReservationInput = { reference, email, reasonCode, reasonNote };
-    const data = await gqlRequest(CancelReservationDocument, { input } as CancelReservationMutationVariables);
-    const result = data as CancelReservationMutation;
-    return result.cancelReservation.reservation as BackendReservation;
+    const result = await cancelReservationRest({ reference, email, reasonCode, reasonNote });
+    return result as BackendReservation;
   },
 };
 

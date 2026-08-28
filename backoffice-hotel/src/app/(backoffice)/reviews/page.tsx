@@ -1,13 +1,15 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@apollo/client/react';
 import { useState } from 'react';
 import { Check, X } from 'lucide-react';
-import { proxyRequest } from '@/lib/api';
+import { moderateReview } from '@/api/rest/endpoints';
+import { useApollo } from '@/api/apollo/provider';
+import { invalidateAfterWrite } from '@/api/invalidation';
 import { formatDateTime } from '@/lib/format';
 import {
   AdminReviewsDocument,
-  ModerateReviewDocument,
   ReviewModerationStatus,
   type ReviewModerationStatus as ReviewModerationStatusType,
 } from '@/graphql/generated/graphql';
@@ -47,24 +49,23 @@ export default function ReviewsPage() {
   } | null>(null);
   const [responseDraft, setResponseDraft] = useState('');
   const queryClient = useQueryClient();
+  const apollo = useApollo();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['adminReviews', activeHotelId, filter],
-    queryFn: () =>
-      proxyRequest(AdminReviewsDocument, {
-        hotelId: activeHotelId ?? '',
-        status: filter === 'ALL' ? undefined : filter,
-        page: { page: 0, size: 50 },
-      }),
-    enabled: !!activeHotelId,
+  const { data, loading } = useQuery(AdminReviewsDocument, {
+    variables: {
+      hotelId: activeHotelId ?? '',
+      status: filter === 'ALL' ? undefined : filter,
+      page: { page: 0, size: 50 },
+    },
+    skip: !activeHotelId,
   });
 
   const moderate = useMutation({
     mutationFn: (args: { id: string; status: ReviewModerationStatusType; response?: string }) =>
-      proxyRequest(ModerateReviewDocument, args),
+      moderateReview(args.id, { status: args.status, response: args.response }),
     onSuccess: () => {
       setSelected(null);
-      void queryClient.invalidateQueries({ queryKey: ['adminReviews'] });
+      invalidateAfterWrite(apollo, queryClient, 'admin.reviews.moderate', [['adminReviews']]);
     },
   });
 
@@ -99,7 +100,7 @@ export default function ReviewsPage() {
           </button>
         ))}
       </div>
-      {isLoading ? (
+      {loading ? (
         <Skeleton className="h-72 w-full" />
       ) : reviews.length === 0 ? (
         <Card>

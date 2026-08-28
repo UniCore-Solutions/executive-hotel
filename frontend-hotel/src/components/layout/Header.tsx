@@ -7,11 +7,11 @@ import { usePathname } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
 import { useSession } from '@/context/SessionContext';
 import { useLang } from '@/hooks/useLang';
-import { PROPERTY } from '@/data';
 import { CURRENCY_INFO } from '@/lib/format';
 import { TEL, TEL_DISPLAY, NAV_LINKS, MOBILE_UTILITY_LINKS } from '@/constants/navigation';
 import { Icon } from '@/components/ui/Icon';
 import type { PlatformIdentity } from '@/services/platform';
+import type { CanonicalHotel } from '@/services/canonicalHotel';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,9 +22,10 @@ import {
 interface HeaderProps {
   onHome?: boolean;
   platform?: PlatformIdentity | null;
+  hotel?: CanonicalHotel | null;
 }
 
-export default function Header({ onHome = false, platform }: HeaderProps) {
+export default function Header({ onHome = false, platform, hotel }: HeaderProps) {
   const pathname = usePathname();
   const search = useSearch();
   const { lang, setLang, t, langs } = useLang();
@@ -33,8 +34,21 @@ export default function Header({ onHome = false, platform }: HeaderProps) {
   const [drop, setDrop] = useState<'lang' | 'cur' | ''>('');
   const { session: sess } = useSession();
 
-  const brandName = platform?.name ?? PROPERTY.name;
-  const brandLine = platform?.tagline ?? `${PROPERTY.brand} · ${PROPERTY.city}`;
+  /* Single-property platform: the brand IS the hotel. Prefer the canonical
+     hotel entity; the platform record is the same identity under a different
+     CMS record. No hardcoded brand fallback — if the backend is unreachable
+     the header shows the logo without a name rather than a wrong one. */
+  const brandName = hotel?.name ?? platform?.name ?? '';
+  const brandLine = platform?.tagline ?? 'Direct booking';
+  const hotelAddress = hotel
+    ? [hotel.addressLine1, hotel.addressLine2, hotel.city, hotel.countryCode]
+        .filter(Boolean)
+        .join(' · ')
+    : null;
+  /* Real hotel phone when the backend provides one (the constants phone is
+     only a last-resort fallback and no longer the display source). */
+  const telHref = hotel?.phone ? `tel:${hotel.phone.replace(/[\s()-]/g, '')}` : TEL;
+  const telDisplay = hotel?.phone ?? TEL_DISPLAY;
 
   const home = onHome || pathname === '/';
 
@@ -65,14 +79,16 @@ export default function Header({ onHome = false, platform }: HeaderProps) {
         <div className="mx-auto flex h-9 max-w-7xl items-center justify-between gap-4 px-4 text-[11px] sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-4">
             <a
-              href={TEL}
+              href={telHref}
               className="hdr-utility-link hidden shrink-0 items-center gap-1.5 transition-colors hover:text-white sm:inline-flex"
             >
               <Icon name="phone" className="h-3 w-3" />
-              {TEL_DISPLAY}
+              {telDisplay}
             </a>
             <span className="hdr-utility-dim hidden truncate text-white/50 md:inline">
-              72 Rue Oued Sebou · {PROPERTY.area}, {PROPERTY.city} · Check-in {PROPERTY.checkIn}
+              {hotelAddress
+                ? `${hotelAddress} · Check-in ${hotel?.checkInTime ?? '15:00'}`
+                : 'Check-in 15:00'}
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -142,12 +158,12 @@ export default function Header({ onHome = false, platform }: HeaderProps) {
           <Link
             href="/"
             className="group flex min-w-0 flex-1 items-center gap-2.5 lg:flex-none"
-            aria-label={`${brandName} — home`}
+            aria-label={`${brandName || 'Hotel'} — home`}
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full">
               <Image
                 src="/logo.jpg"
-                alt="Executive Hotel logo"
+                alt={`${brandName || 'Hotel'} logo`}
                 className="h-full w-full object-cover"
                 width={36}
                 height={36}
@@ -217,8 +233,8 @@ export default function Header({ onHome = false, platform }: HeaderProps) {
             </Link>
           ))}
           <div className="border-navy/10 mt-3 grid grid-cols-2 gap-2 border-t pt-3">
-            <a href={TEL} className="text-navy/70 text-xs font-semibold">
-              ☎ {TEL_DISPLAY}
+            <a href={telHref} className="text-navy/70 text-xs font-semibold">
+              ☎ {telDisplay}
             </a>
             <Link href="/reservation" className="text-navy/70 text-xs font-semibold">
               My reservation

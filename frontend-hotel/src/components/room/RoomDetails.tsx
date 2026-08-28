@@ -5,7 +5,7 @@
    booking card (rate plans, extras, promo, live quote), hotel card, siblings.
    All stay mutations flow through SearchContext so every panel stays in sync. */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useSearch } from '@/context/SearchContext';
@@ -21,7 +21,7 @@ import {
   validateState,
 } from '@/lib/dates';
 import { image, IMG_FALLBACK } from '@/services/availability';
-import { getStayRoom } from '@/services/catalog';
+import { getStayRoom, refreshRoomStay } from '@/services/catalog';
 import { GraphqlClientError } from '@/services/graphqlClient';
 import { getExtras } from '@/services/extras';
 import { ensurePricingSources } from '@/services/pricingHydration';
@@ -205,18 +205,21 @@ export default function RoomDetails({
     if (!room) return;
     const seq = ++seqRef.current;
     try {
-      const res = await getStayRoom(undefined, roomId, {
+      // Only the availability/rates of the stay change on date edits — the
+      // room and hotel entities are already on screen, so re-run just the
+      // staySearch read (no hotel/room re-fetch).
+      const res = await refreshRoomStay(room.hotelId ?? '', roomId, {
         checkin: state.checkin,
         checkout: state.checkout,
         adults: state.adults || 2,
         children: state.children || 0,
         rooms: state.rooms,
       });
-      if (seq !== seqRef.current || !res || !res.room) return;
+      if (seq !== seqRef.current || !res) return;
       setAvailability(res.availability);
       setFits(res.fits !== false);
       setAvailForCheckin(state.checkin ? toISODate(state.checkin) : '');
-      setSiblings(res.siblingRooms || []);
+      setSiblings(res.siblings || []);
     } catch {
       if (seq !== seqRef.current) return;
       setLoadError('Could not refresh availability — please check your connection.');
@@ -377,31 +380,11 @@ export default function RoomDetails({
     hotelId,
   ]);
 
-  /* When there are no dates (or the quote is still loading), show a nightly-only
-     placeholder from the backend rate rather than computing a 12% tax locally.
-     Totals are only displayed from the authoritative server quote. */
-  const noDatesPlaceholder = useMemo((): PriceBreakdown => {
-    const perNight = plan?.price ?? 0;
-    const roomSubtotal = perNight * nights * (state.rooms || 1);
-    return {
-      perNight,
-      nights,
-      rooms: state.rooms || 1,
-      roomSubtotal,
-      discount: 0,
-      taxedBase: 0,
-      taxes: 0,
-      taxAmount: 0,
-      feeAmount: 0,
-      taxRate: 0,
-      extrasTotal: 0,
-      total: roomSubtotal,
-      originalTotal: roomSubtotal,
-      currency,
-    };
-  }, [plan, nights, state.rooms, currency]);
-
-  const quote: PriceBreakdown | null = hasDates ? quoteState.quote : plan ? noDatesPlaceholder : null;
+  /* When there are no dates there is deliberately NO price placeholder: a
+     server quote is the only legitimate total, and a locally-computed
+     number (even "per night × nights") would look like a real price. The
+     booking card shows an explicit "select dates" state instead. */
+  const quote: PriceBreakdown | null = hasDates ? quoteState.quote : null;
   const quoteError = hasDates ? quoteState.error : '';
 
   /* ---------- dialogs ---------- */
@@ -587,29 +570,32 @@ export default function RoomDetails({
     }
     return (
       <div className="mt-8 space-y-6 animate-pulse">
-        <div className="border-navy/10 overflow-hidden rounded-3xl border bg-white">
-          <div className="bg-navy/5 aspect-[16/9]" />
-          <div className="p-6">
-            <div className="bg-navy/8 h-3 w-1/4 rounded-full" />
-            <div className="bg-navy/10 mt-3 h-5 w-1/3 rounded-full" />
-            <div className="mt-4 flex gap-2">
-              <div className="bg-navy/5 h-7 w-20 rounded-full" />
-              <div className="bg-navy/5 h-7 w-24 rounded-full" />
-              <div className="bg-navy/5 h-7 w-16 rounded-full" />
+        {/* Skeleton mirrors the real layout: photo + room info + details in
+            the left column, booking card on the right — no jump when data
+            lands. */}
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-10">
+          <div className="min-w-0 space-y-10">
+            <div className="border-navy/10 overflow-hidden rounded-3xl border bg-white">
+              <div className="bg-navy/5 aspect-[16/10] sm:aspect-[4/3]" />
+              <div className="p-6">
+                <div className="bg-navy/8 h-3 w-1/4 rounded-full" />
+                <div className="bg-navy/10 mt-3 h-5 w-1/3 rounded-full" />
+                <div className="mt-4 flex gap-2">
+                  <div className="bg-navy/5 h-7 w-20 rounded-full" />
+                  <div className="bg-navy/5 h-7 w-24 rounded-full" />
+                  <div className="bg-navy/5 h-7 w-16 rounded-full" />
+                </div>
+                <div className="mt-4 space-y-2">
+                  <div className="bg-navy/5 h-3 w-full rounded-full" />
+                  <div className="bg-navy/5 h-3 w-5/6 rounded-full" />
+                  <div className="bg-navy/5 h-3 w-2/3 rounded-full" />
+                </div>
+              </div>
             </div>
-            <div className="mt-4 space-y-2">
-              <div className="bg-navy/5 h-3 w-full rounded-full" />
-              <div className="bg-navy/5 h-3 w-5/6 rounded-full" />
-              <div className="bg-navy/5 h-3 w-2/3 rounded-full" />
-            </div>
-          </div>
-        </div>
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_440px]">
-          <div className="space-y-4">
             <div className="border-navy/10 rounded-3xl border bg-white p-6">
               <div className="bg-navy/8 h-3 w-1/4 rounded-full" />
               <div className="bg-navy/10 mt-3 h-5 w-1/3 rounded-full" />
-              <div className="mt-5 grid grid-cols-2 gap-4">
+              <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="flex items-start gap-3">
                     <div className="bg-navy/5 h-9 w-9 shrink-0 rounded-full" />
@@ -645,133 +631,141 @@ export default function RoomDetails({
 
   return (
     <>
-      {/* ===== Stay strip (contextual bar) ===== */}
-      <div className="border-navy/10 mt-8 mb-6 overflow-hidden rounded-3xl border bg-white shadow-sm">
-        {!hasDates && !ciOnly ? (
-          <div className="bg-gold/[0.06] border-navy/8 flex items-start gap-2.5 border-b px-5 py-3">
-            <svg
-              className="text-gold-dark mt-0.5 h-4 w-4 shrink-0"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+      {/* ===== Context bar: breadcrumb + stay strip, offset below the fixed
+          header (pt-28). The room content itself (photo, info, details) lives
+          in the left column of the grid below — the booking card stays fixed
+          on the right for the whole page. */}
+      <div className="pt-28">
+        {/* Back-to-hotel + breadcrumb */}
+        {hotelId && (
+          <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <Link
+              href={`/hotel?hotelid=${hotelId}#rooms`}
+              className="text-navy hover:text-gold-dark inline-flex items-center gap-1.5 text-sm font-semibold transition-colors"
             >
-              {STAY_ICONS.cal}
-            </svg>
-            <p className="text-navy/65 text-xs leading-relaxed">
-              Choose dates, guests and rooms right here to see live availability and the exact price
-              for this room — no need to leave this page.
-            </p>
+              <span aria-hidden="true">←</span> Back to hotel
+            </Link>
+            <Breadcrumb
+              items={[
+                { label: 'Home', href: '/' },
+                ...(hotelName ? [{ label: hotelName, href: `/hotel?hotelid=${hotelId}` }] : []),
+                { label: room?.name ?? 'Room details' },
+              ]}
+            />
           </div>
-        ) : ciOnly ? (
-          <div className="bg-gold/[0.06] border-navy/8 flex items-start gap-2.5 border-b px-5 py-3">
-            <svg
-              className="text-gold-dark mt-0.5 h-4 w-4 shrink-0"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              {STAY_ICONS.cal}
-            </svg>
-            <p className="text-navy/65 text-xs leading-relaxed">
-              Check-in <strong className="text-navy">{fmtShort(state.checkin)}</strong> selected —
-              now pick your check-out date to see prices.
-            </p>
-          </div>
-        ) : null}
-        <div className="bg-navy/8 grid grid-cols-1 gap-px sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
-          <StaySegment
-            icon={STAY_ICONS.cal}
-            label="Dates"
-            value={
-              hasDates
-                ? `${fmtShort(state.checkin)} – ${fmtShort(state.checkout)}`
-                : ciOnly
-                  ? 'Select check-out'
-                  : 'Choose dates'
-            }
-            sub={
-              hasDates
-                ? `${nights} ${nights === 1 ? 'night' : 'nights'} total`
-                : ciOnly
-                  ? 'select your check-out date'
-                  : 'pick your check-in and check-out'
-            }
-            onClick={() => openDialog('dates')}
-          />
-          <StaySegment
-            icon={STAY_ICONS.users}
-            label="Guests"
-            value={
-              guestKnown
-                ? `${state.adults + state.children} ${state.adults + state.children === 1 ? 'Guest' : 'Guests'}`
-                : 'Select guests'
-            }
-            sub={
-              guestKnown
-                ? `${state.adults} ${state.adults === 1 ? 'adult' : 'adults'}${state.children ? ` · ${state.children} ${state.children === 1 ? 'child' : 'children'}` : ''}`
-                : 'adults & children'
-            }
-            onClick={() => openDialog('guests')}
-          />
-          <StaySegment
-            icon={STAY_ICONS.rooms}
-            label="Rooms"
-            value={
-              guestKnown ? `${state.rooms} ${state.rooms === 1 ? 'Room' : 'Rooms'}` : 'Select room'
-            }
-            sub="1–5 rooms of this type"
-            onClick={() => {
-              openDialog('guests');
-              setTimeout(() => roomsStepRef.current?.scrollIntoView({ block: 'nearest' }), 60);
-            }}
-          />
-          <div className="flex flex-col items-stretch justify-center gap-1.5 bg-white px-5 py-4 sm:col-span-2 sm:flex-row lg:col-span-1 lg:min-w-[210px] lg:flex-col lg:items-center lg:gap-2 lg:py-3.5">
-            <Button
-              type="button"
-              onClick={bookFlow}
-              disabled={ctaState().disabled}
-              size="sm"
-              className="shadow-navy/20 w-full"
-            >
-              {ctaState().label}
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M5 12h14m-6-6 6 6-6 6"
-                />
+        )}
+
+        {/* ===== Stay strip (contextual bar) ===== */}
+        <div className="border-navy/10 mt-2 mb-6 overflow-hidden rounded-3xl border bg-white shadow-sm">
+          {!hasDates && !ciOnly ? (
+            <div className="bg-gold/[0.06] border-navy/8 flex items-start gap-2.5 border-b px-5 py-3">
+              <svg
+                className="text-gold-dark mt-0.5 h-4 w-4 shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                {STAY_ICONS.cal}
               </svg>
-            </Button>
-            <p className="text-navy/40 text-center text-[10px] leading-relaxed">
-              {ctaState().hint}
-            </p>
+              <p className="text-navy/65 text-xs leading-relaxed">
+                Choose dates, guests and rooms right here to see live availability and the exact price
+                for this room — no need to leave this page.
+              </p>
+            </div>
+          ) : ciOnly ? (
+            <div className="bg-gold/[0.06] border-navy/8 flex items-start gap-2.5 border-b px-5 py-3">
+              <svg
+                className="text-gold-dark mt-0.5 h-4 w-4 shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                {STAY_ICONS.cal}
+              </svg>
+              <p className="text-navy/65 text-xs leading-relaxed">
+                Check-in <strong className="text-navy">{fmtShort(state.checkin)}</strong> selected —
+                now pick your check-out date to see prices.
+              </p>
+            </div>
+          ) : null}
+          <div className="bg-navy/8 grid grid-cols-1 gap-px sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <StaySegment
+              icon={STAY_ICONS.cal}
+              label="Dates"
+              value={
+                hasDates
+                  ? `${fmtShort(state.checkin)} – ${fmtShort(state.checkout)}`
+                  : ciOnly
+                    ? 'Select check-out'
+                    : 'Choose dates'
+              }
+              sub={
+                hasDates
+                  ? `${nights} ${nights === 1 ? 'night' : 'nights'} total`
+                  : ciOnly
+                    ? 'select your check-out date'
+                    : 'pick your check-in and check-out'
+              }
+              onClick={() => openDialog('dates')}
+            />
+            <StaySegment
+              icon={STAY_ICONS.users}
+              label="Guests"
+              value={
+                guestKnown
+                  ? `${state.adults + state.children} ${state.adults + state.children === 1 ? 'Guest' : 'Guests'}`
+                  : 'Select guests'
+              }
+              sub={
+                guestKnown
+                  ? `${state.adults} ${state.adults === 1 ? 'adult' : 'adults'}${state.children ? ` · ${state.children} ${state.children === 1 ? 'child' : 'children'}` : ''}`
+                  : 'adults & children'
+              }
+              onClick={() => openDialog('guests')}
+            />
+            <StaySegment
+              icon={STAY_ICONS.rooms}
+              label="Rooms"
+              value={
+                guestKnown ? `${state.rooms} ${state.rooms === 1 ? 'Room' : 'Rooms'}` : 'Select room'
+              }
+              sub="1–5 rooms of this type"
+              onClick={() => {
+                openDialog('guests');
+                setTimeout(() => roomsStepRef.current?.scrollIntoView({ block: 'nearest' }), 60);
+              }}
+            />
+            <div className="flex flex-col items-stretch justify-center gap-1.5 bg-white px-5 py-4 sm:col-span-2 sm:flex-row lg:col-span-1 lg:min-w-[210px] lg:flex-col lg:items-center lg:gap-2 lg:py-3.5">
+              <Button
+                type="button"
+                onClick={bookFlow}
+                disabled={ctaState().disabled}
+                size="sm"
+                className="shadow-navy/20 w-full"
+              >
+                {ctaState().label}
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M5 12h14m-6-6 6 6-6 6"
+                  />
+                </svg>
+              </Button>
+              <p className="text-navy/40 text-center text-[10px] leading-relaxed">
+                {ctaState().hint}
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Back-to-hotel + breadcrumb */}
-      {hotelId && (
-        <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <Link
-            href={`/hotel?hotelid=${hotelId}#rooms`}
-            className="text-navy hover:text-gold-dark inline-flex items-center gap-1.5 text-sm font-semibold transition-colors"
-          >
-            <span aria-hidden="true">←</span> Back to hotel
-          </Link>
-          <Breadcrumb
-            items={[
-              { label: 'Home', href: '/' },
-              ...(hotelName ? [{ label: hotelName, href: `/hotel?hotelid=${hotelId}` }] : []),
-              { label: room?.name ?? 'Room details' },
-            ]}
-          />
-        </div>
-      )}
-
-      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_440px] lg:gap-10">
-        {/* Photo gallery */}
-        <div className="order-1 min-w-0 lg:col-start-1 lg:row-start-1">
+      {/* ===== Room content: photo + room info + details & amenities stacked
+          tightly in the left column, booking card fixed on the right. */}
+      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-10">
+        <div className="min-w-0">
+          {/* Photo gallery */}
           <section aria-label="Room photos">
             <PhotoGallery
               photos={(room.images.length ? room.images : [IMG_FALLBACK]).map((src) => ({
@@ -780,84 +774,136 @@ export default function RoomDetails({
               }))}
             />
           </section>
-        </div>
 
-        {/* Summary: badges, title, facts, highlights */}
-        <div className="order-2 min-w-0 lg:col-start-1 lg:row-start-2">
-          <section aria-labelledby="room-name">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={availability}>
-                {availability === 'available'
-                  ? 'Available'
-                  : availability === 'few'
-                    ? 'Few rooms left'
-                    : 'Sold out'}
-              </Badge>
-              {!fits ? (
-                <span className="text-clay bg-clay/10 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase">
-                  Party doesn&apos;t fit
-                </span>
-              ) : null}
-            </div>
-            <h1
-              id="room-name"
-              className="font-display text-navy mt-3 text-3xl leading-tight font-semibold sm:text-4xl"
-            >
-              {room.name}
-            </h1>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {[
-                room.bed,
-                room.size ? room.size.trim() : '',
-                room.view ?? '',
-                `Up to ${room.capacity.adults} adults${room.capacity.children ? ` + ${room.capacity.children} child` : ''}`,
-              ]
-                .filter(Boolean)
-                .map((c) => (
-                  <span
-                    key={c}
-                    className="text-navy border-navy/10 inline-flex items-center gap-1.5 rounded-full border bg-white px-3.5 py-1.5 text-[12px] font-medium"
-                  >
-                    <span className="text-gold-dark" aria-hidden="true">
-                      ✦
-                    </span>
-                    {c}
+          {/* ===== Room info — right after the photo, in the same column */}
+          <div className="mt-8">
+            <section aria-labelledby="room-name">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={availability}>
+                  {availability === 'available'
+                    ? 'Available'
+                    : availability === 'few'
+                      ? 'Few rooms left'
+                      : 'Sold out'}
+                </Badge>
+                {!fits ? (
+                  <span className="text-clay bg-clay/10 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase">
+                    Party doesn&apos;t fit
                   </span>
-                ))}
-            </div>
-            {room.description ? (
-              <ReadMore
-                text={room.description}
-                lines={3}
-                className="text-navy/70 mt-5 max-w-2xl text-[15px] leading-relaxed"
-              />
-            ) : null}
-            <ul className="mt-6 grid max-w-2xl grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-              {room.amenities.slice(0, 4).map((a) => (
-                <li
-                  key={a}
-                  className="text-navy/85 flex min-w-0 items-center gap-2.5 text-sm font-medium"
-                >
-                  <span className="bg-gold/10 border-gold/25 text-gold-dark flex h-7 w-7 shrink-0 items-center justify-center rounded-full border">
-                    <svg
-                      className="h-3.5 w-3.5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
+                ) : null}
+              </div>
+              <h1
+                id="room-name"
+                className="font-display text-navy mt-3 text-3xl leading-tight font-semibold sm:text-4xl"
+              >
+                {room.name}
+              </h1>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {[
+                  room.bed,
+                  room.size ? room.size.trim() : '',
+                  room.view ?? '',
+                  `Up to ${room.capacity.adults} adults${room.capacity.children ? ` + ${room.capacity.children} child` : ''}`,
+                ]
+                  .filter(Boolean)
+                  .map((c) => (
+                    <span
+                      key={c}
+                      className="text-navy border-navy/10 inline-flex items-center gap-1.5 rounded-full border bg-white px-3.5 py-1.5 text-[12px] font-medium"
                     >
-                      <path d={iconFor(a)} />
-                    </svg>
-                  </span>
-                  <span className="truncate">{a}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
+                      <span className="text-gold-dark" aria-hidden="true">
+                        ✦
+                      </span>
+                      {c}
+                    </span>
+                  ))}
+              </div>
+              {room.description ? (
+                <ReadMore
+                  text={room.description}
+                  lines={3}
+                  className="text-navy/70 mt-5 max-w-2xl text-[15px] leading-relaxed"
+                />
+              ) : null}
+            </section>
+          </div>
+
+          {/* ===== Room details & amenities — same left column as the photo
+              and the room info, so the page reads as one continuous block
+              (photo → info → details) with the booking card fixed on the
+              right, and no dead space between the image and the details. */}
+          <div className="mt-12">
+            <section aria-labelledby="room-details-title">
+              <p className="eyebrow text-gold-dark text-[11px] font-semibold tracking-[0.3em] uppercase">
+                The room
+              </p>
+              <h2
+                id="room-details-title"
+                className="font-display text-navy mt-3 text-2xl font-semibold"
+              >
+                Room details &amp; amenities
+              </h2>
+              <div className="border-navy/10 mt-5 rounded-3xl border bg-white p-6 shadow-sm sm:p-8">
+                <div className="space-y-8">
+                  <div className="space-y-7">
+                    {groupRoomAmenities(room.amenities).map((group) => (
+                      <div key={group.label}>
+                        <h3 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+                          {group.label}
+                        </h3>
+                        <ul className="text-navy/75 mt-4 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+                          {group.items.map((a) => (
+                            <li key={a} className="flex min-w-0 items-start gap-3">
+                              <span className="bg-gold/10 border-gold/25 text-gold-dark flex h-9 w-9 shrink-0 items-center justify-center rounded-full border">
+                                <svg
+                                  className="h-[18px] w-[18px]"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path d={iconFor(a)} />
+                                </svg>
+                              </span>
+                              <span className="pt-1.5">{a}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                  {plan?.cancellationPolicy ? (
+                  <div className="border-navy/10 border-t pt-7">
+                    <h3 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+                      Good to know
+                    </h3>
+                    <ul className="text-navy/75 mt-5 space-y-3.5 text-sm">
+                      <li className="flex items-start gap-2.5">
+                          <svg
+                            className="text-gold-dark mt-0.5 h-4 w-4 shrink-0"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path d={ICON.check} />
+                          </svg>
+                          {/* Cancellation policy for the currently-selected rate — real,
+                              plan-specific text from the backend (see RatePlan.cancellationPolicy
+                              in catalog.ts), not the room-level field, which is unpopulated
+                              for every real room today. */}
+                          <span className="pt-0.5">{plan.cancellationPolicy}</span>
+                      </li>
+                    </ul>
+                  </div>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
 
         {/* Booking card */}
         <aside
-          className="order-3 min-w-0 lg:sticky lg:top-28 lg:col-start-2 lg:row-span-5 lg:row-start-1"
+          className="min-w-0 lg:sticky lg:top-28"
           aria-label="Booking card"
         >
           <div className="border-navy/10 shadow-navy/10 rounded-3xl border bg-white p-5 shadow-xl sm:p-6">
@@ -906,9 +952,6 @@ export default function RoomDetails({
                 </Badge>
               </div>
             </div>
-            {!hasDates ? (
-              <p className="text-clay mt-2.5 text-xs">Choose dates to see the exact price.</p>
-            ) : null}
             {unfit ? (
               <div
                 className="bg-clay/10 border-clay/25 text-clay mt-2.5 rounded-2xl border px-4 py-3 text-xs"
@@ -1035,10 +1078,15 @@ export default function RoomDetails({
                   note={
                     hasDates
                       ? `Includes ${nights} night${nights === 1 ? '' : 's'}, ${state.rooms} room${state.rooms === 1 ? '' : 's'}.`
-                      : 'Add dates to complete the quote.'
+                      : ''
                   }
                 />
-              ) : quoteState.loading && hasDates ? (
+              ) : !hasDates ? (
+                <div className="text-navy/55 bg-paper border-navy/10 rounded-2xl border px-4 py-3 text-xs leading-relaxed">
+                  Choose your dates to see the exact price for this room — taxes &amp; fees are
+                  included in the total.
+                </div>
+              ) : quoteState.loading ? (
                 <p className="text-navy/50 py-2 text-sm">Calculating price…</p>
               ) : quoteError ? (
                 <p className="text-clay-dark py-2 text-sm" role="alert">
@@ -1069,79 +1117,10 @@ export default function RoomDetails({
             </p>
           </div>
         </aside>
-
-        {/* Room details: amenities + good to know */}
-        <div className="order-4 min-w-0 lg:col-start-1 lg:row-start-3">
-          <section aria-labelledby="room-details-title">
-            <p className="eyebrow text-gold-dark text-[11px] font-semibold tracking-[0.3em] uppercase">
-              The room
-            </p>
-            <h2
-              id="room-details-title"
-              className="font-display text-navy mt-3 text-2xl font-semibold"
-            >
-              Room details &amp; amenities
-            </h2>
-            <div className="border-navy/10 mt-5 rounded-3xl border bg-white p-6 shadow-sm sm:p-8">
-              <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12">
-                <div className="space-y-7">
-                  {groupRoomAmenities(room.amenities).map((group) => (
-                    <div key={group.label}>
-                      <h3 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
-                        {group.label}
-                      </h3>
-                      <ul className="text-navy/75 mt-4 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
-                        {group.items.map((a) => (
-                          <li key={a} className="flex min-w-0 items-start gap-3">
-                            <span className="bg-gold/10 border-gold/25 text-gold-dark flex h-9 w-9 shrink-0 items-center justify-center rounded-full border">
-                              <svg
-                                className="h-[18px] w-[18px]"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                              >
-                                <path d={iconFor(a)} />
-                              </svg>
-                            </span>
-                            <span className="pt-1.5">{a}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-                {plan?.cancellationPolicy ? (
-                <div className="lg:border-navy/10 lg:border-l lg:pl-12">
-                  <h3 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
-                    Good to know
-                  </h3>
-                  <ul className="text-navy/75 mt-5 space-y-3.5 text-sm">
-                    <li className="flex items-start gap-2.5">
-                        <svg
-                          className="text-gold-dark mt-0.5 h-4 w-4 shrink-0"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path d={ICON.check} />
-                        </svg>
-                        {/* Cancellation policy for the currently-selected rate — real,
-                            plan-specific text from the backend (see RatePlan.cancellationPolicy
-                            in catalog.ts), not the room-level field, which is unpopulated
-                            for every real room today. */}
-                        <span className="pt-0.5">{plan.cancellationPolicy}</span>
-                    </li>
-                  </ul>
-                </div>
-                ) : null}
-              </div>
-            </div>
-          </section>
-        </div>
       </div>
 
-      {/* Similar rooms */}
-      <section aria-label="Similar rooms" className="mt-16">
+      {/* Similar rooms — generous breathing room before the footer */}
+      <section aria-label="Similar rooms" className="mt-16 mb-12">
         <div className="flex items-end justify-between gap-4">
           <h2 className="font-display text-navy text-2xl font-semibold">You might also like</h2>
           <a

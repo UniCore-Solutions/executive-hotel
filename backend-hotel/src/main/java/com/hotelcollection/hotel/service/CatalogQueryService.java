@@ -31,6 +31,14 @@ public interface CatalogQueryService {
 
 	Hotel getHotel(UUID id);
 
+	/**
+	 * The canonical hotel of the platform: the single active hotel. Throws
+	 * NOT_FOUND when there is no active hotel and CONFLICT when more than one
+	 * hotel is active — the platform is a single-property platform and
+	 * availability/inventory are scoped to it.
+	 */
+	Hotel canonicalHotel();
+
 	boolean hotelExists(UUID id);
 
 	RoomType getRoomType(UUID id);

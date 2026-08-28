@@ -2,7 +2,8 @@
 
 /* Mobile search sheet (Airbnb-style bottom sheet) — port of sheetHTML/bindSheet
    (common.js). Mounted once in the root layout; opened via the search pill or
-   the mobile bottom bar. Now includes a destination selector on the homepage. */
+   the mobile bottom bar. Single-hotel platform: the property is a static
+   label — there is no hotel picker. */
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
@@ -10,9 +11,8 @@ import { useToast } from '@/context/ToastContext';
 import { useLang } from '@/hooks/useLang';
 import { fmtShort, stateToQuery } from '@/lib/dates';
 import { recordSearch } from '@/services/activity';
-import { PROPERTY } from '@/data';
+import { getCanonicalHotel, type CanonicalHotel } from '@/services/canonicalHotel';
 import Calendar from '@/components/search/Calendar';
-import DestinationPicker from '@/components/search/DestinationPicker';
 import { Button } from '@/components/ui/button';
 import { usePathname } from 'next/navigation';
 
@@ -36,15 +36,23 @@ export default function SearchSheet() {
   const [promoInput, setPromoInput] = useState(state.promo);
   const [everOpened, setEverOpened] = useState(false);
   const [slideOpen, setSlideOpen] = useState(false);
+  const [canonical, setCanonical] = useState<CanonicalHotel | null>(null);
 
   const open = sheetOpen && slideOpen;
 
-  /* Determine if we're on the homepage (destination should be shown). */
+  /* The one property of the platform — shown as a static label. */
+  useEffect(() => {
+    let alive = true;
+    getCanonicalHotel()
+      .then((h) => alive && setCanonical(h))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /* Determine if we're on the homepage. */
   const isHome = pathname === '/';
-  /* Determine if we're on the hotel page (don't show destination). */
-  const isHotelPage = pathname === '/hotel';
-  /* On hotel/room pages, hotel is already known — don't show destination. */
-  const showDestination = isHome;
 
   useEffect(() => {
     if (sheetOpen) {
@@ -79,7 +87,7 @@ export default function SearchSheet() {
 
   /* Auto-open the calendar when opened to the dates step. */
   useEffect(() => {
-    if (sheetOpen && (sheetStep === 'dates' || sheetStep === 'destination')) {
+    if (sheetOpen && sheetStep === 'dates') {
       const id = requestAnimationFrame(() => setCalOpen(sheetStep === 'dates'));
       return () => cancelAnimationFrame(id);
     }
@@ -115,12 +123,6 @@ export default function SearchSheet() {
     setPromo(promoInput, true);
     closeSheet();
     recordSearch(state);
-
-    /* On homepage with a destination selected, navigate to the hotel page. */
-    if (isHome && state.destination) {
-      router.push(`/hotel?hotelid=${state.destination}${stateToQuery(state)}`);
-      return;
-    }
     router.push(`/search${stateToQuery({ ...state, promo: promoInput.trim().toUpperCase() })}`);
   };
 
@@ -163,38 +165,39 @@ export default function SearchSheet() {
         </Button>
       </div>
       <div className="space-y-5 p-5">
-        {/* Destination — only on homepage */}
-        {showDestination && <DestinationPicker onSelect={() => closeSheet()} />}
-
-        {/* Hotel context — on hotel/room pages, show which hotel is selected */}
-        {isHotelPage && (
-          <div className="bg-navy-dark flex items-center gap-3 rounded-2xl px-4 py-3 text-white">
-            <span className="bg-gold/15 border-gold/30 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border">
-              <svg
-                className="text-gold-light h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="1.8"
-                  d="M17.7 8.5a5.7 5.7 0 1 0-11.4 0c0 4.6 5.7 10.5 5.7 10.5s5.7-5.9 5.7-10.5ZM12 10.7a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z"
-                />
-              </svg>
-            </span>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold">
-                {PROPERTY.name} · {PROPERTY.city}
-              </p>
-              <p className="truncate text-[11px] text-white/60">
-                72 Rue Oued Sebou, {PROPERTY.area}
-              </p>
-            </div>
+        {/* Hotel context — the single canonical property, always shown */}
+        <div className="bg-navy-dark flex items-center gap-3 rounded-2xl px-4 py-3 text-white">
+          <span className="bg-gold/15 border-gold/30 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border">
+            <svg
+              className="text-gold-light h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.8"
+                d="M17.7 8.5a5.7 5.7 0 1 0-11.4 0c0 4.6 5.7 10.5 5.7 10.5s5.7-5.9 5.7-10.5ZM12 10.7a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z"
+              />
+            </svg>
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">
+              {canonical
+                ? [canonical.name, canonical.city].filter(Boolean).join(' · ')
+                : 'Loading hotel…'}
+            </p>
+            <p className="truncate text-[11px] text-white/60">
+              {canonical
+                ? [canonical.addressLine1, canonical.addressLine2]
+                    .filter(Boolean)
+                    .join(' · ') || [canonical.city, canonical.countryCode].filter(Boolean).join(' · ')
+                : ''}
+            </p>
           </div>
-        )}
+        </div>
 
         <div>
           <p className="text-navy/45 mb-2 text-[11px] font-semibold tracking-[0.14em] uppercase">
@@ -344,7 +347,7 @@ export default function SearchSheet() {
           size="lg"
           className="shadow-navy/25 w-full rounded-2xl py-4 text-sm"
         >
-          {isHome && state.destination ? 'View hotel' : t('searchRooms')}
+          {t('searchRooms')}
         </Button>
         <p className="text-navy/45 text-center text-[11px]">
           Free cancellation on most rates · No payment needed to check availability

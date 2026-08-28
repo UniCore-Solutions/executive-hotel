@@ -16,6 +16,7 @@ public interface ExperienceRepository extends JpaRepository<Experience, UUID> {
 	@Query("""
 			select e from Experience e
 			where e.status = 'active' and e.isFeaturedOnHomepage = true
+			  and e.hotelId in (select h.id from Hotel h where h.status = 'active')
 			order by e.sortOrder, e.id
 			""")
 	List<Experience> findFeaturedOnHomepage();

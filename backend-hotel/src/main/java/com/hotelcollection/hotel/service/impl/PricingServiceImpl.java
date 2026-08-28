@@ -3,6 +3,7 @@ package com.hotelcollection.hotel.service.impl;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -311,5 +312,14 @@ public class PricingServiceImpl implements PricingService {
 			case stay_x_pay_y -> MoneyUtil.ZERO; // handled above
 		};
 		return new PromoOutcome(discount, promo.getName() + " — " + promo.getCode() + " applied.", true);
+	}
+
+	@Override
+	public Map<UUID, String> ratePlanNamesByIds(Collection<UUID> ids) {
+		if (ids == null || ids.isEmpty()) {
+			return Map.of();
+		}
+		return ratePlanRepository.findByIdIn(ids).stream()
+				.collect(Collectors.toMap(RatePlan::getId, RatePlan::getName));
 	}
 }

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { SessionProvider } from '@/context/SessionContext';
 import { QueryProvider } from '@/context/QueryProvider';
+import { ApolloProvider } from '@/api/apollo/provider';
 import './globals.css';
 
 const inter = Inter({
@@ -24,7 +25,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" dir="ltr" className={inter.variable}>
       <body className="bg-paper text-ink font-sans antialiased">
         <SessionProvider>
-          <QueryProvider>{children}</QueryProvider>
+          <ApolloProvider>
+            <QueryProvider>{children}</QueryProvider>
+          </ApolloProvider>
         </SessionProvider>
       </body>
     </html>

@@ -20,16 +20,17 @@ import com.hotelcollection.hotel.entity.TaxFeeType;
 import com.hotelcollection.hotel.repository.HotelRepository;
 import com.hotelcollection.hotel.repository.RatePlanPriceRepository;
 import com.hotelcollection.hotel.repository.RatePlanRepository;
+import com.hotelcollection.hotel.repository.RoomRepository;
 import com.hotelcollection.hotel.repository.RoomTypeRatePlanRepository;
 import com.hotelcollection.hotel.repository.RoomTypeRepository;
 import com.hotelcollection.hotel.repository.TaxFeeTypeRepository;
 
 /**
  * Test seed data: a bookable hotel with one room type, one refundable rate
- * plan (bb), nightly price 1000.00, capacity of {@code inventoryPerNight}
- * units per night (sparse inventory: no availability rows pre-seeded — a
- * missing night is fully available and materialized on booking), and a 12%
- * tax — mirroring the frontend demo fixture (taxesRate 0.12).
+ * plan (bb), nightly price 1000.00, {@code inventoryPerNight} PHYSICAL ROOMS
+ * (inventory is derived from physical rooms — V26), and a 12% tax.
+ * Sparse inventory: no availability rows pre-seeded — a missing night is
+ * fully available and materialized on booking.
  */
 @Component
 public class TestFixtures {
@@ -40,17 +41,20 @@ public class TestFixtures {
 	private final RoomTypeRatePlanRepository links;
 	private final RatePlanPriceRepository prices;
 	private final TaxFeeTypeRepository taxFeeTypes;
+	private final RoomRepository rooms;
 
 	public TestFixtures(HotelRepository hotels, RoomTypeRepository roomTypes,
 			RatePlanRepository ratePlans, RoomTypeRatePlanRepository links,
 			RatePlanPriceRepository prices,
-			TaxFeeTypeRepository taxFeeTypes, jakarta.persistence.EntityManager entityManager) {
+			TaxFeeTypeRepository taxFeeTypes, RoomRepository rooms,
+			jakarta.persistence.EntityManager entityManager) {
 		this.hotels = hotels;
 		this.roomTypes = roomTypes;
 		this.ratePlans = ratePlans;
 		this.links = links;
 		this.prices = prices;
 		this.taxFeeTypes = taxFeeTypes;
+		this.rooms = rooms;
 		this.entityManager = entityManager;
 	}
 
@@ -95,6 +99,24 @@ public class TestFixtures {
 		roomType.setCreatedAt(Instant.now());
 		roomType.setUpdatedAt(Instant.now());
 		roomTypes.save(roomType);
+
+		// Inventory is derived from PHYSICAL ROOMS (V26): create the rooms that
+		// back the requested capacity. total_inventory on the DB row is
+		// recomputed by the trigger; the in-memory fixture value is only a
+		// convenience for assertions.
+		for (int i = 1; i <= inventoryPerNight; i++) {
+			Room room = new Room();
+			room.setHotelId(hotel.getId());
+			room.setRoomTypeId(roomType.getId());
+			room.setRoomNumber(String.format("%03d", 500 + i));
+			room.setFloor("5");
+			room.setStatus("active");
+			room.setHousekeepingStatus("clean");
+			room.setMaintenanceStatus("ok");
+			room.setCreatedAt(Instant.now());
+			room.setUpdatedAt(Instant.now());
+			rooms.save(room);
+		}
 
 		RatePlan plan = new RatePlan();
 		plan.setHotelId(hotel.getId());

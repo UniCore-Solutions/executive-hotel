@@ -16,11 +16,3 @@ query AdminReviews($hotelId: ID!, $status: ReviewModerationStatus, $page: PageIn
     }
   }
 }
-
-mutation ModerateReview($id: ID!, $status: ReviewModerationStatus!, $response: String) {
-  moderateReview(id: $id, status: $status, response: $response) {
-    id
-    moderationStatus
-    responseText
-  }
-}

@@ -1,9 +1,8 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery } from '@apollo/client/react';
 import { Building2 } from 'lucide-react';
-import { proxyRequest } from '@/lib/api';
 import { AdminHotelWorkspaceDocument } from '@/graphql/generated/graphql';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -18,13 +17,12 @@ import { AvailabilityTab } from '@/components/hotels/availability-tab';
 
 export default function HotelWorkspacePage() {
   const { id } = useParams<{ id: string }>();
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['adminHotel', id],
-    queryFn: () => proxyRequest(AdminHotelWorkspaceDocument, { hotelId: id }),
-    enabled: !!id,
+  const { data, loading, error, refetch } = useQuery(AdminHotelWorkspaceDocument, {
+    variables: { hotelId: id },
+    skip: !id,
   });
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-10 w-72" />
@@ -33,7 +31,7 @@ export default function HotelWorkspacePage() {
     );
   }
 
-  if (isError || !data?.adminHotel) {
+  if (error || !data?.adminHotel) {
     return (
       <Card className="mx-auto mt-16 max-w-md items-center text-center">
         <CardContent>

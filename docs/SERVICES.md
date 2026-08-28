@@ -9,8 +9,9 @@ Three deployables, then the backend's internal application services.
 - **Purpose** — the entire domain: catalog, rates, inventory, booking, billing,
   identity, reviews, media, CMS content, audit. Sole owner of the database.
 - **Technology** — Spring Boot 4.1.0, Java 21, Maven wrapper (`./mvnw`).
-- **Entry points** — `POST /graphql` (primary), `/graphiql` (dev only),
-  `/api/v1/{auth,reservations,payments,media,hotels/*/reviews}` (REST),
+- **Entry points** — `POST /graphql` (**read-only**; API rule: GraphQL = READ,
+  REST = WRITE/ACTION — see [API_GUIDELINES.md](API_GUIDELINES.md)), `/graphiql` (dev only),
+  `/api/v1/{auth,reservations,payments,media,admin,hotels/*/reviews}` (REST — the only write path),
   `/actuator/{health,info,prometheus}`, `/media/**` (static uploads).
 - **Database** — PostgreSQL 16 `hotel_platform`, Flyway V1–V22, `ddl-auto: validate`.
 - **Inbound** — both frontends over HTTP.
@@ -22,8 +23,7 @@ Three deployables, then the backend's internal application services.
 - **Auth** — stateless JWT bearer; `/graphql` open at the filter chain, authorization
   inside services.
 - **Status** — substantially complete and real.
-- **Known problems** — `./mvnw test` is RED (2 ArchUnit violations,
-  `StaySearchGraphQLController:48`); Kafka is a hard startup dependency with no consumer;
+- **Known problems** — Kafka is a hard startup dependency with no consumer;
   no email; mock payment capture; `stay_x_pay_y` promos throw.
 
 ---
@@ -37,13 +37,14 @@ Three deployables, then the backend's internal application services.
   `/booking`, `/confirmation`, `/reservation`, `/checkin`, `/account`, `/contact`,
   `/faq`, `/index-2`, plus legal pages.
 - **Database** — none.
-- **Outbound** — same-origin `/graphql` (Next rewrite → `API_INTERNAL_URL`) for
-  everything except auth, which calls `:8180/api/v1/auth/*` directly.
-- **Auth** — JWT in a module-level variable; **lost on page reload**.
-- **Status** — mid-migration. Booking funnel is real; marketing surface is fixtures.
-- **Known problems** — see [CURRENT_STATE.md](CURRENT_STATE.md) §Mocked and
-  §Partially implemented. `src/app/api/*`, `src/features/`, `src/config/` are **empty
-  leftover directories**.
+- **Outbound** — reads: same-origin `/api/graphql` (BFF proxy → `API_INTERNAL_URL`)
+  via **Apollo Client**; writes: `/api/rest/...` (BFF proxy) via **Axios**; auth via
+  `/api/auth/*` (httpOnly `guest_session` cookie).
+- **Auth** — httpOnly cookie held by the BFF; the browser never sees the JWT.
+- **Status** — mid-migration. Booking funnel is real; marketing surface is fixtures;
+  client reads still route through the typed services seam (GraphQL via the BFF).
+- **Known problems** — `src/app/api/{chat,extras,newsletter,offers,reservations,
+  rooms,search}/`, `src/features/`, `src/config/` are **empty leftover directories**.
 
 ---
 
@@ -52,17 +53,17 @@ Three deployables, then the backend's internal application services.
 - **Purpose** — operate the collection: dashboard, hotels/room types/rooms, rate plans
   & prices, promotions, availability, reservations, guests, payments, invoices, reviews
   moderation, users & roles, notifications, audit log.
-- **Technology** — Next.js 16 App Router, `@tanstack/react-query`, `graphql-request`.
+- **Technology** — Next.js 16 App Router, **Apollo Client** (reads),
+  **Axios** (writes), `@tanstack/react-query` (mutation lifecycle only).
 - **Entry points** — `(auth)/login` + 13 `(backoffice)/*` pages; BFF route handlers
-  `/api/auth/{login,me,logout}` and `/api/graphql`.
+  `/api/auth/{login,me,logout}`, `/api/graphql` and `/api/rest/[...path]`.
 - **Outbound** — only its own BFF; the BFF calls `HOTEL_API_URL` server-side.
 - **Auth** — httpOnly `bo_session` cookie (7 d) holding the backend JWT; the browser
   never sees the token.
 - **Status** — **the most complete client.** All 14 pages are wired to real GraphQL.
 - **Known problems** — **disabled by default** in Docker (`profiles: ["backoffice"]`);
-  `codegen.ts` points at the schema *skeleton*, so `npm run graphql:generate` cannot
-  work; several debug scripts (`debug2..6.mjs`, `debug-e2e.mjs`) are committed at the
-  project root; uses the `@deprecated` `updateAvailability` mutation.
+  several debug scripts (`debug2..6.mjs`, `debug-e2e.mjs`) are committed at the
+  project root.
 
 ---
 

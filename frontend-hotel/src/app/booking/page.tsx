@@ -1,12 +1,12 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
+import { Suspense } from 'react';
 import HeaderTheme from '@/components/layout/HeaderTheme';
 import BookingFlow from '@/components/booking/BookingFlow';
 
 export const metadata: Metadata = {
   title: 'Booking — Executive Hotel',
   description:
-    'Complete your booking at Executive Hotel — guest details and secure (simulated) payment. Free cancellation on most rates.',
+    'Complete your booking at Executive Hotel — guest details and payment in two steps. Live rates, real confirmations.',
 };
 
 type BookingSearchParams = Promise<{
@@ -27,18 +27,12 @@ export default async function BookingPage({ searchParams }: { searchParams: Book
     <>
       <HeaderTheme theme="light" />
       <div className="mx-auto max-w-7xl px-4 pt-28 pb-24 sm:px-6 lg:px-8 lg:pt-36 lg:pb-20">
-        <nav className="text-navy/45 mb-4 text-xs" aria-label="Breadcrumb">
-          <Link href="/" className="hover:text-navy">
-            Home
-          </Link>{' '}
-          <span className="mx-1">/</span>{' '}
-          <Link href="/search" className="hover:text-navy">
-            Rooms &amp; availability
-          </Link>{' '}
-          <span className="mx-1">/</span> <span className="text-navy/70">Booking</span>
-        </nav>
-
-        <BookingFlow roomId={room} planId={plan} initialExtras={extras} />
+        {/* Suspense defers BookingFlow past SSR like the other booking flows
+            (reservation/confirmation): the Apollo client is browser-only, so a
+            server render of useApollo() must not fail the route. */}
+        <Suspense fallback={null}>
+          <BookingFlow roomId={room} planId={plan} initialExtras={extras} />
+        </Suspense>
       </div>
     </>
   );

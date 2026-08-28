@@ -1,13 +1,12 @@
 'use client';
 
-/* /hotel?roomId=… and /hotel?hotelid=…&roomId=… — the selected room's full details
-   render inline on the hotel page (D-26), reusing RoomDetails. No roomId (or
-   unknown id) renders nothing. With hotelId (backend mode) the room is resolved
-   through the catalog gateway instead of the fixture. */
+/* /hotel?hotelid=…&roomId=… — the selected room's full details render inline
+   on the hotel page (D-26), reusing RoomDetails. The room is always resolved
+   through the catalog gateway (single-hotel platform: /hotel without a
+   hotelid redirects server-side to the canonical property). */
 
 import { useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { PROPERTY } from '@/data';
 import RoomDetails from '@/components/room/RoomDetails';
 
 export default function HotelRoomGate({
@@ -29,9 +28,6 @@ export default function HotelRoomGate({
   }, [roomId]);
 
   if (!roomId) return null;
-
-  const backend = Boolean(hotelId);
-  if (!backend && !PROPERTY.rooms.some((r) => r.id === roomId)) return null;
 
   const plan = sp.get('plan') ?? '';
   const extras = sp.get('extras') ?? '';

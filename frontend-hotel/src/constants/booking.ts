@@ -3,21 +3,9 @@
 export const TITLES = ['Mr', 'Ms', 'Mrs', 'Mx', 'Dr'] as const;
 export type Title = (typeof TITLES)[number];
 
+/** Arrival windows offered on the booking form (display copy; persisted
+    verbatim on the reservation as arrival_slot). */
 export const ARRIVAL_SLOTS = ['15:00 – 18:00', '18:00 – 21:00', '21:00 – 23:00', 'After 23:00'];
-
-export const COUNTRIES = [
-  'Morocco',
-  'France',
-  'United Kingdom',
-  'Spain',
-  'Germany',
-  'United States',
-  'United Arab Emirates',
-  'Netherlands',
-  'Italy',
-  'Belgium',
-  'Canada',
-];
 
 /** Demo booking hold window (pay step). */
 export const HOLDS_SECONDS = 15 * 60;

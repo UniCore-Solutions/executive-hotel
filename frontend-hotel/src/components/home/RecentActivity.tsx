@@ -8,14 +8,15 @@
    during render (D-32). */
 
 import { useEffect, useState } from 'react';
-import { PROPERTY } from '@/data';
 import { useSearch } from '@/context/SearchContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { fmtShort } from '@/lib/dates';
 import { recentRoomIds, recentSearches } from '@/services/activity';
+import { getRoomTypeById } from '@/services/catalog';
 import { image, IMG_FALLBACK } from '@/services/availability';
 import { roomURL } from '@/lib/links';
 import type { RecentSearch } from '@/services/activity';
+import type { Room } from '@/types';
 
 function searchHref(s: RecentSearch): string {
   return `/search?checkin=${s.checkin}&checkout=${s.checkout}&adults=${s.adults}&children=${s.children}&rooms=${s.rooms}`;
@@ -25,22 +26,20 @@ function searchLabel(s: RecentSearch): string {
   return `${fmtShort(new Date(s.checkin))} – ${fmtShort(new Date(s.checkout))} · ${s.adults + s.children} guest${s.adults + s.children === 1 ? '' : 's'}${s.rooms > 1 ? ` · ${s.rooms} rooms` : ''}`;
 }
 
-type RecentRoom = (typeof PROPERTY.rooms)[number];
-
 export default function RecentActivity() {
   const { state } = useSearch();
   const { fmt } = useCurrency();
   const [searches, setSearches] = useState<RecentSearch[]>([]);
-  const [rooms, setRooms] = useState<RecentRoom[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
 
   useEffect(() => {
     const t = setTimeout(() => {
       setSearches(recentSearches(3));
-      setRooms(
-        recentRoomIds(3)
-          .map((id) => PROPERTY.rooms.find((r) => r.id === id))
-          .filter((r): r is NonNullable<typeof r> => Boolean(r))
-      );
+      // stored ids are backend room-type UUIDs — resolve them through the
+      // catalog gateway (never the fixture)
+      Promise.all(recentRoomIds(3).map((id) => getRoomTypeById(id).catch(() => null)))
+        .then((resolved) => setRooms(resolved.filter((r): r is Room => Boolean(r))))
+        .catch(() => {});
     }, 0);
     return () => clearTimeout(t);
   }, []);

@@ -1,13 +1,14 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@apollo/client/react';
 import { useState } from 'react';
 import { Pencil, Plus } from 'lucide-react';
-import { proxyRequest } from '@/lib/api';
+import { createRoom, updateRoom } from '@/api/rest/endpoints';
+import { useApollo } from '@/api/apollo/provider';
+import { invalidateAfterWrite } from '@/api/invalidation';
 import {
   AdminHotelWorkspaceDocument,
-  CreateRoomDocument,
-  UpdateRoomDocument,
   type AdminRoomInput,
 } from '@/graphql/generated/graphql';
 import { Button } from '@/components/ui/button';
@@ -42,9 +43,9 @@ const EMPTY: AdminRoomInput = {
 };
 
 export function RoomsTab({ hotelId }: { hotelId: string }) {
-  const { data } = useQuery({
-    queryKey: ['adminHotel', hotelId],
-    queryFn: () => proxyRequest(AdminHotelWorkspaceDocument, { hotelId }),
+  const { data } = useQuery(AdminHotelWorkspaceDocument, {
+    variables: { hotelId },
+    skip: !hotelId,
   });
   if (!data?.adminHotel) return null;
   return <RoomsContent hotelId={hotelId} />;
@@ -52,6 +53,7 @@ export function RoomsTab({ hotelId }: { hotelId: string }) {
 
 function RoomsContent({ hotelId }: { hotelId: string }) {
   const queryClient = useQueryClient();
+  const apollo = useApollo();
   const [editing, setEditing] = useState<{ id: string | null; form: AdminRoomInput } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,21 +63,21 @@ function RoomsContent({ hotelId }: { hotelId: string }) {
       if (!editing.form.roomTypeId) throw new Error('Room type is required.');
       if (!editing.form.roomNumber?.trim()) throw new Error('Room number is required.');
       if (editing.id) {
-        return proxyRequest(UpdateRoomDocument, { id: editing.id, input: editing.form });
+        return updateRoom(editing.id, editing.form);
       }
-      return proxyRequest(CreateRoomDocument, { hotelId, input: editing.form });
+      return createRoom(hotelId, editing.form);
     },
     onSuccess: () => {
       setEditing(null);
       setError(null);
-      void queryClient.invalidateQueries({ queryKey: ['adminHotel', hotelId] });
+      invalidateAfterWrite(apollo, queryClient, 'admin.rooms.create', [['adminHotel', hotelId]]);
     },
     onError: (err) => setError(err instanceof Error ? err.message : 'Could not save room.'),
   });
 
-  const { data } = useQuery({
-    queryKey: ['adminHotel', hotelId],
-    queryFn: () => proxyRequest(AdminHotelWorkspaceDocument, { hotelId }),
+  const { data } = useQuery(AdminHotelWorkspaceDocument, {
+    variables: { hotelId },
+    skip: !hotelId,
   });
   if (!data?.adminHotel) return null;
   const roomTypes = data.adminHotel.roomTypes;

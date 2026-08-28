@@ -5,10 +5,14 @@ One-command Dockerization of the full platform:
 | Service | Source | URL | Container |
 |---|---|---|---|
 | Guest frontend (Next.js) | `frontend-hotel/` | http://localhost:3000 | `hotel-frontend` |
-| Back-office (Next.js) | `backoffice-hotel/` | http://localhost:3101/login | `hotel-backoffice` |
-| Backend API (Spring Boot GraphQL) | `backend-hotel/` | http://localhost:8180/graphql · GraphiQL at `/graphiql` | `hotel-backend` |
+| Back-office (Next.js) | `backoffice-hotel/` | http://localhost:3101/login · **profile-gated: start with `docker compose --profile backoffice up -d backoffice`** | `hotel-backoffice` |
+| Backend API (Spring Boot) | `backend-hotel/` | GraphQL reads at http://localhost:8180/graphql · REST writes at `/api/v1/**` · GraphiQL at `/graphiql` | `hotel-backend` |
 | PostgreSQL 16 | — | localhost:5433 (`POSTGRES_USER/PASSWORD/DB` from `.env`) | `hotel-platform-postgres` |
 | Kafka (KRaft) | — | localhost:9092 (external), `kafka:29092` (internal) | `hotel-platform-kafka` |
+
+> **API rule:** GraphQL = READ, REST = WRITE/ACTION. The GraphQL schema has no
+> Mutation root; every state change goes through `/api/v1/**`. See
+> `docs/API_GUIDELINES.md`.
 
 ## Quickstart
 
@@ -46,7 +50,7 @@ Flyway migrations (V1–V20) apply automatically on backend start. If `hotels` i
 ./scripts/db-restore.sh FILE [--yes]
 ```
 
-Seed users all share password `password123`: `admin@`, `manager@`, `analyst@`, `frontdesk@`, `guest@hotelcollection.test`.
+Seed users all share password `admin123` (e.g. `admin@hotelcollection.test`, `manager@hotelcollection.test`).
 Roles and amenities are seeded **by migrations** (random UUIDs); the SQL seed joins them by name and uses fixed UUIDs (`00000000-…-NNNNNNNNNNNN`) elsewhere.
 
 The legacy bigint-era seed is preserved at `backend-hotel/scripts/seed-bigint-legacy.sql.bak`.
@@ -55,7 +59,11 @@ The legacy bigint-era seed is preserved at `backend-hotel/scripts/seed-bigint-le
 
 All config flows through `.env` (see `.env.example`). Required: `JWT_SECRET`, `POSTGRES_PASSWORD`. Ports (`FRONTEND_PORT`, `BACKOFFICE_PORT`, `BACKEND_PORT`, `POSTGRES_HOST_PORT`, `KAFKA_HOST_PORT`) are host-side only — change freely without touching code.
 
-Frontend browser calls go to same-origin `/graphql`, proxied by a Next rewrite to `API_INTERNAL_URL` (**baked at build time** — set as build arg when deploying elsewhere). Server-side rendering talks straight to `http://backend:8180/graphql` inside the network.
+Frontend browser calls go to same-origin `/api/graphql` (reads) and `/api/rest/...`
+(writes) — BFF route handlers that inject the httpOnly session cookie's Bearer and
+forward to `API_INTERNAL_URL` (**baked at build time** — set as build arg when
+deploying elsewhere). Server-side rendering talks straight to `http://backend:8180/graphql`
+inside the network.
 
 Cross-machine: everything binds `0.0.0.0`; access other PCs via `http://<LAN-IP>:3000` etc. For browser access from other machines, add their origin to `CORS_ALLOWED_ORIGINS` or serve through a reverse proxy.
 

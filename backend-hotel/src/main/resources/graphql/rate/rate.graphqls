@@ -5,17 +5,6 @@ extend type Query {
 	adminPromotions(hotelId: ID!): [AdminPromotion!]!
 }
 
-extend type Mutation {
-	createRatePlan(hotelId: ID!, input: AdminRatePlanInput!): RatePlan!
-	updateRatePlan(id: ID!, input: AdminRatePlanInput!): RatePlan!
-	linkRoomTypeRatePlan(roomTypeId: ID!, ratePlanId: ID!): RoomTypeRatePlanInfo!
-	unlinkRoomTypeRatePlan(linkId: ID!): Boolean!
-	setRatePlanPrices(linkId: ID!, prices: [RatePlanPriceInput!]!): [RatePlanPriceInfo!]!
-	createPromotion(hotelId: ID, input: AdminPromotionInput!): AdminPromotion!
-	updatePromotion(id: ID!, input: AdminPromotionInput!): AdminPromotion!
-	setPromotionStatus(id: ID!, status: PromotionStatus!): AdminPromotion!
-}
-
 type Offer {
 	id: ID!
 	code: String!
@@ -95,6 +84,16 @@ type Quote {
 	message: String
 	lines: [QuoteLine!]!
 	extras: [QuoteExtraLine!]!
+	# Itemized tax/fee lines as priced by the backend (tax_fee_types): each
+	# line carries its own name and amount, so clients never recompute money.
+	charges: [QuoteChargeLine!]!
+}
+
+type QuoteChargeLine {
+	taxFeeTypeId: ID!
+	chargeType: String!
+	name: String!
+	amount: Float!
 }
 
 type QuoteExtraLine {

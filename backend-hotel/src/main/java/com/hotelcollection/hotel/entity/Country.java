@@ -25,4 +25,8 @@ public class Country {
 
 	@Column(nullable = false)
 	private String name;
+
+	/** E.164 calling code without the '+' (e.g. '212' for MA) — V28. */
+	@Column(name = "calling_code")
+	private String callingCode;
 }

@@ -1,12 +1,14 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@apollo/client/react';
 import { useState } from 'react';
 import { Ban } from 'lucide-react';
-import { proxyRequest } from '@/lib/api';
+import { adminCancelReservation } from '@/api/rest/endpoints';
+import { useApollo } from '@/api/apollo/provider';
+import { invalidateAfterWrite } from '@/api/invalidation';
 import { formatDate, formatDateTime, formatMoney, statusLabel } from '@/lib/format';
 import {
-  AdminCancelReservationDocument,
   AdminReservationsDocument,
   ReservationStatus,
   type AdminReservationsQuery,
@@ -53,15 +55,13 @@ export default function ReservationsPage() {
   const [status, setStatus] = useState<ReservationStatusType | 'ALL'>('ALL');
   const [selected, setSelected] = useState<ReservationItem | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['adminReservations', activeHotelId, status],
-    queryFn: () =>
-      proxyRequest(AdminReservationsDocument, {
-        hotelId: activeHotelId ?? '',
-        status: status === 'ALL' ? undefined : status,
-        page: { page: 0, size: 50 },
-      }),
-    enabled: !!activeHotelId,
+  const { data, loading } = useQuery(AdminReservationsDocument, {
+    variables: {
+      hotelId: activeHotelId ?? '',
+      status: status === 'ALL' ? undefined : status,
+      page: { page: 0, size: 50 },
+    },
+    skip: !activeHotelId,
   });
 
   if (hotels.length === 0) {
@@ -100,7 +100,7 @@ export default function ReservationsPage() {
           </button>
         ))}
       </div>
-      {isLoading ? (
+      {loading ? (
         <Skeleton className="h-72 w-full" />
       ) : reservations.length === 0 ? (
         <Card>
@@ -176,22 +176,24 @@ function ReservationDetail({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  const apollo = useApollo();
   const [cancelling, setCancelling] = useState(false);
   const [reasonCode, setReasonCode] = useState(CANCEL_REASONS[0]);
   const [reasonNote, setReasonNote] = useState('');
 
   const cancel = useMutation({
     mutationFn: () =>
-      proxyRequest(AdminCancelReservationDocument, {
-        reservationId: r.id,
+      adminCancelReservation(r.id, {
         reasonCode,
         reasonNote: reasonNote || undefined,
       }),
     onSuccess: () => {
       setCancelling(false);
       onClose();
-      void queryClient.invalidateQueries({ queryKey: ['adminReservations'] });
-      void queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
+      invalidateAfterWrite(apollo, queryClient, 'admin.reservations.cancel', [
+        ['adminReservations'],
+        ['adminDashboard'],
+      ]);
     },
   });
 

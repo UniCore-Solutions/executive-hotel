@@ -51,6 +51,7 @@ import com.hotelcollection.hotel.service.EventPublisher;
 import com.hotelcollection.hotel.exception.DomainException;
 import com.hotelcollection.hotel.repository.CancellationReasonRepository;
 import com.hotelcollection.hotel.repository.GuestRepository;
+import com.hotelcollection.hotel.service.GuestProvisioningService;
 import com.hotelcollection.hotel.service.RateQueryService;
 import com.hotelcollection.hotel.repository.ReservationCancellationRepository;
 import com.hotelcollection.hotel.repository.ReservationRepository;
@@ -82,6 +83,7 @@ public class BookingServiceImpl implements BookingService {
 	private final EventPublisher eventPublisher;
 	private final CurrentUserAccessor currentUser;
 	private final CancellationReasonRepository cancellationReasonRepository;
+	private final GuestProvisioningService guestProvisioning;
 
 	public BookingServiceImpl(ReservationRepository reservationRepository,
 			ReservationCancellationRepository cancellationRepository,
@@ -89,7 +91,8 @@ public class BookingServiceImpl implements BookingService {
 			@Lazy CatalogQueryService catalog, PricingService pricing, RateQueryService rate,
 			InventoryService inventory,
 			EventPublisher eventPublisher, CurrentUserAccessor currentUser,
-			CancellationReasonRepository cancellationReasonRepository) {
+			CancellationReasonRepository cancellationReasonRepository,
+			GuestProvisioningService guestProvisioning) {
 		this.reservationRepository = reservationRepository;
 		this.cancellationRepository = cancellationRepository;
 		this.guestRepository = guestRepository;
@@ -100,6 +103,7 @@ public class BookingServiceImpl implements BookingService {
 		this.eventPublisher = eventPublisher;
 		this.currentUser = currentUser;
 		this.cancellationReasonRepository = cancellationReasonRepository;
+		this.guestProvisioning = guestProvisioning;
 	}
 
 	@Override
@@ -175,6 +179,11 @@ public class BookingServiceImpl implements BookingService {
 		reservation.setIdempotencyKey(in.idempotencyKey());
 		reservation.setHotelId(in.hotelId());
 		reservation.setGuestId(guest.getId());
+		// The guest relationship is a read-only mapping (insertable=false,
+		// updatable=false) hydrated from guest_id on LOAD — a freshly created
+		// entity is not loaded, so populate it explicitly or the GraphQL
+		// guest field resolves to null (schema: Reservation.guest is non-null).
+		reservation.setGuest(guest);
 		CurrentUser actor = currentUser.currentUser().orElse(null);
 		reservation.setBookedByUserId(actor == null ? null : actor.userId());
 		reservation.setStatus(ReservationStatus.confirmed);
@@ -191,6 +200,8 @@ public class BookingServiceImpl implements BookingService {
 		reservation.setPaymentStatus(PaymentStatus.pending);
 		reservation.setSource("direct");
 		reservation.setNotes(null);
+		reservation.setArrivalSlot(blankToNull(in.arrivalSlot()));
+		reservation.setSpecialRequests(blankToNull(in.specialRequests()));
 		reservation.setCreatedAt(Instant.now());
 		reservation.setUpdatedAt(Instant.now());
 
@@ -304,13 +315,28 @@ public class BookingServiceImpl implements BookingService {
 		throw DomainException.conflict("could not allocate a reservation reference, retry");
 	}
 
+	private static String blankToNull(String v) {
+		return v == null || v.isBlank() ? null : v.trim();
+	}
+
 	private Guest findOrCreateGuest(GuestInput in) {
+		Guest guest;
 		if (in.email() != null && !in.email().isBlank()) {
-			List<Guest> byEmail = guestRepository.findByEmailIgnoreCase(in.email().trim());
-			if (!byEmail.isEmpty()) {
-				return byEmail.get(0);
-			}
+			guest = guestRepository.findByEmailIgnoreCase(in.email().trim()).stream()
+					.findFirst().orElseGet(() -> createGuest(in));
+		} else {
+			guest = createGuest(in);
 		}
+		// Silent account provisioning: every booking email gets a passwordless
+		// 'provisioned' user account linked to this guest (created if missing,
+		// linked if the email already has one). A later registration with the
+		// same email completes the account and this booking appears under
+		// "My bookings" (guests.user_id drives myReservations).
+		guestProvisioning.ensureAccount(guest);
+		return guest;
+	}
+
+	private Guest createGuest(GuestInput in) {
 		Guest guest = new Guest();
 		guest.setFirstName(in.firstName());
 		guest.setLastName(in.lastName());

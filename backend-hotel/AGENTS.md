@@ -1,6 +1,16 @@
 # AGENTS.md — hotel-platform (backend)
 
-Spring Boot backend for the **Hotel Collection** hotel platform (multi-hotel). Java 21, Maven, PostgreSQL, JPA/Hibernate, Flyway, Spring Security, Kafka, Testcontainers. This repo — engineering; `../database/collection-schema.sql` — the existing (Oracle-dialect) schema that a future database phase will adapt to PostgreSQL; `../frontend-hotel/` — the consumer of this API.
+> **⚠ This file's Architecture and Key-files sections below are STALE and wrong.**
+> The authoritative context lives in the repo-root `docs/` folder — read
+> `docs/PROJECT_CONTEXT.md` then `docs/CURRENT_STATE.md` first (see
+> `docs/KNOWN_ISSUES.md` §DOC1). Reality: **flat layered** packages
+> (`controller/service/service.impl/repository/entity/dto/security/...` — NOT
+> hexagonal; ArchUnit bans `api/application/domain/adapter`), schema split per
+> domain under `graphql/<domain>/*.graphqls`, and the API rule
+> **GraphQL = READ, REST = WRITE/ACTION** (`docs/API_GUIDELINES.md`): there is no
+> GraphQL Mutation root, all writes are `/api/v1/**`. Migrations run V1–V27.
+
+Spring Boot backend for the **Hotel Collection** hotel platform (single canonical hotel). Java 21, Maven, PostgreSQL, JPA/Hibernate, Flyway, Spring Security, Kafka, Testcontainers.
 
 ## Commands
 

@@ -11,16 +11,20 @@
 ┌─────────────────────┐        ┌──────────────────────┐
 │  frontend-hotel     │        │  backoffice-hotel    │
 │  Next 16 :3000      │        │  Next 16 :3101       │
+│  Apollo (reads)     │        │  Apollo (reads)      │
+│  Axios (writes)     │        │  Axios + TanStack    │
 │  guests, public     │        │  staff, auth-walled  │
 └──────────┬──────────┘        └──────────┬───────────┘
-           │ /graphql (next rewrite)      │ /api/graphql (BFF route handler)
-           │ /api/v1/auth/* (direct REST) │ /api/auth/*   (BFF, httpOnly cookie)
+           │ /api/graphql (BFF proxy)     │ /api/graphql (BFF proxy)
+           │ /api/rest/...  (BFF proxy)   │ /api/rest/...  (BFF proxy)
+           │ /api/auth/*    (BFF)         │ /api/auth/*   (BFF, httpOnly)
            └───────────────┬──────────────┘
                            ▼
               ┌────────────────────────────┐
               │  backend-hotel :8180       │
               │  Spring Boot 4 / Java 21   │
-              │  GraphQL + narrow REST     │
+              │  GraphQL (READ ONLY)       │
+              │  + REST writes /api/v1     │
               └────┬──────────────────┬────┘
                    │ JPA              │ INSERT event_outbox (same tx)
                    ▼                  ▼
@@ -52,11 +56,14 @@
 Enforced by `src/test/java/.../architecture/ModuleArchitectureTest.java` (**5** ArchUnit
 rules, not 7 as `backend-hotel/AGENTS.md` claims):
 
-1. `NO_LEGACY_HEXAGONAL_PACKAGES` — bans `..api..`, `..application..`, `..domain..`, `..adapter..`
-2. `IMPLEMENTATIONS_ARE_ONLY_ACCESSED_FROM_SERVICES`
-3. `REPOSITORIES_ARE_ONLY_ACCESSED_FROM_SERVICES` — **currently RED**
-4. `CONTROLLERS_DELEGATE_TO_SERVICES` — **currently RED**
-5. `SERVICES_ARE_NOT_GOD_CLASSES` (≤ 11 ctor deps)
+ 1. `NO_LEGACY_HEXAGONAL_PACKAGES` — bans `..api..`, `..application..`, `..domain..`, `..adapter..`
+ 2. `IMPLEMENTATIONS_ARE_ONLY_ACCESSED_FROM_SERVICES`
+ 3. `REPOSITORIES_ARE_ONLY_ACCESSED_FROM_SERVICES`
+ 4. `CONTROLLERS_DELEGATE_TO_SERVICES`
+ 5. `SERVICES_ARE_NOT_GOD_CLASSES` (≤ 11 ctor deps)
+
+All five are green as of the canonical single-hotel task (rules 3–4 were red until
+`StaySearchGraphQLController` moved `findAllActive()` behind `CatalogQueryService.canonicalHotel()`).
 
 > **Documented vs implemented — the biggest trap in this repo.**
 > `backend-hotel/docs/architecture/architecture.md`, `ADR-008-modular-monolith.md` and
@@ -67,35 +74,40 @@ rules, not 7 as `backend-hotel/AGENTS.md` claims):
 
 ## 3. API surface
 
-### GraphQL — primary (`POST /graphql`, GraphiQL at `/graphiql` in `dev` only)
+### GraphQL — READ ONLY (`POST /graphql`, GraphiQL at `/graphiql` in `dev` only)
 
 Schema is **split per domain** under `src/main/resources/graphql/<domain>/*.graphqls`.
 `schema.graphqls` at the root is only a skeleton: `schema { … }`, the `LocalDate` /
-`DateTime` scalars and empty `type Query` / `type Mutation` that every module `extend`s.
+`DateTime` scalars and the empty `type Query` that every module `extend`s.
+**There is no Mutation root.** (API rule: GraphQL = READ, REST = WRITE/ACTION —
+enforced by the `NO_GRAPHQL_MUTATIONS` ArchUnit rule. See
+[API_GUIDELINES.md](API_GUIDELINES.md).)
 
-| Domain | Queries | Mutations |
-|---|---|---|
-| catalog | `hotels · hotel · hotelDetails · roomType · roomTypes · experiences · restaurants · extras · faqs · adminHotel · adminHotels · adminAmenities` | `createHotel · updateHotel · setHotelAmenities · setHotelMedia · createRoomType · updateRoomType · setRoomTypeAmenities · setRoomTypeMedia · createRoom · updateRoom` |
-| homepage | `homepage` | — |
-| availability | `availability · staySearch` | `updateAvailability` *(@deprecated)* · `updateAvailabilityRange` |
-| rate | `offers · rates · quote · adminPromotions` | `createRatePlan · updateRatePlan · linkRoomTypeRatePlan · unlinkRoomTypeRatePlan · setRatePlanPrices · createPromotion · updatePromotion · setPromotionStatus` |
-| reservation | `myReservations · reservation · adminReservations · adminGuests` | `createReservation · cancelReservation · adminCancelReservation` |
-| billing | `adminPayments · adminInvoices` | `createPayment · capturePayment · issueInvoice` |
-| identity | `me · adminUsers · adminRoles` | `login · register · createUser · assignRole · revokeRole` |
-| review | `reviews · adminReviews` | `createReview · moderateReview` |
-| platform / notification / audit / admin | `platform · adminNotifications · adminAuditLogs · adminDashboard` | — |
-| media | *(none — REST only)* | *(none)* |
+| Domain | Queries |
+|---|---|
+| catalog | `hotels · canonicalHotel · hotel · hotelDetails · roomType · roomTypes · experiences · restaurants · extras · faqs · adminHotel · adminHotels · adminAmenities` |
+| homepage | `homepage` |
+| availability | `availability · staySearch` |
+| rate | `offers · rates · quote · adminPromotions` |
+| reservation | `myReservations · reservation · adminReservations · adminGuests` |
+| billing | `adminPayments · adminInvoices` |
+| identity | `me · adminUsers · adminRoles` |
+| review | `reviews · adminReviews` |
+| platform / notification / audit / admin | `platform · adminNotifications · adminAuditLogs · adminDashboard` |
 
-### REST — deliberate, narrow splits
+### REST — the only write path (`/api/v1/**`, uniform `ApiError` envelope)
 
-| Route | Auth | Why REST |
+| Route | Auth | Purpose |
 |---|---|---|
 | `POST /api/v1/auth/{login,register}` | public (rate-limited) | token bootstrap |
-| `POST /api/v1/reservations`, `…/{ref}/cancel`, `…/{ref}/invoice` | public | anonymous reference+email self-service |
-| `POST /api/v1/media/upload`, `DELETE /api/v1/media/{id}` | authenticated | multipart, unsuited to GraphQL |
+| `POST /api/v1/auth/me/profile` | authenticated | self profile update |
+| `POST /api/v1/reservations`, `…/{ref}/cancel`, `…/{ref}/invoice` | public | anonymous reference+email self-service (create requires `Idempotency-Key` header) |
 | `POST /api/v1/payments`, `…/{id}/capture` | authenticated | — |
-| `POST /api/v1/hotels/{hotelId}/reviews` | authenticated | — |
+| `POST /api/v1/hotels/{hotelId}/reviews` | authenticated | guest review creation |
+| `POST /api/v1/media/upload`, `DELETE /api/v1/media/{id}` | authenticated | multipart |
+| `/api/v1/admin/**` | authenticated | back-office writes: hotel/room-type/room CRUD + associations (`PUT …/amenities|media|policies`), rate plans (`…/rate-plans`, `…/room-type-rate-plans` + `…/{linkId}/prices`), promotions (`…/promotions`, `…/{id}/status`), availability (`PUT /api/v1/admin/availability/hotels/{hotelId}`), reservations (`…/admin/reservations/{id}/cancel`), reviews (`…/admin/reviews/{id}/moderation`), users & roles (`…/admin/users`, `…/users/{id}/roles`) |
 | `GET /actuator/{health,info,prometheus}` | public | ops |
+| `GET /media/**` | public | stored bytes (static resource handler) |
 
 Uniform error envelope (`ApiError`) with codes `NOT_FOUND · FORBIDDEN · CONFLICT ·
 VALIDATION · UNAUTHORIZED`, emitted from both the REST advice
@@ -120,18 +132,17 @@ from filter-level 401/403/429 via `ErrorResponseWriter`.
 - **CORS**: origins from `CORS_ALLOWED_ORIGINS` (default `*`); methods GET/POST/OPTIONS;
   headers `Authorization`, `Content-Type`; credentials never allowed.
 
-### The two clients authenticate differently
+### The two clients authenticate the same way (BFF + httpOnly cookie)
 
 | | frontend-hotel (guest) | backoffice-hotel (staff) |
 |---|---|---|
-| Login call | direct REST `POST :8180/api/v1/auth/login` | BFF `POST /api/auth/login` → GraphQL `login` |
-| Token storage | **module-level JS variable** (`let _token`) | **httpOnly `bo_session` cookie**, 7 days |
-| Survives refresh | **No** — session is lost on reload | Yes |
-| Token reaches browser | Yes (in JS memory, XSS-reachable) | No |
-| Sends token | `Authorization` header added by `graphqlClient.ts` | server-side only, injected by `/api/graphql` |
+| Login call | BFF `POST /api/auth/login` → REST `POST :8180/api/v1/auth/login` | BFF `POST /api/auth/login` → REST `POST :8180/api/v1/auth/login` |
+| Token storage | **httpOnly `guest_session` cookie** (30 d) | httpOnly `bo_session` cookie (7 d) |
+| Survives refresh | Yes | Yes |
+| Token reaches browser | No | No |
+| Sends token | `/api/graphql` + `/api/rest` BFF proxies inject it server-side | same |
 
-`restoreSession()` exists in `frontend-hotel/src/services/auth.ts` but is **never called**
-— the wiring was left unfinished.
+Auth itself is a REST write (API rule) — there are no GraphQL auth mutations.
 
 ## 5. Eventing (implemented, then dead-ends)
 
@@ -159,24 +170,35 @@ Textbook transactional outbox, correctly built:
 ### frontend-hotel (guest)
 - App Router, mostly **Server Components** for shell/metadata + client components for
   interactive flows. `output: 'standalone'`.
-- **No route handlers.** `src/app/api/{auth,chat,extras,newsletter,offers,reservations,
-  rooms,search}/` are **empty leftover directories** from an abandoned BFF plan. So are
-  `src/features/` and `src/config/`.
-- Browser → same-origin `/graphql`, proxied by a `next.config.ts` rewrite to
-  `API_INTERNAL_URL` (**baked at build time**). Server components fetch the backend
-  directly. Both paths go through `src/services/graphqlClient.ts` (`cache: 'no-store'`).
-- Auth is the exception: it bypasses the proxy and calls `:8180/api/v1/auth/*` directly.
+- **Data clients** (see [API_GUIDELINES.md](API_GUIDELINES.md)): Apollo Client for
+  browser reads (`src/api/apollo/`), Axios for writes through the `/api/rest` BFF
+  proxy (`src/api/rest/`), an invalidation registry mapping REST writes → Apollo
+  queries (`src/api/invalidation.ts`), and typed read hooks
+  (`src/api/graphql/hooks.ts`). **No React Query.**
+- Browser → same-origin `/api/graphql` (BFF route handler; injects the httpOnly
+  cookie's Bearer) and `/api/rest/...` (write proxy). Server components fetch the
+  backend directly via `src/services/graphqlClient.ts` (stateless, shared typed
+  documents).
+- Auth: same-origin `/api/auth/*` route handlers; the backend JWT lives only in the
+  httpOnly `guest_session` cookie.
 - Contexts: `SearchContext` (stay params, URL-driven), `SessionContext`, `ToastContext`,
   `ModalContext`. Rule from the codebase: **the URL is the state** for search params.
 - Strict CSP + security headers set in `next.config.ts`.
 
 ### backoffice-hotel (staff)
 - A genuine **BFF**: every backend call is proxied through
-  `src/app/api/graphql/route.ts`, which reads the httpOnly cookie and injects the bearer.
-  The browser never sees the token and never learns the backend URL (`HOTEL_API_URL`).
-- Route groups `(auth)/login` and `(backoffice)/*` (14 pages, all real GraphQL CRUD).
-- Client data fetching via `@tanstack/react-query` + `proxyRequest`; server via
-  `serverRequest`.
+  `src/app/api/graphql/route.ts` (reads) and `src/app/api/rest/[...path]/route.ts`
+  (writes), which read the httpOnly cookie and inject the bearer. The browser never
+  sees the token and never learns the backend URL (`HOTEL_API_URL`).
+- **Data clients**: Apollo Client owns all GraphQL reads (13 pages + hotel workspace
+  tabs, via `useQuery` from `@apollo/client/react`); Axios (`src/api/rest/`) owns all
+  REST writes; `@tanstack/react-query` handles **mutation lifecycle only**
+  (`useMutation` wrapping the Axios calls) and caches no read data. After a write,
+  `invalidateAfterWrite` (src/api/invalidation.ts) evicts the affected Apollo
+  queries and the legacy RQ keys.
+- Route groups `(auth)/login` and `(backoffice)/*` (14 pages, all real GraphQL reads).
+- Media: real file upload via `POST /api/v1/media/upload` (REST, multipart through the
+  BFF proxy) in the hotel overview tab.
 
 ## 7. Infrastructure
 
@@ -189,7 +211,76 @@ Textbook transactional outbox, correctly built:
 - **No CI/CD pipeline, no Kubernetes manifests, no Terraform, no cloud provider config
   exists in this repository.** Quality gates run only via `scripts/test.sh` / `make test`.
 
-## 8. Planned-but-not-implemented (do not mistake for architecture)
+## 8. Business model — single-hotel canonical platform
+
+**The platform operates exactly ONE hotel.** Migration `V26__canonical_single_hotel.sql`
+deactivated every other hotel record and its dependent content (room types, rooms, rate
+plans, promotions, extras, experiences, restaurants, FAQs, taxes); `canonicalHotel`
+(`CatalogQueryService.canonicalHotel()`) is the contract that enforces it — zero active
+hotels → `NOT_FOUND`, more than one → `CONFLICT`. `staySearch` without a `hotelId` resolves
+to the canonical hotel; the guest frontend never offers a hotel picker.
+
+```
+Hotel  (one active — Executive Hotel, Lisbon)
+  └── Room Types  (sellable accommodation categories: Deluxe Sea View, Family Suite, …)
+        └── Physical Rooms  (inventory: rooms 101…104 etc., status 'active')
+              └── Reservations / Inventory Allocation  (availability rows per night)
+```
+
+### Inventory is physical rooms
+
+- `room_types.total_inventory` is **derived**: the count of ACTIVE physical rooms of the
+  type. Triggers (`trg_room_types_inventory_sync` on `rooms` DML,
+  `trg_room_types_inventory_derived` on `room_types` writes) keep it exact; a hand-set
+  number is overridden, and the V18 capacity guard (no reduction below sold/blocked units)
+  is enforced inside the derived trigger. Staff manage inventory by adding/deactivating
+  physical rooms — the back-office availability tab's inventory column is read-only.
+- Availability = `total_inventory − (rooms_sold + out_of_order + blocked)` per night,
+  minimum across the requested nights (sparse rows, V12: a night with no row is fully
+  available). `RoomAvailability.free` exposes the remaining units. The `few` label
+  requires ≤ 2 free units **and** a room type larger than 2 rooms — a 2-room type at
+  full availability is simply `available`, never "few rooms left".
+
+### Reservations consume inventory for exact dates
+
+- A booking sells **one unit per room line per night** for the half-open interval
+  `[check_in_date, check_out_date)` — the check-out night is not consumed. Date-overlap is
+  per-night; disjoint stays never block each other.
+- Selling happens in the same transaction as the reservation (`InventoryService.lockAndSell`,
+  pessimistic row locks on `availability`, capacity CHECK triggers) — overbooking is
+  impossible and concurrent bookings of the last room serialize into one winner, one
+  `CONFLICT`.
+- Only non-cancelled reservations hold inventory: `confirmed` (the only status bookings are
+  created with — there is no `pending` path) consumes; `cancelled` releases (`inventory.release`,
+  empty rows deleted). `checked_in`/`checked_out`/`no_show` still consume (the room is
+  occupied). Physical room *numbers* are assigned operationally (check-in); the count-based
+  allocation is the inventory source of truth (`reservation_rooms.room_id` stays nullable).
+- Availability rows are **reconciled** against real reservations (V26) so sold units always
+  have a reservation behind them; fictional pre-sold seed rows were removed.
+
+### Guest accounts are provisioned silently at booking (V27)
+
+- Every accountless booking provisions a **passwordless `provisioned` user account** for the
+  booking email, linked to the guest record (`GuestProvisioningService.ensureAccount`, same
+  transaction as the booking). Existing users with that email are linked instead of
+  duplicated; a concurrent same-email booking reuses the winner.
+- Registration with that email **completes** the account (`AuthServiceImpl.register`): the
+  password is set, status moves `provisioned → active`, the profile is refreshed, and the
+  guest record is linked (never duplicated). Pre-registration bookings then appear under
+  "My bookings" (`guests.user_id` drives `myReservations`).
+- Provisioned accounts cannot log in (`findActiveWithRoles` only returns `active` users) and
+  any other existing account keeps the generic no-enumeration registration error.
+
+### API consequences
+
+- `canonicalHotel: Hotel!` — the one property; the frontend uses it instead of a hotel list.
+- `staySearch` keeps `hotelId` optional (null = canonical hotel) so room links that carry a
+  `hotelid` keep working.
+- `RoomAvailability.free: Int!` — remaining physical rooms on the tightest night.
+- Guest search, index, room pages and the reservation flow consume backend availability
+  only; there is no client-side availability calculation and no mock fallback.
+
+## 9. Planned-but-not-implemented (do not mistake for architecture)
 
 | Claimed by | Claim | Reality |
 |---|---|---|
@@ -198,4 +289,4 @@ Textbook transactional outbox, correctly built:
 | backend `AGENTS.md` | `EmailProvider` / `PaymentProvider` ports | neither interface exists |
 | ADR-002 / `events-design.md` | event-driven consumers | producer only |
 | root `README.md` | back-office in the default stack | profile-gated off |
-| `database/collection-schema*.sql` | the schema | never executed; Flyway V1–V22 is the schema |
+| `database/collection-schema*.sql` | the schema | never executed; Flyway V1–V26 is the schema |

@@ -61,6 +61,7 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
 	@Query("""
 			select r from Review r
 			where r.moderationStatus = 'approved' and r.isFeaturedOnHomepage = true
+			  and r.hotelId in (select h.id from Hotel h where h.status = 'active')
 			order by r.createdAt desc
 			""")
 	List<Review> findFeaturedOnHomepage();

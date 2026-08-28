@@ -15,10 +15,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.hotelcollection.hotel.integration.TestcontainersConfiguration;
 
 /**
- * Auth rate limiting: the anonymous auth endpoints (REST login/register AND
- * the GraphQL login/register mutations) are limited per client IP; ordinary
- * GraphQL traffic is never limited. 20 requests per minute per window. The
- * limiter is enabled here explicitly (the shared suite config keeps it off).
+ * Auth rate limiting: the anonymous REST auth endpoints (login/register)
+ * are limited per client IP; ordinary GraphQL traffic is never limited.
+ * 20 requests per minute per window. The limiter is enabled here explicitly
+ * (the shared suite config keeps it off). The GraphQL auth mutations no
+ * longer exist (API rule: GraphQL = READ, REST = WRITE/ACTION).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
@@ -28,25 +29,6 @@ class AuthRateLimitIntegrationTest {
 
 	@Autowired
 	MockMvc mvc;
-
-	@Test
-	void graphqlLoginMutationIsRateLimited() throws Exception {
-		String body = "{\"query\":\"mutation Login($email: String!, $password: String!) { "
-				+ "login(email: $email, password: $password) { token } }\",\"variables\":{}}";
-		boolean saw429 = false;
-		for (int i = 0; i < 25; i++) {
-			int status = mvc.perform(post("/graphql").contentType(MediaType.APPLICATION_JSON)
-					.content(body))
-					.andReturn().getResponse().getStatus();
-			if (status == 429) {
-				saw429 = true;
-				break;
-			}
-		}
-		org.assertj.core.api.Assertions.assertThat(saw429)
-				.as("GraphQL login mutation must eventually be rate limited")
-				.isTrue();
-	}
 
 	@Test
 	void restRegisterIsRateLimited() throws Exception {

@@ -10,6 +10,8 @@ import { useSearch } from '@/context/SearchContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useToast } from '@/context/ToastContext';
 import { useSession } from '@/context/SessionContext';
+import { useApollo } from '@/api/apollo/provider';
+import { REST_INVALIDATIONS, invalidateGraphql } from '@/api/invalidation';
 import { getStayRoom } from '@/services/catalog';
 import { getExtras } from '@/services/extras';
 import { getQuote, mapQuoteExtraLines } from '@/services/quote';
@@ -17,7 +19,7 @@ import { charge } from '@/services/payment';
 import type { Extra, PriceBreakdown } from '@/types';
 import { reservations, generateIdempotencyKey } from '@/services/reservations';
 import { fmtShort, nightsBetween, stateToParams, toISODate } from '@/lib/dates';
-import { roomURL } from '@/lib/links';
+import { hotelRoomURL, roomURL } from '@/lib/links';
 import {
   validEmail,
   validExpiry,
@@ -27,6 +29,7 @@ import {
   fmtExpiry,
 } from '@/lib/validation';
 import { extrasToParam, parseExtrasParam, type ExtraSelection } from '@/lib/extras';
+import { ARRIVAL_SLOTS, TITLES, HOLDS_SECONDS } from '@/constants/booking';
 import { Steps } from '@/components/ui/Steps';
 import { QuoteTable } from '@/components/ui/QuoteTable';
 import { PromoField } from '@/components/ui/PromoField';
@@ -36,13 +39,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PhoneField } from '@/components/ui/PhoneField';
 import { CountrySelect } from '@/components/ui/CountrySelect';
+import Breadcrumb from '@/components/ui/Breadcrumb';
 import type { Country } from 'react-phone-number-input';
 import { image } from '@/services/availability';
 
-const TITLES = ['Mr', 'Ms', 'Mrs', 'Mx', 'Dr'] as const;
 type Title = (typeof TITLES)[number];
-
-const HOLDS_SECONDS = 15 * 60;
 
 const STAY_ICONS = {
   cal: (
@@ -90,8 +91,6 @@ const STAY_ICONS = {
 type DetailsErrors = Partial<Record<'first' | 'last' | 'email' | 'phone', string>>;
 type PayErrors = Partial<Record<'pname' | 'pnumber' | 'pexp' | 'pcvc' | 'pterms', string>>;
 
-const ARRIVALS = ['15:00 – 18:00', '18:00 – 21:00', '21:00 – 23:00', 'After 23:00'];
-
 export default function BookingFlow({
   roomId,
   planId,
@@ -106,6 +105,7 @@ export default function BookingFlow({
   const { fmt, currency } = useCurrency();
   const { toast } = useToast();
   const { session } = useSession();
+  const apollo = useApollo();
 
   /* Backend-first stay resolution: real room-type UUIDs are resolved via the catalog gateway. */
   const [resolvedFor, setResolvedFor] = useState<{
@@ -340,6 +340,8 @@ export default function BookingFlow({
           ? extrasSel.map((x) => ({ extraId: x.id, quantity: x.qty }))
           : undefined,
         promoCode: state.promo || undefined,
+        arrivalSlot: details.arrival,
+        specialRequests: details.requests.trim() || undefined,
         idempotencyKey,
       });
 
@@ -355,6 +357,10 @@ export default function BookingFlow({
         guestEmail,
       });
 
+      if (apollo) {
+        invalidateGraphql(apollo, REST_INVALIDATIONS['reservations.create']);
+      }
+
       setPaying(false);
 
       if (!paymentResult.ok) {
@@ -366,7 +372,7 @@ export default function BookingFlow({
       }
 
       toast({
-        message: 'Your room is confirmed — see you in Rabat.',
+        message: `Your room is confirmed — see you at ${resolved.property.name}.`,
         type: 'ok',
         title: 'Booking confirmed',
       });
@@ -389,6 +395,25 @@ export default function BookingFlow({
 
   return (
     <>
+      {/* Context breadcrumb — the guest is booking a specific room of a
+          specific hotel, so the trail preserves that context instead of
+          pointing back at the generic search. */}
+      {!missing && room && resolved ? (
+        <div className="mb-6">
+          <Breadcrumb
+            items={[
+              { label: 'Home', href: '/' },
+              { label: resolved.property.name, href: `/hotel?hotelid=${resolved.property.id}` },
+              {
+                label: room.name,
+                href: hotelRoomURL(state, resolved.property.id, room.id, plan?.id),
+              },
+              { label: 'Booking' },
+            ]}
+          />
+        </div>
+      ) : null}
+
       <div id="steps" className={`mb-8 ${missing ? 'hidden' : ''}`} aria-label="Booking progress">
         <Steps steps={['Guest details', 'Payment & confirm']} current={step - 1} />
       </div>
@@ -415,9 +440,15 @@ export default function BookingFlow({
           <aside className="min-w-0 lg:sticky lg:top-28 lg:order-2" aria-label="Booking summary">
             <div className="border-navy/10 shadow-navy/10 rounded-3xl border bg-white p-5 shadow-xl sm:p-6">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
-                  Your stay
-                </p>
+                <div className="min-w-0">
+                  <p className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+                    Your stay
+                  </p>
+                  <p className="text-navy/65 mt-0.5 truncate text-[11px]">
+                    {resolved?.property.name}
+                    {resolved?.property.city ? ` · ${resolved.property.city}` : ''}
+                  </p>
+                </div>
                 <span className="text-gold-dark bg-gold/10 border-gold/30 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase">
                   <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
@@ -561,8 +592,7 @@ export default function BookingFlow({
                 <fieldset className="mt-6 grid gap-x-4 gap-y-5 sm:grid-cols-2">
                   <legend className="text-navy/45 col-span-full mb-1 text-xs font-semibold tracking-widest uppercase">
                     Guest information
-                  </legend>
-                  <div className="grid grid-cols-2 gap-3 sm:col-span-2 sm:grid-cols-[120px_1fr_1fr] sm:gap-4">
+                  </legend>                  <div className="grid grid-cols-2 gap-3 sm:col-span-2 sm:grid-cols-[120px_1fr_1fr] sm:gap-4">
                     <div className="col-span-2 sm:col-span-1">
                       <label
                         htmlFor="f-title"
@@ -670,35 +700,40 @@ export default function BookingFlow({
                   </div>
                 </fieldset>
 
-                <fieldset className="border-navy/10 mt-7 grid gap-x-4 gap-y-5 border-t pt-6 sm:grid-cols-2">
-                  <legend className="text-navy/45 col-span-full -mt-3 mb-1 bg-white pr-3 text-xs font-semibold tracking-widest uppercase">
-                    Arrival &amp; requests <span className="text-navy/35 font-normal normal-case tracking-normal">(optional)</span>
-                  </legend>
-                  <div>
-                    <Label htmlFor="f-arrival">Arrival time</Label>
-                    <select
-                      id="f-arrival"
-                      value={details.arrival}
-                      onChange={(e) => setDetails({ ...details, arrival: e.target.value })}
-                      className="bg-paper border-navy/15 focus:ring-gold/40 w-full rounded-xl border px-3 py-2.5 text-sm font-medium focus:ring-2 focus:outline-none"
-                    >
-                      {ARRIVALS.map((a) => (
-                        <option key={a}>{a}</option>
-                      ))}
-                    </select>
+                <div className="border-navy/10 mt-7 border-t pt-6">
+                  <p className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+                    Arrival &amp; requests{' '}
+                    <span className="text-navy/35 font-normal normal-case tracking-normal">
+                      (optional)
+                    </span>
+                  </p>
+                  <div className="mt-4 grid gap-x-4 gap-y-5 sm:grid-cols-2">
+                    <div>
+                      <Label htmlFor="f-arrival">Arrival time</Label>
+                      <select
+                        id="f-arrival"
+                        value={details.arrival}
+                        onChange={(e) => setDetails({ ...details, arrival: e.target.value })}
+                        className="bg-paper border-navy/15 focus:ring-gold/40 w-full rounded-xl border px-3 py-2.5 text-sm font-medium focus:ring-2 focus:outline-none"
+                      >
+                        {ARRIVAL_SLOTS.map((a) => (
+                          <option key={a}>{a}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label htmlFor="f-requests">Special requests</Label>
+                      <textarea
+                        id="f-requests"
+                        rows={2}
+                        placeholder="Allergies, celebrations, extra pillows…"
+                        value={details.requests}
+                        onChange={(e) => setDetails({ ...details, requests: e.target.value })}
+                        className="bg-paper border-navy/15 focus:ring-gold/40 w-full resize-none rounded-xl border px-3 py-2.5 text-sm font-medium focus:ring-2 focus:outline-none"
+                      />
+                    </div>
                   </div>
-                  <div className="sm:col-span-2">
-                    <Label htmlFor="f-requests">Special requests</Label>
-                    <textarea
-                      id="f-requests"
-                      rows={2}
-                      placeholder="Allergies, celebrations, extra pillows…"
-                      value={details.requests}
-                      onChange={(e) => setDetails({ ...details, requests: e.target.value })}
-                      className="bg-paper border-navy/15 focus:ring-gold/40 w-full resize-none rounded-xl border px-3 py-2.5 text-sm font-medium focus:ring-2 focus:outline-none"
-                    />
-                  </div>
-                </fieldset>
+                </div>
 
                 <div className="border-navy/10 mt-7 flex flex-col items-stretch justify-between gap-3 border-t pt-6 sm:flex-row sm:items-center">
                   <p className="text-navy/45 text-[11px]">

@@ -15,6 +15,7 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { dateLabel, guestsLabel, nightsBetween, readStateFromURL, validateState } from '@/lib/dates';
 import { image, IMG_FALLBACK, filterEntries } from '@/services/availability';
 import { searchStay } from '@/services/catalog';
+import { getCanonicalHotel } from '@/services/canonicalHotel';
 import { validatePromo } from '@/services/pricing';
 import { ensurePricingSources } from '@/services/pricingHydration';
 import { hotelRoomURL, roomURL } from '@/lib/links';
@@ -83,8 +84,9 @@ export default function SearchResults() {
   /* Fetch ONLY the committed search (URL), never live edits: the Search bar
      writes context immediately while typing, but only "Search" pushes to the
      URL — so this effect fires exactly once per click. Facet/promo/currency
-     params are excluded so they never re-trigger a search. */
-  const stayKey = ['checkin', 'checkout', 'adults', 'children', 'rooms', 'destination']
+     params are excluded so they never re-trigger a search. The stay is
+     always searched against the platform's single canonical hotel. */
+  const stayKey = ['checkin', 'checkout', 'adults', 'children', 'rooms']
     .map((k) => searchParams?.get(k) ?? '')
     .join('|');
   /* Loading is derived: any committed-search change immediately re-renders the
@@ -101,19 +103,24 @@ export default function SearchResults() {
     const p = new URLSearchParams();
     stayKey
       .split('|')
-      .forEach((v, i) => v && p.set(['checkin', 'checkout', 'adults', 'children', 'rooms', 'destination'][i]!, v));
+      .forEach((v, i) => v && p.set(['checkin', 'checkout', 'adults', 'children', 'rooms'][i]!, v));
     const committed = readStateFromURL(p);
     if (validateState(committed).length) return;
     let alive = true;
-    searchStay(committed.destination || undefined, {
-      checkin: committed.checkin,
-      checkout: committed.checkout,
-      adults: committed.adults,
-      children: committed.children,
-      rooms: committed.rooms,
-    }).then((list) => {
+    Promise.all([
+      getCanonicalHotel(),
+      searchStay(undefined, {
+        checkin: committed.checkin,
+        checkout: committed.checkout,
+        adults: committed.adults,
+        children: committed.children,
+        rooms: committed.rooms,
+      }),
+    ]).then(([canonical, list]) => {
       if (!alive) return;
-      setEntries(list);
+      // backend staySearch scopes to the single active hotel; keep the
+      // canonical id on entries for links
+      setEntries(list.map((e) => ({ ...e, hotelId: e.hotelId ?? canonical.id })));
       setLoadedKey(stayKey);
       setSearchError('');
       if (!list.length)
@@ -444,7 +451,7 @@ export default function SearchResults() {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={image(room.images[0] ?? IMG_FALLBACK, 800)}
-                      alt={`${room.name}${e.hotelName ? ` — ${e.hotelName}` : ' — Executive Hotel'}`}
+                      alt={`${room.name}${e.hotelName ? ` — ${e.hotelName}` : ''}`}
                       loading="lazy"
                       className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />

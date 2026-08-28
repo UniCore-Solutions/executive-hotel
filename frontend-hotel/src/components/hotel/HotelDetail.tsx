@@ -11,6 +11,7 @@ import { ReadMore } from '@/components/ui/ReadMore';
 import { ShareButton } from '@/components/ui/ShareButton';
 import { readStateFromURL } from '@/lib/dates';
 import { formatDate, formatPrice } from '@/lib/format';
+import { hotelRoomURL } from '@/lib/links';
 import { getHotelDetails, getRoomTypes, getStay, type HotelDetailsResult } from '@/services/catalog';
 
 /* Hotel amenity icon paths (24×24 stroke). */
@@ -221,7 +222,6 @@ export default async function HotelDetail({
   // this would otherwise feed is hidden, so skip the fetch entirely rather than pay
   // for data nothing renders.
   const hasRoomId = Boolean(firstParam(searchParams.roomId));
-  const hasDates = Boolean(state.checkin && state.checkout);
 
   const [details, stay] = await Promise.all([
     getHotelDetails(hotelId),
@@ -238,15 +238,14 @@ export default async function HotelDetail({
   if (!details || details.hotel.status !== 'active') notFound();
   const { hotel, experiences, restaurants, faqs, policies, reviews, reviewsCount } = details;
 
-  const rooms = hasRoomId
-    ? []
-    : (stay?.rooms ??
-      (await getRoomTypes(hotelId)).map((room) => ({
-        room,
-        availability: 'available' as const,
-        plans: [] as { price: number }[],
-        fits: true,
-      })));
+  const rooms =
+    stay ??
+    (await getRoomTypes(hotelId)).map((room) => ({
+      room,
+      availability: 'available' as const,
+      plans: [] as { price: number }[],
+      fits: true,
+    }));
 
   const starText =
     hotel.starRating ? `${hotel.starRating}-star hotel` : 'Hotel';
@@ -265,11 +264,6 @@ export default async function HotelDetail({
     alt: m.altText ?? `${hotel.name} — ${hotel.city ?? ''}`,
   }));
   const popular = popularAmenities(hotel.amenities);
-  const nights =
-    state.checkin && state.checkout
-      ? Math.max(1, Math.round((+state.checkout - +state.checkin) / 86400000))
-      : 0;
-  const totalGuests = (state.adults || 0) + (state.children || 0);
 
   // No map embed/tile widget: this app has no maps API key configured and public
   // keyless map-image services proved unreliable in testing — a broken image box
@@ -283,82 +277,89 @@ export default async function HotelDetail({
 
   return (
     <>
-      {/* Dark theme: the header starts transparent over the gallery below (which
-          deliberately carries no top padding — it sits at the true top of the
-          page, behind the fixed header) and turns frosted/solid on scroll, per
-          the header's own already-built scroll behavior (see globals.css). */}
-      <HeaderTheme theme="dark" />
+      {/* Solid header (light theme): the gallery below starts under the fixed
+          header (pt-28 offsets its height) and reads as one self-contained
+          section — the navigation never overlaps the photos. */}
+      <HeaderTheme theme="light" />
 
-      {/* gallery — full-bleed at the top of the page, on purpose: no pt- here
-          compensates for the header's height, because this section is meant
-          to sit behind it, not below it. */}
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <PhotoGallery photos={galleryPhotos} />
-      </div>
+      {/* gallery + identity are the HOTEL experience: when a room is selected
+          the room view owns the top of the page (RoomDetails renders its own
+          header + breadcrumb), so none of this hotel-level chrome is shown. */}
+      {!hasRoomId ? (
+        <>
+          {/* gallery — the page's first section, below the header */}
+          <div className="mx-auto max-w-7xl px-4 pt-28 sm:px-6 lg:px-8">
+            <PhotoGallery photos={galleryPhotos} />
+          </div>
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="pt-5">
-          <Breadcrumb
-            items={[
-              { label: 'Home', href: '/' },
-              { label: hotel.name, href: hasRoomId ? `/hotel?hotelid=${hotelId}` : '/' },
-              ...(hasRoomId ? [{ label: 'Room details' }] : []),
-            ]}
-          />
-        </div>
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="pt-5">
+              <Breadcrumb
+                items={[
+                  { label: 'Home', href: '/' },
+                  { label: hotel.name, href: '/' },
+                ]}
+              />
+            </div>
 
-        {/* identity — name dominant; a short neighborhood/city location sits
-            right under it (its own line, per booking-platform convention),
-            with rating/category as secondary, scannable metadata below that.
-            The full street address lives only in the Location section further
-            down, so this never repeats it verbatim. */}
-        <div className="border-navy/10 mt-4 flex flex-col gap-5 border-b pb-8 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="font-display text-navy text-3xl font-semibold sm:text-4xl lg:text-[2.75rem]">
-              {hotel.name}
-            </h1>
-            {shortLocation ? (
-              <p className="text-navy/65 mt-2 flex items-center gap-1.5 text-sm">
-                <svg
-                  className="text-gold-dark h-4 w-4 shrink-0"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  aria-hidden="true"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d={ICON.pin} />
-                </svg>
-                {shortLocation}
-              </p>
-            ) : null}
-            <div className="text-navy/70 mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-              {hotel.averageRating ? (
-                <span className="inline-flex items-center gap-2">
-                  <Stars rating={hotel.averageRating} size="sm" />
-                  <strong className="text-navy font-semibold">
-                    {hotel.averageRating.toFixed(1)}
-                  </strong>
-                  <span className="text-navy/50">
-                    ({reviewsCount} review{reviewsCount === 1 ? '' : 's'})
+            {/* identity — name dominant; a short neighborhood/city location sits
+                right under it (its own line, per booking-platform convention),
+                with rating/category as secondary, scannable metadata below that.
+                The full street address lives only in the Location section further
+                down, so this never repeats it verbatim. */}
+            <div className="border-navy/10 mt-4 flex flex-col gap-5 border-b pb-8 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <h1 className="font-display text-navy text-3xl font-semibold sm:text-4xl lg:text-[2.75rem]">
+                  {hotel.name}
+                </h1>
+                {shortLocation ? (
+                  <p className="text-navy/65 mt-2 flex items-center gap-1.5 text-sm">
+                    <svg
+                      className="text-gold-dark h-4 w-4 shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d={ICON.pin} />
+                    </svg>
+                    {shortLocation}
+                  </p>
+                ) : null}
+                <div className="text-navy/70 mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                  {hotel.averageRating ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Stars rating={hotel.averageRating} size="sm" />
+                      <strong className="text-navy font-semibold">
+                        {hotel.averageRating.toFixed(1)}
+                      </strong>
+                      <span className="text-navy/50">
+                        ({reviewsCount} review{reviewsCount === 1 ? '' : 's'})
+                      </span>
+                    </span>
+                  ) : null}
+                  {hotel.averageRating ? <span className="text-navy/30" aria-hidden="true">·</span> : null}
+                  <span>
+                    {hotel.brand ?? 'The collection'} · {starText}
                   </span>
-                </span>
-              ) : null}
-              {hotel.averageRating ? <span className="text-navy/30" aria-hidden="true">·</span> : null}
-              <span>
-                {hotel.brand ?? 'The collection'} · {starText}
-              </span>
+                </div>
+              </div>
+              <ShareButton className="border-navy/12 shrink-0 self-start border" />
             </div>
           </div>
-          <ShareButton className="border-navy/12 shrink-0 self-start border" />
-        </div>
+        </>
+      ) : null}
 
-        {/* ======================= SELECTED ROOM (?roomId=…) ======================= */}
+      {/* ======================= SELECTED ROOM (?roomId=…) ======================= */}
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <Suspense fallback={null}>
           <HotelRoomGate hotelId={hotelId} hotelName={hotel.name} />
         </Suspense>
+      </div>
 
-        {!hasRoomId && (
-          <>
+      {!hasRoomId && (
+        <>
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             {/* about — description is the section's own visual weight; stay
                 info and contact are practical, secondary facts placed
                 alongside it on desktop (mirroring the room page's "room
@@ -545,9 +546,8 @@ export default async function HotelDetail({
                 }
               />
               <p className="text-navy/55 mt-3 text-sm">
-                {hasDates
-                  ? `Prices below are for ${state.checkin ? state.checkin.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''} – ${state.checkout ? state.checkout.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''} · ${nights} ${nights === 1 ? 'night' : 'nights'}${totalGuests ? ` · ${totalGuests} guest${totalGuests === 1 ? '' : 's'}` : ''}.`
-                  : 'Prices shown are per night, from — choose your dates to see exact totals.'}
+                Prices shown are per night, from — open a room to see the exact total for your
+                dates, taxes &amp; fees included.
               </p>
               <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {rooms.map(({ room, availability, plans }) => {
@@ -555,7 +555,9 @@ export default async function HotelDetail({
                     plans.length > 0
                       ? Math.min(...plans.map((p) => p.price))
                       : room.pricePerNight;
-                  const roomHref = `/hotel?hotelid=${hotelId}&roomId=${room.id}`;
+                  // The stay state rides along so the guest never loses their
+                  // chosen dates when they open a room (matches search cards).
+                  const roomHref = hotelRoomURL(state, hotelId, room.id);
                   return (
                     <article
                       key={room.id}
@@ -604,16 +606,15 @@ export default async function HotelDetail({
                         ) : null}
                         <div className="mt-auto flex items-center justify-between gap-3 pt-4">
                           <p className="text-navy/70 text-sm">
-                            {hasDates ? 'total' : 'from'}{' '}
+                            {/* Per-night rate straight from the backend — the
+                                authoritative total for the stay comes from the
+                                quote engine on the room page, never a local
+                                price × nights multiplication. */}
+                            from{' '}
                             <strong className="font-display text-navy text-lg">
-                              {formatPrice(
-                                hasDates ? price * Math.max(1, nights) : price,
-                                room.currencyCode ?? hotel.defaultCurrency
-                              )}
+                              {formatPrice(price, room.currencyCode ?? hotel.defaultCurrency)}
                             </strong>
-                            <span className="text-navy/45 text-xs">
-                              {hasDates ? ` /${nights} night${nights === 1 ? '' : 's'}` : ' /night'}
-                            </span>
+                            <span className="text-navy/45 text-xs"> /night</span>
                           </p>
                           <Link
                             href={roomHref}
@@ -817,9 +818,9 @@ export default async function HotelDetail({
                 </div>
               </section>
             ) : null}
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

@@ -106,7 +106,10 @@ export async function register(input: {
 export async function reset(email: string): Promise<AuthResult> {
   if (!email || !String(email).includes('@'))
     return { ok: false, message: 'Enter a valid email address.' };
-  return { ok: true, message: 'If an account exists for this email, a reset link has been sent.' };
+  return {
+    ok: false,
+    message: 'Password reset is not available yet — please contact the hotel reception.',
+  };
 }
 
 /** Updates the signed-in guest's name/phone and returns the refreshed session. */

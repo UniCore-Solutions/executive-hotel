@@ -69,7 +69,13 @@ export async function getQuote(params: QuoteParams): Promise<{
   const taxedBase = Math.max(0, raw.subtotalAmount - raw.discountAmount);
   const taxAmount = raw.taxAmount ?? 0;
   const feeAmount = raw.feeAmount ?? 0;
-  const taxRate = taxedBase > 0 ? (taxAmount + feeAmount) / taxedBase : 0;
+  // Itemized tax/fee lines straight from the backend — the only source a
+  // breakdown may come from (taxes are never recomputed client-side).
+  const charges = (raw.charges ?? []).map((c) => ({
+    name: c.name,
+    chargeType: c.chargeType === 'fee' ? ('fee' as const) : ('tax' as const),
+    amount: c.amount,
+  }));
 
   const breakdown: PriceBreakdown = {
     perNight,
@@ -81,11 +87,12 @@ export async function getQuote(params: QuoteParams): Promise<{
     taxes: taxAmount + feeAmount,
     taxAmount,
     feeAmount,
-    taxRate,
+    taxRate: taxedBase > 0 ? (taxAmount + feeAmount) / taxedBase : 0,
     extrasTotal,
     total: raw.totalAmount,
     originalTotal: raw.originalTotal,
     currency: raw.currencyCode,
+    charges,
   };
 
   return { quote: breakdown, raw };

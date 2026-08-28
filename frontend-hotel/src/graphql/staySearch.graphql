@@ -5,30 +5,7 @@ query StaySearch($input: StaySearchInput!) {
     status
     capacityFits
     roomType {
-      id
-      hotelId
-      hotelName
-      currencyCode
-      name
-      description
-      maxAdults
-      maxChildren
-      bedConfiguration
-      sizeSqm
-      viewType
-      status
-      amenities {
-        id
-        name
-        category
-      }
-      media {
-        id
-        url
-        altText
-        isPrimary
-      }
-      pricePerNight
+      ...RoomTypeSummary
     }
     rates {
       roomTypeId

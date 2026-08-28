@@ -1,9 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery } from '@apollo/client/react';
 import { Plus, Star } from 'lucide-react';
-import { proxyRequest } from '@/lib/api';
 import { statusLabel } from '@/lib/format';
 import { AdminHotelsDocument } from '@/graphql/generated/graphql';
 import { Badge } from '@/components/ui/Badge';
@@ -17,9 +16,8 @@ export default function HotelsPage() {
   const { me } = useSession();
   const isSuperAdmin = me?.roles.includes('super_admin') ?? false;
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['adminHotels'],
-    queryFn: () => proxyRequest(AdminHotelsDocument, { page: { page: 0, size: 100 } }),
+  const { data, loading, error } = useQuery(AdminHotelsDocument, {
+    variables: { page: { page: 0, size: 100 } },
   });
 
   return (
@@ -37,13 +35,13 @@ export default function HotelsPage() {
           ) : undefined
         }
       />
-      {isLoading ? (
+      {loading ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-40" />
           ))}
         </div>
-      ) : isError || !data ? (
+      ) : error || !data ? (
         <Card>
           <CardContent className="text-sm text-muted-foreground">
             Could not load hotels.

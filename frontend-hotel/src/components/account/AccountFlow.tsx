@@ -7,7 +7,7 @@ import { useSession } from '@/context/SessionContext';
 import { useToast } from '@/context/ToastContext';
 import { useModal } from '@/context/ModalContext';
 import { reservations, type BackendReservation } from '@/services/reservations';
-import { image } from '@/services/availability';
+import { image, IMG_FALLBACK } from '@/services/availability';
 import { fromISODate, fmtShort, nightsBetween } from '@/lib/dates';
 import { useCurrency } from '@/hooks/useCurrency';
 import ConsentDialog from '@/components/layout/ConsentDialog';
@@ -330,7 +330,7 @@ export default function AccountFlow() {
               ) : (
                 bookings.map((b) => {
                   const roomLine = b.roomLines[0];
-                  const roomImg = roomLine?.roomTypeId ?? '';
+                  const roomName = roomLine?.roomTypeName ?? 'Room';
                   const status =
                     b.status === 'checked_in'
                       ? 'Checked in'
@@ -349,14 +349,18 @@ export default function AccountFlow() {
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={image(roomImg, 300)}
-                        alt="Room"
+                        src={
+                          roomLine?.roomTypeImageUrl
+                            ? image(roomLine.roomTypeImageUrl, 300)
+                            : IMG_FALLBACK
+                        }
+                        alt={roomName}
                         className="border-navy/10 h-16 w-16 shrink-0 rounded-xl border object-cover"
                       />
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2">
                           <span className="text-navy group-hover:text-gold-dark block text-sm font-semibold transition-colors">
-                            Room
+                            {roomName}
                           </span>
                           <span className="text-navy/45 font-mono text-[11px] font-semibold">
                             {b.reference}

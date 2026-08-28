@@ -1,17 +1,11 @@
-/** Payment service — calls backend GraphQL API. */
-import { gqlRequest, TRANSACTION_CURRENCY } from './graphqlClient';
+/** Payment service — REST writes (API rule: GraphQL = READ, REST = WRITE). */
+import { capturePayment, createPayment } from '@/api/rest/endpoints';
 import type { PaymentResult } from '@/types';
-import type {
-  CreatePaymentMutation,
-  CreatePaymentMutationVariables,
-  CapturePaymentMutation,
-  CapturePaymentMutationVariables,
-} from '@/graphql/generated/graphql';
-import { CreatePaymentDocument, CapturePaymentDocument } from '@/graphql/generated/graphql';
 
 /**
  * Charge a card for a reservation.
- * Creates a payment record and immediately captures it via the backend.
+ * Creates a payment record and immediately captures it via the backend
+ * (POST /api/v1/payments + /payments/{id}/capture).
  * The backend's PaymentService handles the actual (mock) capture logic.
  *
  * `idempotencyKey` must be stable across retries of the *same* payment
@@ -21,8 +15,7 @@ import { CreatePaymentDocument, CapturePaymentDocument } from '@/graphql/generat
  * required for an accountless (not-signed-in) checkout — the backend
  * accepts it in place of an authenticated owner/staff session, mirroring
  * the reference+email pattern reservation lookup/cancel already uses.
- * Transaction currency is always MAD (TRANSACTION_CURRENCY) — never the
- * guest's selected display currency.
+ * Transaction currency is always MAD — never the guest's display currency.
  */
 export async function charge(input: {
   reservationId: string;
@@ -33,25 +26,19 @@ export async function charge(input: {
 }): Promise<PaymentResult> {
   try {
     // Step 1: Create payment record
-    const createData = await gqlRequest(CreatePaymentDocument, {
-      input: {
-        reservationId: input.reservationId,
-        amount: input.amount,
-        currencyCode: TRANSACTION_CURRENCY,
-        provider: 'card',
-        idempotencyKey: input.idempotencyKey,
-        guestEmail: input.guestEmail,
-      },
-    } as CreatePaymentMutationVariables);
-
-    const payment = (createData as CreatePaymentMutation).createPayment;
+    const payment = await createPayment({
+      reservationId: input.reservationId,
+      amount: input.amount,
+      provider: 'card',
+      idempotencyKey: input.idempotencyKey,
+      guestEmail: input.guestEmail,
+    });
 
     // Step 2: Capture the payment
-    const captureData = await gqlRequest(CapturePaymentDocument, {
-      input: { paymentId: payment.id, guestEmail: input.guestEmail },
-    } as CapturePaymentMutationVariables);
-
-    const captured = (captureData as CapturePaymentMutation).capturePayment;
+    const captured = await capturePayment({
+      paymentId: payment.id,
+      guestEmail: input.guestEmail,
+    });
 
     if (captured.status === 'captured') {
       return { ok: true, message: 'Payment authorised' };

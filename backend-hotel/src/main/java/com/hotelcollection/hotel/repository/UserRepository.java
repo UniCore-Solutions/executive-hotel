@@ -15,6 +15,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	@Query("select u from User u where lower(u.email) = lower(:email)")
 	Optional<User> findByEmailIgnoreCase(@Param("email") String email);
 
+	@Query("select count(u) from User u where lower(u.email) = lower(:email)")
+	long countByEmailIgnoreCase(@Param("email") String email);
+
 	@Query("select u from User u where lower(u.email) = lower(:email) and u.status = 'active'")
 	Optional<User> findActiveByEmail(@Param("email") String email);
 
