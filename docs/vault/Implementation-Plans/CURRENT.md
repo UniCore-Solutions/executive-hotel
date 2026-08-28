@@ -70,15 +70,17 @@ state unverified. Details and the stale-`node_modules` gotcha: [[../Testing/test
 
 ## Blockers
 
-- **`gt auth` not configured.** `gt submit` needs a Graphite API token from the user.
-  Until then, PR creation must fall back to `git push` plus opening the PR by hand.
-- **`gh` CLI is not installed**, so there is no scripted GitHub PR path either.
-- **Nothing has been pushed.** All work is local commits on `chore/agent-infra`.
-  GitHub SSH access is confirmed working (`git ls-remote origin` succeeds); push itself
-  is untested.
+None blocking. Resolved: Graphite auth configured, branch pushed, PR #2 open.
 
-Non-blocking: `cursor` is not installed, so its symlink and manifests are wired but
-unverified. Agreed as acceptable.
+Non-blocking notes:
+
+- `gh` CLI is not installed. `gt submit` covers the PR path, so this only matters if you
+  need scripted access to PR *comments* or review state.
+- `gt submit --edit-title` reports "No-op" when no commits changed, so the PR title cannot
+  be revised on its own. Change it in the GitHub UI, or bundle it with a real commit.
+- `cursor` is not installed, so its symlink and manifests are wired but unverified.
+- The Claude-in-Chrome browser extension is not currently connected, so the
+  `browser-automation` skill's Chrome path is unverified. Playwright is unaffected.
 
 ## Remote topology — read before pushing
 
@@ -106,8 +108,14 @@ Checkpoints A and B approved by the user. Checkpoint C presented, pending.
 
 ## PR status
 
-**None opened.** Branch is local and unpushed. Two commits at time of writing, plus the
-Checkpoint C commit.
+**PR #2 open and ready for review** —
+https://app.graphite.com/github/pr/UniCore-Solutions/executive-hotel/2
+
+Submitted with `gt submit` against `main` in `UniCore-Solutions/executive-hotel`.
+Graphite auth is configured (`gt auth`, authenticated as AZOMARDEV); the Graphite GitHub App
+is already installed on the org, so `gt submit` works without `gh`.
+
+Awaiting team review. **After merge:** update this file and the affected vault notes.
 
 ## Findings worth carrying forward
 
