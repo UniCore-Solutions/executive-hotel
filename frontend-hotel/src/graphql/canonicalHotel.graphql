@@ -1,0 +1,38 @@
+# The platform's single property — exactly one active hotel must exist.
+query CanonicalHotel {
+  canonicalHotel {
+    id
+    name
+    brand
+    description
+    hotelType
+    addressLine1
+    addressLine2
+    city
+    countryCode
+    latitude
+    longitude
+    phone
+    email
+    starRating
+    checkInTime
+    checkOutTime
+    defaultCurrency
+    status
+    averageRating
+    amenities {
+      id
+      name
+      icon
+      category
+    }
+    media {
+      id
+      url
+      altText
+      category
+      isPrimary
+      sortOrder
+    }
+  }
+}

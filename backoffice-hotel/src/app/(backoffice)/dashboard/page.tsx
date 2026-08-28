@@ -1,8 +1,7 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery } from '@apollo/client/react';
 import { BedDouble, CalendarCheck, CalendarX, CircleDollarSign, DoorOpen, Receipt, Timer } from 'lucide-react';
-import { proxyRequest } from '@/lib/api';
 import { formatDate, formatMoney, statusLabel } from '@/lib/format';
 import { useHotelScope } from '@/context/HotelScopeContext';
 import { AdminDashboardDocument } from '@/graphql/generated/graphql';
@@ -47,14 +46,13 @@ export default function DashboardPage() {
 
 function DashboardContent({ hotelId }: { hotelId: string }) {
   const { hotels, selectHotel } = useHotelScope();
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['adminDashboard', hotelId],
-    queryFn: () => proxyRequest(AdminDashboardDocument, { hotelId }),
-    enabled: !!hotelId,
+  const { data, loading, error, refetch } = useQuery(AdminDashboardDocument, {
+    variables: { hotelId },
+    skip: !hotelId,
   });
 
-  if (isLoading) return <Skeleton className="h-64 w-full" />;
-  if (isError || !data) {
+  if (loading) return <Skeleton className="h-64 w-full" />;
+  if (error || !data) {
     return (
       <Card className="mx-auto mt-16 max-w-md items-center text-center">
         <CardContent>

@@ -1,23 +1,5 @@
 package com.hotelcollection.hotel.integration;
 import com.hotelcollection.hotel.dto.availability.AvailabilityInput;
-import com.hotelcollection.hotel.dto.availability.AvailabilityRangeInput;
-import com.hotelcollection.hotel.dto.availability.AvailabilityUpdateInput;
-import com.hotelcollection.hotel.dto.billing.CapturePaymentInput;
-import com.hotelcollection.hotel.dto.billing.CreatePaymentInput;
-import com.hotelcollection.hotel.dto.catalog.AdminHotelInput;
-import com.hotelcollection.hotel.dto.catalog.AdminRoomInput;
-import com.hotelcollection.hotel.dto.catalog.AdminRoomTypeInput;
-import com.hotelcollection.hotel.dto.identity.AdminCreateUserInput;
-import com.hotelcollection.hotel.dto.identity.RegisterInput;
-import com.hotelcollection.hotel.entity.User;
-import com.hotelcollection.hotel.dto.media.MediaInput;
-import com.hotelcollection.hotel.dto.rate.AdminPromotionInput;
-import com.hotelcollection.hotel.dto.rate.AdminRatePlanInput;
-import com.hotelcollection.hotel.dto.rate.RatePlanPriceInput;
-import com.hotelcollection.hotel.dto.reservation.CreateReservationInput;
-import com.hotelcollection.hotel.dto.reservation.ReservationLookupInput;
-import com.hotelcollection.hotel.entity.Guest;
-import com.hotelcollection.hotel.entity.ReviewModerationStatus;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -40,18 +22,17 @@ import org.springframework.test.context.ContextConfiguration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hotelcollection.hotel.entity.Amenity;
-import com.hotelcollection.hotel.integration.TestcontainersConfiguration;
-import com.hotelcollection.hotel.integration.TestFixtures;
 import com.hotelcollection.hotel.repository.AmenityRepository;
 import com.hotelcollection.hotel.security.CurrentUser;
 import com.hotelcollection.hotel.security.JwtService;
-import com.hotelcollection.hotel.entity.Review;
 import com.hotelcollection.hotel.repository.ReviewRepository;
 
 /**
- * Back-office GraphQL over real HTTP: hotel-scoped authz (IDOR blocked),
- * catalog/pricing/availability CRUD round-trips, operations reads, staff
- * cancellation, review moderation, and super_admin-only platform admin.
+ * Back-office API over real HTTP — READ side via GraphQL, WRITE side via
+ * REST (API rule: GraphQL = READ, REST = WRITE/ACTION). Covers hotel-scoped
+ * authz (IDOR blocked), catalog/pricing/availability CRUD round-trips,
+ * operations reads, staff cancellation, review moderation, and
+ * super_admin-only platform admin.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ContextConfiguration(classes = TestcontainersConfiguration.class)
@@ -69,7 +50,7 @@ class AdminGraphqlIntegrationTest {
 	@Autowired
 	AmenityRepository amenityRepository;
 	@Autowired
-	com.hotelcollection.hotel.repository.ReviewRepository reviewRepository;
+	ReviewRepository reviewRepository;
 	@Autowired
 	org.springframework.jdbc.core.JdbcTemplate jdbc;
 
@@ -90,16 +71,12 @@ class AdminGraphqlIntegrationTest {
 	private String issueToken(UUID userId, List<String> roles, List<UUID> hotelIds)
 			throws Exception {
 		String email = "staff-" + userId + "-" + System.nanoTime() + "@example.com";
-		Map<String, Object> reg = post("""
-				mutation($input: RegisterInput!) {
-				  register(input: $input) { token me { id } }
-				}
-				""", Map.of("input", Map.of("firstName", "Staff", "lastName", "User",
-						"email", email, "password", "secret123")), null);
-		assertThat(reg.get("errors")).isNull();
-		Map<String, Object> payload = (Map<String, Object>) ((Map<String, Object>) reg.get("data"))
-				.get("register");
-		String registeredId = (String) ((Map<String, Object>) payload.get("me")).get("id");
+		Map<String, Object> reg = rest("POST", "/api/v1/auth/register",
+				Map.of("firstName", "Staff", "lastName", "User",
+						"email", email, "password", "secret123"),
+				null);
+		assertThat(reg.get("__status")).isEqualTo(201);
+		String registeredId = (String) ((Map<String, Object>) reg.get("me")).get("userId");
 		return jwtService.issue(new CurrentUser(UUID.fromString(registeredId), email, roles,
 				hotelIds, Instant.now()));
 	}
@@ -121,6 +98,65 @@ class AdminGraphqlIntegrationTest {
 				HttpResponse.BodyHandlers.ofString());
 		assertThat(response.statusCode()).isEqualTo(200);
 		return objectMapper.readValue(response.body(), Map.class);
+	}
+
+	/** REST write helper: returns the parsed body plus the HTTP status in
+	 * {@code __status}. */
+	@SuppressWarnings("unchecked")
+	private Map<String, Object> rest(String method, String path, Object body, String bearer)
+			throws Exception {
+		HttpRequest.Builder builder = HttpRequest.newBuilder()
+				.uri(URI.create("http://localhost:" + port + path))
+				.header("Content-Type", "application/json");
+		if (body == null) {
+			builder.method(method, HttpRequest.BodyPublishers.noBody());
+		} else {
+			builder.method(method,
+					HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)));
+		}
+		if (bearer != null) {
+			builder.header("Authorization", "Bearer " + bearer);
+		}
+		HttpResponse<String> response = http.send(builder.build(),
+				HttpResponse.BodyHandlers.ofString());
+		if (response.body().isBlank()) {
+			Map<String, Object> empty = new java.util.HashMap<>();
+			empty.put("__status", response.statusCode());
+			return empty;
+		}
+		Map<String, Object> parsed = objectMapper.readValue(response.body(), Map.class);
+		parsed.put("__status", response.statusCode());
+		return parsed;
+	}
+
+	/** REST write helper for list-shaped responses (amenities/media/policies/
+	 * prices replacements): returns the parsed array. */
+	private List<Map<String, Object>> restList(String method, String path, Object body,
+			String bearer) throws Exception {
+		HttpRequest.Builder builder = HttpRequest.newBuilder()
+				.uri(URI.create("http://localhost:" + port + path))
+				.header("Content-Type", "application/json");
+		if (body == null) {
+			builder.method(method, HttpRequest.BodyPublishers.noBody());
+		} else {
+			builder.method(method,
+					HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)));
+		}
+		if (bearer != null) {
+			builder.header("Authorization", "Bearer " + bearer);
+		}
+		HttpResponse<String> response = http.send(builder.build(),
+				HttpResponse.BodyHandlers.ofString());
+		assertThat(response.statusCode()).isIn(200, 201);
+		return objectMapper.readValue(response.body(),
+				new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {
+				});
+	}
+
+	/** REST envelope error code (the backend's ApiError.code). */
+	private String restCode(Map<String, Object> body) {
+		assertThat(body.get("__status")).isNotIn(200, 201, 204);
+		return (String) body.get("code");
 	}
 
 	private String extensionsCode(Map<String, Object> body) {
@@ -171,27 +207,49 @@ class AdminGraphqlIntegrationTest {
 	}
 
 	@Test
-	void roomTypeInventoryCannotBeReducedBelowSoldUnits() throws Exception {
+	void roomTypeInventoryIsDerivedFromPhysicalRooms() throws Exception {
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
 		String token = staffToken(uid(101), List.of(fx.hotelId()));
-		jdbc.update("INSERT INTO availability (id, room_type_id, stay_date, rooms_sold) VALUES (gen_random_uuid(), ?, ?, 3)",
-				fx.roomType().getId(), java.time.LocalDate.now().plusDays(5));
+		// the fixture room type ships with 3 physical rooms → derived inventory 3
+		Map<String, Object> derived = rest("PUT",
+				"/api/v1/admin/room-types/" + fx.roomType().getId(),
+				Map.of("totalInventory", 3), token);
+		assertThat(derived.get("__status")).isEqualTo(200);
 
-		Map<String, Object> reduced = post("""
-				mutation($id: ID!, $input: AdminRoomTypeInput!) {
-				  updateRoomType(id: $id, input: $input) { id }
+		Map<String, Object> inventory = post("""
+				query($hotelId: ID!) {
+				  adminHotel(hotelId: $hotelId) { roomTypes { totalInventory } }
 				}
-				""", Map.of("id", fx.roomType().getId().toString(),
-						"input", Map.of("totalInventory", 2)), token);
-		assertThat(extensionsCode(reduced)).isEqualTo("CONFLICT");
+				""", Map.of("hotelId", fx.hotelId().toString()), token);
+		assertThat(inventory.get("errors")).isNull();
+		List<Map<String, Object>> roomTypes = (List<Map<String, Object>>) ((Map<String, Object>) (
+				(Map<String, Object>) inventory.get("data")).get("adminHotel")).get("roomTypes");
+		assertThat(((Number) roomTypes.get(0).get("totalInventory")).intValue()).isEqualTo(3);
 
-		Map<String, Object> raised = post("""
-				mutation($id: ID!, $input: AdminRoomTypeInput!) {
-				  updateRoomType(id: $id, input: $input) { id }
+		// a hand-set number that disagrees with the physical room count is rejected
+		Map<String, Object> mismatched = rest("PUT",
+				"/api/v1/admin/room-types/" + fx.roomType().getId(),
+				Map.of("totalInventory", 2), token);
+		assertThat(restCode(mismatched)).isEqualTo("VALIDATION");
+
+		// adding a physical room raises the derived inventory to 4
+		jdbc.update("INSERT INTO rooms (id, hotel_id, room_type_id, room_number, floor, status,"
+				+ " housekeeping_status, maintenance_status, created_at, updated_at) "
+				+ "VALUES (gen_random_uuid(), ?, ?, '901', '9', 'active', 'clean', 'ok', now(), now())",
+				fx.hotelId(), fx.roomType().getId());
+		Map<String, Object> raised = rest("PUT",
+				"/api/v1/admin/room-types/" + fx.roomType().getId(),
+				Map.of("totalInventory", 4), token);
+		assertThat(raised.get("__status")).isEqualTo(200);
+
+		Map<String, Object> after = post("""
+				query($hotelId: ID!) {
+				  adminHotel(hotelId: $hotelId) { roomTypes { totalInventory } }
 				}
-				""", Map.of("id", fx.roomType().getId().toString(),
-						"input", Map.of("totalInventory", 10)), token);
-		assertThat(raised.get("errors")).isNull();
+				""", Map.of("hotelId", fx.hotelId().toString()), token);
+		List<Map<String, Object>> afterTypes = (List<Map<String, Object>>) ((Map<String, Object>) (
+				(Map<String, Object>) after.get("data")).get("adminHotel")).get("roomTypes");
+		assertThat(((Number) afterTypes.get(0).get("totalInventory")).intValue()).isEqualTo(4);
 	}
 
 	@Test
@@ -266,51 +324,34 @@ class AdminGraphqlIntegrationTest {
 				""".formatted(fx.hotelId()), null, outsider);
 		assertThat(extensionsCode(read)).isEqualTo("FORBIDDEN");
 
-		Map<String, Object> write = post("""
-				mutation { updateHotel(id: "%s", input: { name: "Hacked" }) { id } }
-				""".formatted(fx.hotelId()), null, outsider);
-		assertThat(extensionsCode(write)).isEqualTo("FORBIDDEN");
+		Map<String, Object> write = rest("PUT", "/api/v1/admin/hotels/" + fx.hotelId(),
+				Map.of("name", "Hacked"), outsider);
+		assertThat(restCode(write)).isEqualTo("FORBIDDEN");
 	}
 
 	@Test
 	void hotelCrudRoundTrip() throws Exception {
 		String token = superAdminToken(uid(20));
-		Map<String, Object> created = post("""
-				mutation($input: AdminHotelInput!) {
-				  createHotel(input: $input) { id name city defaultCurrency }
-				}
-				""", Map.of("input", Map.of(
-						"name", "Riad Atlas " + System.nanoTime(),
-						"city", "Fes", "defaultCurrency", TestFixtures.CURRENCY,
-						"status", "draft")), token);
-		assertThat(created.get("errors")).isNull();
-		Map<String, Object> hotel = (Map<String, Object>) ((Map<String, Object>) created.get("data"))
-				.get("createHotel");
-		String id = (String) hotel.get("id");
+		Map<String, Object> created = rest("POST", "/api/v1/admin/hotels", Map.of(
+				"name", "Riad Atlas " + System.nanoTime(),
+				"city", "Fes", "defaultCurrency", TestFixtures.CURRENCY,
+				"status", "draft"), token);
+		assertThat(created.get("__status")).isEqualTo(201);
+		String id = (String) created.get("id");
 
-		Map<String, Object> updated = post("""
-				mutation($id: ID!, $input: AdminHotelInput!) {
-				  updateHotel(id: $id, input: $input) { name status }
-				}
-				""", Map.of("id", id, "input", Map.of("name", "Riad Atlas Grand",
-						"status", "active")), token);
-		assertThat(updated.get("errors")).isNull();
-		Map<String, Object> updatedHotel = (Map<String, Object>) ((Map<String, Object>) updated
-				.get("data")).get("updateHotel");
-		assertThat(updatedHotel.get("name")).isEqualTo("Riad Atlas Grand");
-		assertThat(updatedHotel.get("status")).isEqualTo("active");
+		Map<String, Object> updated = rest("PUT", "/api/v1/admin/hotels/" + id,
+				Map.of("name", "Riad Atlas Grand", "status", "active"), token);
+		assertThat(updated.get("__status")).isEqualTo(200);
+		assertThat(updated.get("name")).isEqualTo("Riad Atlas Grand");
+		assertThat(updated.get("status")).isEqualTo("active");
 	}
 
 	@Test
 	void createHotelRequiresSuperAdmin() throws Exception {
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
-		Map<String, Object> body = post("""
-				mutation($input: AdminHotelInput!) {
-				  createHotel(input: $input) { id }
-				}
-				""", Map.of("input", Map.of("name", "Nope")), staffToken(uid(21),
-						List.of(fx.hotelId())));
-		assertThat(extensionsCode(body)).isEqualTo("FORBIDDEN");
+		Map<String, Object> body = rest("POST", "/api/v1/admin/hotels",
+				Map.of("name", "Nope"), staffToken(uid(21), List.of(fx.hotelId())));
+		assertThat(restCode(body)).isEqualTo("FORBIDDEN");
 	}
 
 	@Test
@@ -318,41 +359,27 @@ class AdminGraphqlIntegrationTest {
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
 		String token = staffToken(uid(30), List.of(fx.hotelId()));
 
-		Map<String, Object> created = post("""
-				mutation($hotelId: ID!, $input: AdminRoomTypeInput!) {
-				  createRoomType(hotelId: $hotelId, input: $input) { id name maxAdults }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "input", Map.of(
-						"name", "Junior Suite", "maxAdults", 3, "viewType", "Garden")), token);
-		assertThat(created.get("errors")).isNull();
-		String rtId = (String) ((Map<String, Object>) ((Map<String, Object>) created.get("data"))
-				.get("createRoomType")).get("id");
+		Map<String, Object> created = rest("POST",
+				"/api/v1/admin/hotels/" + fx.hotelId() + "/room-types",
+				Map.of("name", "Junior Suite", "maxAdults", 3, "viewType", "Garden"), token);
+		assertThat(created.get("__status")).isEqualTo(201);
+		String rtId = (String) created.get("id");
 
-		Map<String, Object> room = post("""
-				mutation($hotelId: ID!, $input: AdminRoomInput!) {
-				  createRoom(hotelId: $hotelId, input: $input) { id roomNumber status }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "input", Map.of(
-						"roomTypeId", rtId, "roomNumber", "201", "floor", "2")), token);
-		assertThat(room.get("errors")).isNull();
-		String roomId = (String) ((Map<String, Object>) ((Map<String, Object>) room.get("data"))
-				.get("createRoom")).get("id");
+		Map<String, Object> room = rest("POST",
+				"/api/v1/admin/hotels/" + fx.hotelId() + "/rooms",
+				Map.of("roomTypeId", rtId, "roomNumber", "201", "floor", "2"), token);
+		assertThat(room.get("__status")).isEqualTo(201);
+		String roomId = (String) room.get("id");
 
-		Map<String, Object> dup = post("""
-				mutation($hotelId: ID!, $input: AdminRoomInput!) {
-				  createRoom(hotelId: $hotelId, input: $input) { id }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "input", Map.of(
-						"roomTypeId", rtId, "roomNumber", "201")), token);
-		assertThat(extensionsCode(dup)).isEqualTo("CONFLICT");
+		Map<String, Object> dup = rest("POST",
+				"/api/v1/admin/hotels/" + fx.hotelId() + "/rooms",
+				Map.of("roomTypeId", rtId, "roomNumber", "201"), token);
+		assertThat(restCode(dup)).isEqualTo("CONFLICT");
 
-		Map<String, Object> updated = post("""
-				mutation($id: ID!, $input: AdminRoomInput!) {
-				  updateRoom(id: $id, input: $input) { housekeepingStatus }
-				}
-				""", Map.of("id", roomId, "input", Map.of("roomTypeId", rtId,
-						"roomNumber", "201", "housekeepingStatus", "dirty")), token);
-		assertThat(updated.get("errors")).isNull();
+		Map<String, Object> updated = rest("PUT", "/api/v1/admin/rooms/" + roomId,
+				Map.of("roomTypeId", rtId, "roomNumber", "201", "housekeepingStatus", "dirty"),
+				token);
+		assertThat(updated.get("__status")).isEqualTo(200);
 
 		Map<String, Object> workspace = post("""
 				query($hotelId: ID!) {
@@ -382,32 +409,20 @@ class AdminGraphqlIntegrationTest {
 		a2 = amenityRepository.save(a2);
 		String token = staffToken(uid(31), List.of(fx.hotelId()));
 
-		Map<String, Object> setAmenities = post("""
-				mutation($hotelId: ID!, $ids: [ID!]!) {
-				  setHotelAmenities(hotelId: $hotelId, amenityIds: $ids) { name }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(),
-				"ids", List.of(a1.getId().toString(), a2.getId().toString())), token);
-		assertThat(setAmenities.get("errors")).isNull();
-		assertThat((List<?>) ((Map<String, Object>) setAmenities.get("data"))
-				.get("setHotelAmenities")).hasSize(2);
+		List<Map<String, Object>> setAmenities = restList("PUT",
+				"/api/v1/admin/hotels/" + fx.hotelId() + "/amenities",
+				List.of(a1.getId().toString(), a2.getId().toString()), token);
+		assertThat(setAmenities).hasSize(2);
 
-		Map<String, Object> setMedia = post("""
-				mutation($hotelId: ID!, $media: [MediaInput!]!) {
-				  setHotelMedia(hotelId: $hotelId, media: $media) { url isPrimary }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "media", List.of(
+		restList("PUT", "/api/v1/admin/hotels/" + fx.hotelId() + "/media",
+				List.of(
 						Map.of("url", "https://example.com/a.jpg", "isPrimary", true),
-						Map.of("url", "https://example.com/b.jpg"))), token);
-		assertThat(setMedia.get("errors")).isNull();
+						Map.of("url", "https://example.com/b.jpg")), token);
 
-		Map<String, Object> replaced = post("""
-				mutation($hotelId: ID!, $media: [MediaInput!]!) {
-				  setHotelMedia(hotelId: $hotelId, media: $media) { url }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "media", List.of(
-						Map.of("url", "https://example.com/c.jpg", "isPrimary", true))), token);
-		assertThat(replaced.get("errors")).isNull();
+		List<Map<String, Object>> replaced = restList("PUT",
+				"/api/v1/admin/hotels/" + fx.hotelId() + "/media",
+				List.of(Map.of("url", "https://example.com/c.jpg", "isPrimary", true)), token);
+		assertThat(replaced).hasSize(1);
 
 		Map<String, Object> workspace = post("""
 				query($hotelId: ID!) {
@@ -426,26 +441,19 @@ class AdminGraphqlIntegrationTest {
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
 		String token = staffToken(uid(32), List.of(fx.hotelId()));
 
-		Map<String, Object> setPolicies = post("""
-				mutation($hotelId: ID!, $policies: [HotelPolicyInput!]!) {
-				  setHotelPolicies(hotelId: $hotelId, policies: $policies) { name value icon sortOrder }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "policies", List.of(
+		List<Map<String, Object>> setPolicies = restList("PUT",
+				"/api/v1/admin/hotels/" + fx.hotelId() + "/policies",
+				List.of(
 						Map.of("name", "Check-in", "value", "From 15:00", "icon", "clock", "sortOrder", 0),
-						Map.of("name", "Pets", "value", "Not allowed", "icon", "paw", "sortOrder", 1))),
+						Map.of("name", "Pets", "value", "Not allowed", "icon", "paw", "sortOrder", 1)),
 				token);
-		assertThat(setPolicies.get("errors")).isNull();
-		assertThat((List<?>) ((Map<String, Object>) setPolicies.get("data"))
-				.get("setHotelPolicies")).hasSize(2);
+		assertThat(setPolicies).hasSize(2);
 
 		// A second call replaces the set rather than appending to it.
-		Map<String, Object> replaced = post("""
-				mutation($hotelId: ID!, $policies: [HotelPolicyInput!]!) {
-				  setHotelPolicies(hotelId: $hotelId, policies: $policies) { name }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "policies", List.of(
-						Map.of("name", "Smoking", "value", "No smoking on site"))), token);
-		assertThat(replaced.get("errors")).isNull();
+		List<Map<String, Object>> replaced = restList("PUT",
+				"/api/v1/admin/hotels/" + fx.hotelId() + "/policies",
+				List.of(Map.of("name", "Smoking", "value", "No smoking on site")), token);
+		assertThat(replaced).hasSize(1);
 
 		Map<String, Object> details = post("""
 				query($id: ID!) {
@@ -464,60 +472,40 @@ class AdminGraphqlIntegrationTest {
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
 		String token = staffToken(uid(40), List.of(fx.hotelId()));
 
-		Map<String, Object> created = post("""
-				mutation($hotelId: ID!, $input: AdminRatePlanInput!) {
-				  createRatePlan(hotelId: $hotelId, input: $input) { id code currencyCode }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "input", Map.of(
-						"name", "Non-refundable Advance", "code", "nr-advance",
+		Map<String, Object> created = rest("POST",
+				"/api/v1/admin/hotels/" + fx.hotelId() + "/rate-plans",
+				Map.of("name", "Non-refundable Advance", "code", "nr-advance",
 						"currencyCode", TestFixtures.CURRENCY,
-						"isRefundable", false, "paymentTiming", "prepay_full")), token);
-		assertThat(created.get("errors")).isNull();
-		String planId = (String) ((Map<String, Object>) ((Map<String, Object>) created.get("data"))
-				.get("createRatePlan")).get("id");
+						"isRefundable", false, "paymentTiming", "prepay_full"), token);
+		assertThat(created.get("__status")).isEqualTo(201);
+		String planId = (String) created.get("id");
 
-		Map<String, Object> linked = post("""
-				mutation($roomTypeId: ID!, $ratePlanId: ID!) {
-				  linkRoomTypeRatePlan(roomTypeId: $roomTypeId, ratePlanId: $ratePlanId) {
-				    id roomTypeName prices { priceAmount }
-				  }
-				}
-				""", Map.of("roomTypeId", fx.roomType().getId().toString(), "ratePlanId", planId),
-				token);
-		assertThat(linked.get("errors")).isNull();
-		String linkId = (String) ((Map<String, Object>) ((Map<String, Object>) linked.get("data"))
-				.get("linkRoomTypeRatePlan")).get("id");
+		Map<String, Object> linked = rest("POST", "/api/v1/admin/room-type-rate-plans",
+				Map.of("roomTypeId", fx.roomType().getId().toString(), "ratePlanId", planId), token);
+		assertThat(linked.get("__status")).isEqualTo(200);
+		String linkId = (String) linked.get("id");
 
-		Map<String, Object> priced = post("""
-				mutation($linkId: ID!, $prices: [RatePlanPriceInput!]!) {
-				  setRatePlanPrices(linkId: $linkId, prices: $prices) { validFrom validTo priceAmount }
-				}
-				""", Map.of("linkId", linkId, "prices", List.of(
+		List<Map<String, Object>> priced = restList("PUT",
+				"/api/v1/admin/room-type-rate-plans/" + linkId + "/prices",
+				List.of(
 						Map.of("validFrom", "2026-01-01", "validTo", "2026-06-30",
 								"priceAmount", 850.0),
 						Map.of("validFrom", "2026-07-01", "validTo", "2026-12-31",
-								"priceAmount", 950.0))), token);
-		assertThat(priced.get("errors")).isNull();
-		assertThat((List<?>) ((Map<String, Object>) priced.get("data"))
-				.get("setRatePlanPrices")).hasSize(2);
+								"priceAmount", 950.0)), token);
+		assertThat(priced).hasSize(2);
 
-		Map<String, Object> overlap = post("""
-				mutation($linkId: ID!, $prices: [RatePlanPriceInput!]!) {
-				  setRatePlanPrices(linkId: $linkId, prices: $prices) { id }
-				}
-				""", Map.of("linkId", linkId, "prices", List.of(
+		Map<String, Object> overlap = rest("PUT",
+				"/api/v1/admin/room-type-rate-plans/" + linkId + "/prices",
+				List.of(
 						Map.of("validFrom", "2026-05-01", "validTo", "2026-08-31",
 								"priceAmount", 900.0),
 						Map.of("validFrom", "2026-07-01", "validTo", "2026-10-31",
-								"priceAmount", 910.0))), token);
-		assertThat(extensionsCode(overlap)).isEqualTo("CONFLICT");
+								"priceAmount", 910.0)), token);
+		assertThat(restCode(overlap)).isEqualTo("CONFLICT");
 
-		Map<String, Object> unlinked = post("""
-				mutation($linkId: ID!) { unlinkRoomTypeRatePlan(linkId: $linkId) }
-				""", Map.of("linkId", linkId), token);
-		assertThat(unlinked.get("errors")).isNull();
-		assertThat(((Map<String, Object>) unlinked.get("data")).get("unlinkRoomTypeRatePlan"))
-				.isEqualTo(true);
+		Map<String, Object> unlinked = rest("DELETE",
+				"/api/v1/admin/room-type-rate-plans/" + linkId, null, token);
+		assertThat(unlinked.get("__status")).isEqualTo(200);
 	}
 
 	@Test
@@ -525,39 +513,26 @@ class AdminGraphqlIntegrationTest {
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
 		String token = staffToken(uid(42), List.of(fx.hotelId()));
 
-		Map<String, Object> created = post("""
-				mutation($hotelId: ID!, $input: AdminRatePlanInput!) {
-				  createRatePlan(hotelId: $hotelId, input: $input) { id code mealPlan }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "input", Map.of(
-						"name", "Advance Saver", "code", "adv-saver",
+		Map<String, Object> created = rest("POST",
+				"/api/v1/admin/hotels/" + fx.hotelId() + "/rate-plans",
+				Map.of("name", "Advance Saver", "code", "adv-saver",
 						"currencyCode", TestFixtures.CURRENCY,
-						"isRefundable", false, "paymentTiming", "prepay_full")), token);
-		assertThat(created.get("errors")).isNull();
-		String planId = (String) ((Map<String, Object>) ((Map<String, Object>) created.get("data"))
-				.get("createRatePlan")).get("id");
+						"isRefundable", false, "paymentTiming", "prepay_full"), token);
+		assertThat(created.get("__status")).isEqualTo(201);
+		String planId = (String) created.get("id");
 
-		Map<String, Object> updated = post("""
-				mutation($id: ID!, $input: AdminRatePlanInput!) {
-				  updateRatePlan(id: $id, input: $input) { id name mealPlan isRefundable }
-				}
-				""", Map.of("id", planId, "input", Map.of("name", "Advance Saver Plus",
-						"mealPlan", "hb", "isRefundable", true,
-						"paymentTiming", "pay_at_property")), token);
-		assertThat(updated.get("errors")).isNull();
-		Map<String, Object> plan = (Map<String, Object>) ((Map<String, Object>) updated.get("data"))
-				.get("updateRatePlan");
-		assertThat(plan.get("name")).isEqualTo("Advance Saver Plus");
-		assertThat(plan.get("mealPlan")).isEqualTo("hb");
-		assertThat(plan.get("isRefundable")).isEqualTo(true);
+		Map<String, Object> updated = rest("PUT", "/api/v1/admin/rate-plans/" + planId,
+				Map.of("name", "Advance Saver Plus", "mealPlan", "hb", "isRefundable", true,
+						"paymentTiming", "pay_at_property"), token);
+		assertThat(updated.get("__status")).isEqualTo(200);
+		assertThat(updated.get("name")).isEqualTo("Advance Saver Plus");
+		assertThat(updated.get("mealPlan")).isEqualTo("hb");
+		assertThat(updated.get("refundable")).isEqualTo(true);
 
-		Map<String, Object> outsider = post("""
-				mutation($id: ID!, $input: AdminRatePlanInput!) {
-				  updateRatePlan(id: $id, input: $input) { id }
-				}
-				""", Map.of("id", planId, "input", Map.of("name", "Sneaky")), staffToken(uid(43),
-						List.of(fixtures.newBookableHotel().hotelId())));
-		assertThat(extensionsCode(outsider)).isEqualTo("FORBIDDEN");
+		Map<String, Object> outsider = rest("PUT", "/api/v1/admin/rate-plans/" + planId,
+				Map.of("name", "Sneaky"),
+				staffToken(uid(43), List.of(fixtures.newBookableHotel().hotelId())));
+		assertThat(restCode(outsider)).isEqualTo("FORBIDDEN");
 	}
 
 	@Test
@@ -569,36 +544,22 @@ class AdminGraphqlIntegrationTest {
 		a1 = amenityRepository.save(a1);
 		String token = staffToken(uid(44), List.of(fx.hotelId()));
 
-		Map<String, Object> amenities = post("""
-				mutation($roomTypeId: ID!, $ids: [ID!]!) {
-				  setRoomTypeAmenities(roomTypeId: $roomTypeId, amenityIds: $ids) { name }
-				}
-				""", Map.of("roomTypeId", fx.roomType().getId().toString(),
-				"ids", List.of(a1.getId().toString())), token);
-		assertThat(amenities.get("errors")).isNull();
-		assertThat((List<?>) ((Map<String, Object>) amenities.get("data"))
-				.get("setRoomTypeAmenities")).hasSize(1);
+		List<Map<String, Object>> amenities = restList("PUT",
+				"/api/v1/admin/room-types/" + fx.roomType().getId() + "/amenities",
+				List.of(a1.getId().toString()), token);
+		assertThat(amenities).hasSize(1);
 
-		Map<String, Object> media = post("""
-				mutation($roomTypeId: ID!, $media: [MediaInput!]!) {
-				  setRoomTypeMedia(roomTypeId: $roomTypeId, media: $media) { url isPrimary }
-				}
-				""", Map.of("roomTypeId", fx.roomType().getId().toString(), "media", List.of(
-						Map.of("url", "https://example.com/deluxe.jpg", "isPrimary", true))), token);
-		assertThat(media.get("errors")).isNull();
-		List<Map<String, Object>> mediaList = (List<Map<String, Object>>) ((Map<String, Object>)
-				media.get("data")).get("setRoomTypeMedia");
-		assertThat(mediaList).hasSize(1);
-		assertThat(mediaList.get(0).get("url")).isEqualTo("https://example.com/deluxe.jpg");
+		List<Map<String, Object>> media = restList("PUT",
+				"/api/v1/admin/room-types/" + fx.roomType().getId() + "/media",
+				List.of(Map.of("url", "https://example.com/deluxe.jpg", "isPrimary", true)), token);
+		assertThat(media).hasSize(1);
+		assertThat(media.get(0).get("url")).isEqualTo("https://example.com/deluxe.jpg");
 
-		Map<String, Object> crossed = post("""
-				mutation($roomTypeId: ID!, $ids: [ID!]!) {
-				  setRoomTypeAmenities(roomTypeId: $roomTypeId, amenityIds: $ids) { name }
-				}
-				""", Map.of("roomTypeId", fx.roomType().getId().toString(),
-				"ids", List.of(a1.getId().toString())), staffToken(uid(45),
-						List.of(fixtures.newBookableHotel().hotelId())));
-		assertThat(extensionsCode(crossed)).isEqualTo("FORBIDDEN");
+		Map<String, Object> crossed = rest("PUT",
+				"/api/v1/admin/room-types/" + fx.roomType().getId() + "/amenities",
+				List.of(a1.getId().toString()),
+				staffToken(uid(45), List.of(fixtures.newBookableHotel().hotelId())));
+		assertThat(restCode(crossed)).isEqualTo("FORBIDDEN");
 	}
 
 	@Test
@@ -607,40 +568,29 @@ class AdminGraphqlIntegrationTest {
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
 		String hotelId = fx.hotelId().toString();
 
-		Map<String, Object> created = post("""
-				mutation($input: AdminCreateUserInput!) {
-				  createUser(input: $input) { id roles { id roleName hotelId } }
-				}
-				""", Map.of("input", Map.of("firstName", "Yassine", "lastName", "Amrani",
+		Map<String, Object> created = rest("POST", "/api/v1/admin/users",
+				Map.of("firstName", "Yassine", "lastName", "Amrani",
 						"email", "yassine-" + System.nanoTime() + "@example.com",
 						"password", "secret123", "roleName", "reservation_agent",
-						"hotelId", hotelId)), root);
-		assertThat(created.get("errors")).isNull();
-		Map<String, Object> user = (Map<String, Object>) ((Map<String, Object>) created.get("data"))
-				.get("createUser");
-		String userId = (String) user.get("id");
-		List<Map<String, Object>> roles = (List<Map<String, Object>>) user.get("roles");
+						"hotelId", hotelId), root);
+		assertThat(created.get("__status")).isEqualTo(201);
+		String userId = (String) created.get("id");
+		List<Map<String, Object>> roles = (List<Map<String, Object>>) created.get("roles");
 		assertThat(roles).hasSize(1);
 		String userRoleId = (String) roles.get(0).get("id");
 
-		Map<String, Object> revoked = post("""
-				mutation($userRoleId: ID!) { revokeRole(userRoleId: $userRoleId) { id roles { roleName } } }
-				""", Map.of("userRoleId", userRoleId), root);
-		assertThat(revoked.get("errors")).isNull();
-		List<Map<String, Object>> remaining = (List<Map<String, Object>>) ((Map<String, Object>)
-				((Map<String, Object>) revoked.get("data")).get("revokeRole")).get("roles");
-		assertThat(remaining).isEmpty();
+		Map<String, Object> revoked = rest("DELETE", "/api/v1/admin/users/roles/" + userRoleId,
+				null, root);
+		assertThat(revoked.get("__status")).isEqualTo(200);
+		assertThat((List<?>) revoked.get("roles")).isEmpty();
 
-		Map<String, Object> gone = post("""
-				mutation($userRoleId: ID!) { revokeRole(userRoleId: $userRoleId) { id } }
-				""", Map.of("userRoleId", userRoleId), root);
-		assertThat(extensionsCode(gone)).isEqualTo("NOT_FOUND");
+		Map<String, Object> gone = rest("DELETE", "/api/v1/admin/users/roles/" + userRoleId,
+				null, root);
+		assertThat(restCode(gone)).isEqualTo("NOT_FOUND");
 
-		Map<String, Object> forbidden = post("""
-				mutation($userRoleId: ID!) { revokeRole(userRoleId: $userRoleId) { id } }
-				""", Map.of("userRoleId", userRoleId), staffToken(uid(103),
-						List.of(fx.hotelId())));
-		assertThat(extensionsCode(forbidden)).isEqualTo("FORBIDDEN");
+		Map<String, Object> forbidden = rest("DELETE", "/api/v1/admin/users/roles/" + userRoleId,
+				null, staffToken(uid(103), List.of(fx.hotelId())));
+		assertThat(restCode(forbidden)).isEqualTo("FORBIDDEN");
 	}
 
 	@Test
@@ -651,16 +601,11 @@ class AdminGraphqlIntegrationTest {
 		String to = LocalDate.now().plusDays(5).toString();
 
 		// block 2 units out of order for 3 nights via one range input
-		Map<String, Object> blocked = post("""
-				mutation($hotelId: ID!, $input: AvailabilityRangeInput!) {
-				  updateAvailabilityRange(hotelId: $hotelId, input: $input) { stayDate outOfOrder }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "input", Map.of(
-						"roomTypeId", fx.roomType().getId().toString(),
-						"fromDate", from, "toDate", to, "outOfOrder", 2)), token);
-		assertThat(blocked.get("errors")).isNull();
-		assertThat((List<?>) ((Map<String, Object>) blocked.get("data"))
-				.get("updateAvailabilityRange")).hasSize(3);
+		List<Map<String, Object>> blocked = restList("PUT",
+				"/api/v1/admin/availability/hotels/" + fx.hotelId(),
+				Map.of("roomTypeId", fx.roomType().getId().toString(),
+						"fromDate", from, "toDate", to, "outOfOrder", 2), token);
+		assertThat(blocked).hasSize(3);
 
 		// 2 units blocked out of 3: a 3-room request is sold out during the block
 		Map<String, Object> check = post("""
@@ -675,26 +620,18 @@ class AdminGraphqlIntegrationTest {
 		assertThat(rows.get(0).get("status")).isEqualTo("soldout");
 
 		// capacity still enforced: blocking all 3 + more than capacity conflicts
-		Map<String, Object> capacity = post("""
-				mutation($hotelId: ID!, $input: AvailabilityRangeInput!) {
-				  updateAvailabilityRange(hotelId: $hotelId, input: $input) { id }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "input", Map.of(
-						"roomTypeId", fx.roomType().getId().toString(),
-						"fromDate", from, "toDate", to, "blocked", 5)), token);
-		assertThat(extensionsCode(capacity)).isEqualTo("CONFLICT");
+		Map<String, Object> capacity = rest("PUT",
+				"/api/v1/admin/availability/hotels/" + fx.hotelId(),
+				Map.of("roomTypeId", fx.roomType().getId().toString(),
+						"fromDate", from, "toDate", to, "blocked", 5), token);
+		assertThat(restCode(capacity)).isEqualTo("CONFLICT");
 
 		// unblock: rows carry no information anymore and are removed
-		Map<String, Object> unblocked = post("""
-				mutation($hotelId: ID!, $input: AvailabilityRangeInput!) {
-				  updateAvailabilityRange(hotelId: $hotelId, input: $input) { stayDate }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "input", Map.of(
-						"roomTypeId", fx.roomType().getId().toString(),
-						"fromDate", from, "toDate", to, "outOfOrder", 0)), token);
-		assertThat(unblocked.get("errors")).isNull();
-		assertThat((List<?>) ((Map<String, Object>) unblocked.get("data"))
-				.get("updateAvailabilityRange")).isEmpty();
+		List<Map<String, Object>> unblocked = restList("PUT",
+				"/api/v1/admin/availability/hotels/" + fx.hotelId(),
+				Map.of("roomTypeId", fx.roomType().getId().toString(),
+						"fromDate", from, "toDate", to, "outOfOrder", 0), token);
+		assertThat(unblocked).isEmpty();
 	}
 
 	@Test
@@ -702,28 +639,30 @@ class AdminGraphqlIntegrationTest {
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
 		String token = staffToken(uid(50), List.of(fx.hotelId()));
 		String date = LocalDate.now().plusDays(2).toString();
+		// one more physical room → derived inventory 4 (3 fixture rooms + 902)
+		jdbc.update("INSERT INTO rooms (id, hotel_id, room_type_id, room_number, floor, status,"
+				+ " housekeeping_status, maintenance_status, created_at, updated_at) "
+				+ "VALUES (gen_random_uuid(), ?, ?, '902', '9', 'active', 'clean', 'ok', now(), now())",
+				fx.hotelId(), fx.roomType().getId());
 
-		Map<String, Object> updated = post("""
-				mutation($hotelId: ID!, $rows: [AvailabilityUpdateInput!]!) {
-				  updateAvailability(hotelId: $hotelId, rows: $rows) { totalInventory outOfOrder }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "rows", List.of(Map.of(
-						"roomTypeId", fx.roomType().getId().toString(),
-						"stayDate", date, "totalInventory", 5, "outOfOrder", 1))), token);
-		assertThat(updated.get("errors")).isNull();
-		Map<String, Object> row = (Map<String, Object>) ((List<?>) ((Map<String, Object>) updated
-				.get("data")).get("updateAvailability")).get(0);
-		assertThat(((Number) row.get("totalInventory")).intValue()).isEqualTo(5);
-		assertThat(((Number) row.get("outOfOrder")).intValue()).isEqualTo(1);
+		List<Map<String, Object>> updated = restList("PUT",
+				"/api/v1/admin/availability/hotels/" + fx.hotelId(),
+				Map.of("roomTypeId", fx.roomType().getId().toString(),
+						"fromDate", date, "toDate", date, "outOfOrder", 1), token);
+		assertThat(updated).hasSize(1);
 
-		Map<String, Object> capacity = post("""
-				mutation($hotelId: ID!, $rows: [AvailabilityUpdateInput!]!) {
-				  updateAvailability(hotelId: $hotelId, rows: $rows) { id }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "rows", List.of(Map.of(
-						"roomTypeId", fx.roomType().getId().toString(),
-						"stayDate", date, "blocked", 20))), token);
-		assertThat(extensionsCode(capacity)).isEqualTo("CONFLICT");
+		// totalInventory is derived from physical rooms — a hand-set number is rejected
+		Map<String, Object> inventoryWrite = rest("PUT",
+				"/api/v1/admin/availability/hotels/" + fx.hotelId(),
+				Map.of("roomTypeId", fx.roomType().getId().toString(),
+						"fromDate", date, "toDate", date, "totalInventory", 5), token);
+		assertThat(restCode(inventoryWrite)).isEqualTo("VALIDATION");
+
+		Map<String, Object> capacity = rest("PUT",
+				"/api/v1/admin/availability/hotels/" + fx.hotelId(),
+				Map.of("roomTypeId", fx.roomType().getId().toString(),
+						"fromDate", date, "toDate", date, "blocked", 20), token);
+		assertThat(restCode(capacity)).isEqualTo("CONFLICT");
 
 		Map<String, Object> read = post("""
 				query($hotelId: ID!) {
@@ -734,7 +673,7 @@ class AdminGraphqlIntegrationTest {
 				(Map<String, Object>) read.get("data")).get("adminHotel")).get("availability");
 		Map<String, Object> row2 = rows.stream()
 				.filter(r -> date.equals(r.get("stayDate"))).findFirst().orElseThrow();
-		assertThat(((Number) row2.get("totalInventory")).intValue()).isEqualTo(5);
+		assertThat(((Number) row2.get("totalInventory")).intValue()).isEqualTo(4);
 		assertThat(((Number) row2.get("outOfOrder")).intValue()).isEqualTo(1);
 	}
 
@@ -745,34 +684,24 @@ class AdminGraphqlIntegrationTest {
 		LocalDate checkIn = LocalDate.now().plusDays(7);
 
 		Map<String, Object> created = book(fx, checkIn, "bo-" + System.nanoTime());
-		String reservationId = (String) ((Map<String, Object>) created.get("reservation"))
-				.get("id");
-		String reference = (String) ((Map<String, Object>) created.get("reservation"))
-				.get("reference");
+		String reservationId = (String) created.get("id");
+		String reference = (String) created.get("reference");
 
-		Map<String, Object> paid = post("""
-				mutation($input: CreatePaymentInput!) {
-				  createPayment(input: $input) { id status }
-				}
-				""", Map.of("input", Map.of("reservationId", reservationId, "amount", 3360.0,
+		Map<String, Object> paid = rest("POST", "/api/v1/payments",
+				Map.of("reservationId", reservationId, "amount", 3360.0,
 						"currencyCode", TestFixtures.CURRENCY, "provider", "mock",
-						"idempotencyKey", "bo-pay-" + System.nanoTime())), token);
-		assertThat(paid.get("errors")).isNull();
-		String paymentId = (String) ((Map<String, Object>) ((Map<String, Object>) paid.get("data"))
-				.get("createPayment")).get("id");
+						"idempotencyKey", "bo-pay-" + System.nanoTime()), token);
+		assertThat(paid.get("__status")).isEqualTo(201);
+		String paymentId = (String) paid.get("id");
 
-		Map<String, Object> captured = post("""
-				mutation($input: CapturePaymentInput!) { capturePayment(input: $input) { status } }
-				""", Map.of("input", Map.of("paymentId", paymentId)), token);
-		assertThat(captured.get("errors")).isNull();
+		Map<String, Object> captured = rest("POST", "/api/v1/payments/" + paymentId + "/capture",
+				Map.of(), token);
+		assertThat(captured.get("__status")).isEqualTo(200);
 
-		Map<String, Object> invoiced = post("""
-				mutation($input: ReservationLookupInput!) {
-				  issueInvoice(input: $input) { invoiceNumber }
-				}
-				""", Map.of("input", Map.of("reference", reference,
-						"email", "graphql@example.com")), null);
-		assertThat(invoiced.get("errors")).isNull();
+		Map<String, Object> invoiced = rest("POST",
+				"/api/v1/reservations/" + reference + "/invoice",
+				Map.of("email", "graphql@example.com"), null);
+		assertThat(invoiced.get("__status")).isEqualTo(200);
 
 		Map<String, Object> guests = post("""
 				query($hotelId: ID!) {
@@ -826,38 +755,25 @@ class AdminGraphqlIntegrationTest {
 		String token = staffToken(uid(70), List.of(fx.hotelId()));
 		String outsider = staffToken(uid(71), List.of(other.hotelId()));
 
-		Map<String, Object> created = post("""
-				mutation($hotelId: ID!, $input: AdminPromotionInput!) {
-				  createPromotion(hotelId: $hotelId, input: $input) { id code status }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "input", Map.of(
-						"code", "SPRING26", "name", "Spring Break",
-						"discountType", "percentage", "discountValue", 15.0)), token);
-		assertThat(created.get("errors")).isNull();
-		String promoId = (String) ((Map<String, Object>) ((Map<String, Object>) created.get("data"))
-				.get("createPromotion")).get("id");
+		Map<String, Object> created = rest("POST",
+				"/api/v1/admin/promotions?hotelId=" + fx.hotelId(),
+				Map.of("code", "SPRING26", "name", "Spring Break",
+						"discountType", "percentage", "discountValue", 15.0), token);
+		assertThat(created.get("__status")).isEqualTo(201);
+		String promoId = (String) created.get("id");
 
-		Map<String, Object> crossed = post("""
-				mutation($id: ID!, $input: AdminPromotionInput!) {
-				  updatePromotion(id: $id, input: $input) { id }
-				}
-				""", Map.of("id", promoId, "input", Map.of("name", "Sneaky")), outsider);
-		assertThat(extensionsCode(crossed)).isEqualTo("FORBIDDEN");
+		Map<String, Object> crossed = rest("PUT", "/api/v1/admin/promotions/" + promoId,
+				Map.of("name", "Sneaky"), outsider);
+		assertThat(restCode(crossed)).isEqualTo("FORBIDDEN");
 
-		Map<String, Object> status = post("""
-				mutation($id: ID!, $status: PromotionStatus!) {
-				  setPromotionStatus(id: $id, status: $status) { status }
-				}
-				""", Map.of("id", promoId, "status", "inactive"), token);
-		assertThat(status.get("errors")).isNull();
+		Map<String, Object> status = rest("PUT", "/api/v1/admin/promotions/" + promoId + "/status",
+				Map.of("status", "inactive"), token);
+		assertThat(status.get("__status")).isEqualTo(200);
 
-		Map<String, Object> platformByStaff = post("""
-				mutation($input: AdminPromotionInput!) {
-				  createPromotion(input: $input) { id }
-				}
-				""", Map.of("input", Map.of("code", "GLOBALX", "name", "Global",
-						"discountType", "fixed_amount", "discountValue", 50.0)), token);
-		assertThat(extensionsCode(platformByStaff)).isEqualTo("FORBIDDEN");
+		Map<String, Object> platformByStaff = rest("POST", "/api/v1/admin/promotions",
+				Map.of("code", "GLOBALX", "name", "Global",
+						"discountType", "fixed_amount", "discountValue", 50.0), token);
+		assertThat(restCode(platformByStaff)).isEqualTo("FORBIDDEN");
 
 		Map<String, Object> list = post("""
 				query($hotelId: ID!) {
@@ -890,19 +806,12 @@ class AdminGraphqlIntegrationTest {
 		assertThat(((Number) page.get("total")).intValue()).isEqualTo(1);
 		String reviewId = (String) ((List<Map<String, Object>>) page.get("items")).get(0).get("id");
 
-		Map<String, Object> moderated = post("""
-				mutation($id: ID!, $status: ReviewModerationStatus!, $response: String) {
-				  moderateReview(id: $id, status: $status, response: $response) {
-				    moderationStatus responseText
-				  }
-				}
-				""", Map.of("id", reviewId, "status", "approved",
-						"response", "Thank you!"), token);
-		assertThat(moderated.get("errors")).isNull();
-		Map<String, Object> review = (Map<String, Object>) ((Map<String, Object>) moderated
-				.get("data")).get("moderateReview");
-		assertThat(review.get("moderationStatus")).isEqualTo("approved");
-		assertThat(review.get("responseText")).isEqualTo("Thank you!");
+		Map<String, Object> moderated = rest("POST",
+				"/api/v1/admin/reviews/" + reviewId + "/moderation",
+				Map.of("status", "approved", "response", "Thank you!"), token);
+		assertThat(moderated.get("__status")).isEqualTo(200);
+		assertThat(moderated.get("moderationStatus")).isEqualTo("approved");
+		assertThat(moderated.get("responseText")).isEqualTo("Thank you!");
 	}
 
 	@Test
@@ -912,30 +821,22 @@ class AdminGraphqlIntegrationTest {
 		String owner = registerOwner(email);
 		Map<String, Object> created = bookWithEmail(fx, LocalDate.now().plusDays(7),
 				"staff-cancel-" + System.nanoTime(), email, owner);
-		String reservationId = (String) ((Map<String, Object>) created.get("reservation")).get("id");
+		String reservationId = (String) created.get("id");
 
 		// owner-only self-service: outsider staff of another hotel is forbidden
 		TestFixtures.HotelFixture other = fixtures.newBookableHotel();
-		Map<String, Object> forbidden = post("""
-				mutation($id: ID!) {
-				  adminCancelReservation(reservationId: $id) { status }
-				}
-				""", Map.of("id", reservationId), staffToken(uid(91), List.of(other.hotelId())));
-		assertThat(extensionsCode(forbidden)).isEqualTo("FORBIDDEN");
+		Map<String, Object> forbidden = rest("POST",
+				"/api/v1/admin/reservations/" + reservationId + "/cancel", Map.of(),
+				staffToken(uid(91), List.of(other.hotelId())));
+		assertThat(restCode(forbidden)).isEqualTo("FORBIDDEN");
 
-		Map<String, Object> cancelled = post("""
-				mutation($id: ID!, $note: String) {
-				  adminCancelReservation(reservationId: $id, reasonNote: $note) {
-				    status cancellation { reasonNote refundAmount }
-				  }
-				}
-				""", Map.of("id", reservationId, "note", "Guest requested"), staffToken(uid(90),
-						List.of(fx.hotelId())));
-		assertThat(cancelled.get("errors")).isNull();
-		Map<String, Object> reservation = (Map<String, Object>) ((Map<String, Object>) cancelled
-				.get("data")).get("adminCancelReservation");
-		assertThat(reservation.get("status")).isEqualTo("cancelled");
-		assertThat(((Map<String, Object>) reservation.get("cancellation")).get("reasonNote"))
+		Map<String, Object> cancelled = rest("POST",
+				"/api/v1/admin/reservations/" + reservationId + "/cancel",
+				Map.of("reasonNote", "Guest requested"),
+				staffToken(uid(90), List.of(fx.hotelId())));
+		assertThat(cancelled.get("__status")).isEqualTo(200);
+		assertThat(cancelled.get("status")).isEqualTo("cancelled");
+		assertThat(((Map<String, Object>) cancelled.get("cancellation")).get("reasonNote"))
 				.isEqualTo("Guest requested");
 	}
 
@@ -945,19 +846,14 @@ class AdminGraphqlIntegrationTest {
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
 		String hotelId = fx.hotelId().toString();
 
-		Map<String, Object> created = post("""
-				mutation($input: AdminCreateUserInput!) {
-				  createUser(input: $input) { id email roles { roleName hotelId } }
-				}
-				""", Map.of("input", Map.of("firstName", "Sara", "lastName", "Alaoui",
+		Map<String, Object> created = rest("POST", "/api/v1/admin/users",
+				Map.of("firstName", "Sara", "lastName", "Alaoui",
 						"email", "sara-" + System.nanoTime() + "@example.com",
 						"password", "secret123", "roleName", "reservation_agent",
-						"hotelId", hotelId)), root);
-		assertThat(created.get("errors")).isNull();
-		Map<String, Object> user = (Map<String, Object>) ((Map<String, Object>) created.get("data"))
-				.get("createUser");
-		String userId = (String) user.get("id");
-		List<Map<String, Object>> roles = (List<Map<String, Object>>) user.get("roles");
+						"hotelId", hotelId), root);
+		assertThat(created.get("__status")).isEqualTo(201);
+		String userId = (String) created.get("id");
+		List<Map<String, Object>> roles = (List<Map<String, Object>>) created.get("roles");
 		assertThat(roles.get(0).get("roleName")).isEqualTo("reservation_agent");
 		assertThat(roles.get(0).get("hotelId")).isEqualTo(hotelId);
 
@@ -978,15 +874,9 @@ class AdminGraphqlIntegrationTest {
 				.filter(r -> "reservation_agent".equals(r.get("name"))).findFirst().orElseThrow();
 		assertThat(agent.get("hotelScoped")).isEqualTo(true);
 
-		Map<String, Object> assigned = post("""
-				mutation($userId: ID!, $roleName: String!, $hotelId: ID) {
-				  assignRole(userId: $userId, roleName: $roleName, hotelId: $hotelId) {
-				    roles { roleName hotelId }
-				  }
-				}
-				""", Map.of("userId", userId, "roleName", "reception_staff", "hotelId", hotelId),
-				root);
-		assertThat(assigned.get("errors")).isNull();
+		Map<String, Object> assigned = rest("POST", "/api/v1/admin/users/" + userId + "/roles",
+				Map.of("roleName", "reception_staff", "hotelId", hotelId), root);
+		assertThat(assigned.get("__status")).isEqualTo(200);
 
 		Map<String, Object> forbidden = post("""
 				query { adminUsers { email } }
@@ -998,12 +888,10 @@ class AdminGraphqlIntegrationTest {
 	void auditLogRecordsAdminActions() throws Exception {
 		String root = superAdminToken(uid(110));
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
-		post("""
-				mutation($hotelId: ID!, $input: AdminRoomTypeInput!) {
-				  createRoomType(hotelId: $hotelId, input: $input) { id }
-				}
-				""", Map.of("hotelId", fx.hotelId().toString(), "input", Map.of(
-						"name", "Audited Suite")), staffToken(uid(111), List.of(fx.hotelId())));
+		Map<String, Object> created = rest("POST",
+				"/api/v1/admin/hotels/" + fx.hotelId() + "/room-types",
+				Map.of("name", "Audited Suite"), staffToken(uid(111), List.of(fx.hotelId())));
+		assertThat(created.get("__status")).isEqualTo(201);
 
 		Map<String, Object> logs = post("""
 				query { adminAuditLogs { total items { action actorEmail hotelId } } }
@@ -1040,37 +928,55 @@ class AdminGraphqlIntegrationTest {
 
 	private Map<String, Object> bookWithEmail(TestFixtures.HotelFixture fx, LocalDate checkIn,
 			String key, String email, String token) throws Exception {
-		Map<String, Object> created = post("""
-				mutation($input: CreateReservationInput!) {
-				  createReservation(input: $input) {
-				    created
-				    reservation { id reference status totalAmount }
-				  }
-				}
-				""", Map.of("input", Map.of(
-						"hotelId", fx.hotelId().toString(),
-						"checkInDate", checkIn.toString(),
-						"checkOutDate", checkIn.plusDays(3).toString(),
-						"adults", 2, "children", 0,
-						"currencyCode", TestFixtures.CURRENCY,
-						"guest", Map.of("firstName", "Graph", "lastName", "Ql", "email", email),
-						"rooms", List.of(Map.of("roomTypeId",
-								fx.roomType().getId().toString(), "ratePlanId",
-								fx.ratePlan().getId().toString())),
-						"idempotencyKey", key)), token);
-		assertThat(created.get("errors")).isNull();
-		return (Map<String, Object>) ((Map<String, Object>) created.get("data"))
-				.get("createReservation");
+		Map<String, Object> created = restWithHeaders("POST", "/api/v1/reservations", Map.of(
+				"hotelId", fx.hotelId().toString(),
+				"checkInDate", checkIn.toString(),
+				"checkOutDate", checkIn.plusDays(3).toString(),
+				"adults", 2, "children", 0,
+				"currencyCode", TestFixtures.CURRENCY,
+				"guest", Map.of("firstName", "Graph", "lastName", "Ql", "email", email),
+				"rooms", List.of(Map.of("roomTypeId",
+						fx.roomType().getId().toString(), "ratePlanId",
+						fx.ratePlan().getId().toString())),
+				"idempotencyKey", key), token, Map.of("Idempotency-Key", key));
+		assertThat(created.get("__status")).isIn(200, 201);
+		return created;
+	}
+
+	private Map<String, Object> restWithHeaders(String method, String path, Object body,
+			String bearer, Map<String, String> headers) throws Exception {
+		HttpRequest.Builder builder = HttpRequest.newBuilder()
+				.uri(URI.create("http://localhost:" + port + path))
+				.header("Content-Type", "application/json");
+		headers.forEach(builder::header);
+		if (body == null) {
+			builder.method(method, HttpRequest.BodyPublishers.noBody());
+		} else {
+			builder.method(method,
+					HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)));
+		}
+		if (bearer != null) {
+			builder.header("Authorization", "Bearer " + bearer);
+		}
+		HttpResponse<String> response = http.send(builder.build(),
+				HttpResponse.BodyHandlers.ofString());
+		if (response.body().isBlank()) {
+			Map<String, Object> empty = new java.util.HashMap<>();
+			empty.put("__status", response.statusCode());
+			return empty;
+		}
+		Map<String, Object> parsed = objectMapper.readValue(response.body(), Map.class);
+		parsed.put("__status", response.statusCode());
+		return parsed;
 	}
 
 	private String registerOwner(String email) throws Exception {
-		Map<String, Object> body = post("""
-				mutation($input: RegisterInput!) { register(input: $input) { token } }
-				""", Map.of("input", Map.of("firstName", "Zahra", "lastName", "Bennani",
-						"email", email, "password", "secret123")), null);
-		assertThat(body.get("errors")).isNull();
-		return (String) ((Map<String, Object>) ((Map<String, Object>) body.get("data"))
-				.get("register")).get("token");
+		Map<String, Object> body = rest("POST", "/api/v1/auth/register",
+				Map.of("firstName", "Zahra", "lastName", "Bennani",
+						"email", email, "password", "secret123"),
+				null);
+		assertThat(body.get("__status")).isEqualTo(201);
+		return (String) body.get("token");
 	}
 
 	private void seedReview(UUID hotelId, short rating, String comment) {

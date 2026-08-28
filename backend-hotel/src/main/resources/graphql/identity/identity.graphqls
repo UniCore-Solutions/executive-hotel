@@ -4,15 +4,6 @@ extend type Query {
 	adminRoles: [AdminRole!]!
 }
 
-extend type Mutation {
-	login(input: LoginInput!): AuthPayload!
-	register(input: RegisterInput!): AuthPayload!
-	updateMyProfile(input: UpdateProfileInput!): Me!
-	createUser(input: AdminCreateUserInput!): AdminUser!
-	assignRole(userId: ID!, roleName: String!, hotelId: ID): AdminUser!
-	revokeRole(userRoleId: ID!): AdminUser!
-}
-
 type Me {
 	id: ID!
 	email: String!

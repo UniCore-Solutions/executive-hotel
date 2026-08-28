@@ -1,17 +1,17 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@apollo/client/react';
 import { useState } from 'react';
 import { ShieldPlus, Trash2, UserPlus } from 'lucide-react';
-import { proxyRequest } from '@/lib/api';
+import { assignRole as assignRoleRest, createUser as createUserRest, revokeRole as revokeRoleRest } from '@/api/rest/endpoints';
+import { useApollo } from '@/api/apollo/provider';
+import { invalidateAfterWrite } from '@/api/invalidation';
 import { formatDateTime } from '@/lib/format';
 import {
   AdminHotelsDocument,
   AdminRolesDocument,
   AdminUsersDocument,
-  AssignRoleDocument,
-  CreateUserDocument,
-  RevokeRoleDocument,
 } from '@/graphql/generated/graphql';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,21 +38,15 @@ import { Form, FormError, MutationError } from '@/components/admin/forms';
 
 export default function UsersPage() {
   const queryClient = useQueryClient();
+  const apollo = useApollo();
   const [createOpen, setCreateOpen] = useState(false);
   const [roleFor, setRoleFor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const usersQuery = useQuery({
-    queryKey: ['adminUsers'],
-    queryFn: () => proxyRequest(AdminUsersDocument, {}),
-  });
-  const rolesQuery = useQuery({
-    queryKey: ['adminRoles'],
-    queryFn: () => proxyRequest(AdminRolesDocument, {}),
-  });
-  const hotelsQuery = useQuery({
-    queryKey: ['adminHotels'],
-    queryFn: () => proxyRequest(AdminHotelsDocument, { page: { page: 0, size: 100 } }),
+  const usersQuery = useQuery(AdminUsersDocument, {});
+  const rolesQuery = useQuery(AdminRolesDocument, {});
+  const hotelsQuery = useQuery(AdminHotelsDocument, {
+    variables: { page: { page: 0, size: 100 } },
   });
 
   const [form, setForm] = useState({
@@ -65,20 +59,18 @@ export default function UsersPage() {
   });
 
   const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
+    invalidateAfterWrite(apollo, queryClient, 'admin.users.create', [['adminUsers']]);
   };
 
   const createUser = useMutation({
     mutationFn: () =>
-      proxyRequest(CreateUserDocument, {
-        input: {
-          firstName: form.firstName || undefined,
-          lastName: form.lastName || undefined,
-          email: form.email,
-          password: form.password,
-          roleName: form.roleName,
-          hotelId: form.hotelId || undefined,
-        },
+      createUserRest({
+        firstName: form.firstName || undefined,
+        lastName: form.lastName || undefined,
+        email: form.email,
+        password: form.password,
+        roleName: form.roleName,
+        hotelId: form.hotelId || undefined,
       }),
     onSuccess: () => {
       setCreateOpen(false);
@@ -90,7 +82,7 @@ export default function UsersPage() {
 
   const assignRole = useMutation({
     mutationFn: (args: { userId: string; roleName: string; hotelId?: string }) =>
-      proxyRequest(AssignRoleDocument, args),
+      assignRoleRest(args.userId, { roleName: args.roleName, hotelId: args.hotelId }),
     onSuccess: () => {
       setRoleFor(null);
       invalidate();
@@ -98,11 +90,11 @@ export default function UsersPage() {
   });
 
   const revokeRole = useMutation({
-    mutationFn: (userRoleId: string) => proxyRequest(RevokeRoleDocument, { userRoleId }),
+    mutationFn: (userRoleId: string) => revokeRoleRest(userRoleId),
     onSuccess: invalidate,
   });
 
-  if (usersQuery.isLoading || rolesQuery.isLoading) {
+  if (usersQuery.loading || rolesQuery.loading) {
     return <Skeleton className="h-72 w-full" />;
   }
 

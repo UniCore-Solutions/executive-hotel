@@ -1,16 +1,20 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@apollo/client/react';
 import { useState } from 'react';
 import { Pencil, Plus } from 'lucide-react';
-import { proxyRequest } from '@/lib/api';
+import {
+  createRoomType,
+  setRoomTypeAmenities,
+  updateRoomType,
+} from '@/api/rest/endpoints';
+import { useApollo } from '@/api/apollo/provider';
+import { invalidateAfterWrite } from '@/api/invalidation';
 import {
   AdminHotelWorkspaceDocument,
   AdminAmenitiesDocument,
-  CreateRoomTypeDocument,
   RoomTypeStatus,
-  SetRoomTypeAmenitiesDocument,
-  UpdateRoomTypeDocument,
   type AdminRoomTypeInput,
 } from '@/graphql/generated/graphql';
 import { Button } from '@/components/ui/button';
@@ -40,9 +44,9 @@ const EMPTY: AdminRoomTypeInput = {
 };
 
 export function RoomTypesTab({ hotelId }: { hotelId: string }) {
-  const { data } = useQuery({
-    queryKey: ['adminHotel', hotelId],
-    queryFn: () => proxyRequest(AdminHotelWorkspaceDocument, { hotelId }),
+  const { data } = useQuery(AdminHotelWorkspaceDocument, {
+    variables: { hotelId },
+    skip: !hotelId,
   });
   if (!data?.adminHotel) return null;
   return <RoomTypesContent hotelId={hotelId} />;
@@ -50,10 +54,8 @@ export function RoomTypesTab({ hotelId }: { hotelId: string }) {
 
 function RoomTypesContent({ hotelId }: { hotelId: string }) {
   const queryClient = useQueryClient();
-  const amenitiesQuery = useQuery({
-    queryKey: ['adminAmenities'],
-    queryFn: () => proxyRequest(AdminAmenitiesDocument, {}),
-  });
+  const apollo = useApollo();
+  const amenitiesQuery = useQuery(AdminAmenitiesDocument, {});
   const [editing, setEditing] = useState<{ id: string | null; form: AdminRoomTypeInput } | null>(null);
   const [amenityIds, setAmenityIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -63,39 +65,30 @@ function RoomTypesContent({ hotelId }: { hotelId: string }) {
       if (!editing) return;
       if (!editing.form.name?.trim()) throw new Error('Name is required.');
       if (editing.id) {
-        const result = await proxyRequest(UpdateRoomTypeDocument, {
-          id: editing.id,
-          input: editing.form,
-        });
+        const result = await updateRoomType(editing.id, editing.form);
         if (amenityIds.length > 0) {
-          await proxyRequest(SetRoomTypeAmenitiesDocument, {
-            roomTypeId: editing.id,
-            amenityIds,
-          });
+          await setRoomTypeAmenities(editing.id, amenityIds);
         }
         return result;
       }
-      const result = await proxyRequest(CreateRoomTypeDocument, {
-        hotelId,
-        input: editing.form,
-      });
-      await proxyRequest(SetRoomTypeAmenitiesDocument, {
-        roomTypeId: result.createRoomType.id,
-        amenityIds,
-      });
+      const result = await createRoomType(hotelId, editing.form);
+      const id = (result as { id: string }).id;
+      await setRoomTypeAmenities(id, amenityIds);
       return result;
     },
     onSuccess: () => {
       setEditing(null);
       setError(null);
-      void queryClient.invalidateQueries({ queryKey: ['adminHotel', hotelId] });
+      invalidateAfterWrite(apollo, queryClient, 'admin.roomTypes.create', [
+        ['adminHotel', hotelId],
+      ]);
     },
     onError: (err) => setError(err instanceof Error ? err.message : 'Could not save room type.'),
   });
 
-  const { data } = useQuery({
-    queryKey: ['adminHotel', hotelId],
-    queryFn: () => proxyRequest(AdminHotelWorkspaceDocument, { hotelId }),
+  const { data } = useQuery(AdminHotelWorkspaceDocument, {
+    variables: { hotelId },
+    skip: !hotelId,
   });
   if (!data?.adminHotel) return null;
   const roomTypes = data.adminHotel.roomTypes;

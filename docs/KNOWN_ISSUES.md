@@ -9,30 +9,26 @@ live-verified; see `docs/investigations/TASK2-TASK3-CURRENCY-AND-ATOMICITY.md` a
 `git log` for the corresponding source changes. Deleted rather than annotated, per this
 file's own rule.
 
+**Update 2026-08-28 — API architecture migration.** Deleted as resolved: D1
+(back-office codegen pointed at the schema skeleton — the glob now matches
+`graphql/**/*.graphqls`), B4 (the deprecated `updateAvailability` mutation no longer
+exists — the back-office calls the REST range endpoint), and T1 (the two ArchUnit
+failures — all rules green, plus the new `NO_GRAPHQL_MUTATIONS` rule). The
+`stay_x_pay_y` pricing logic remains unimplemented (only its failure mode was fixed).
+
 ---
 
 ## Testing
 
-### T1 — `./mvnw test` is red (2 ArchUnit failures)
-- **Problem:** `ModuleArchitectureTest` fails 2 of 5 rules.
-- **Evidence:** `target/surefire-reports/com.hotelcollection.hotel.architecture.ModuleArchitectureTest.txt`
-  — *"Method `StaySearchGraphQLController.staySearch(...)` calls method
-  `HotelRepository.findAllActive()` in (StaySearchGraphQLController.java:48)"*, violating
-  `REPOSITORIES_ARE_ONLY_ACCESSED_FROM_SERVICES` **and** `CONTROLLERS_DELEGATE_TO_SERVICES`.
-  Confirmed still present in current source (`StaySearchGraphQLController.java:32,48`).
-- **Affected:** backend build gate, `scripts/test.sh --backend`, `make test`.
-- **Severity:** High — the whole backend gate is red, so real regressions can hide behind it.
-- **State:** open; introduced with the stay-search feature (commit `5a31143`).
-- **Next:** add a `findAllActive`-equivalent to `CatalogQueryService` and inject the
-  interface; re-run `./mvnw test`.
-
 ### T2 — Backend suite not re-run since 2026-08-26 13:28
 - **Problem:** surefire results predate HEAD and the whole uncommitted tree.
 - **Severity:** Medium. **Next:** run `./mvnw test` (needs Docker for Testcontainers).
+- **State:** superseded — the full suite (169 tests) ran green on 2026-08-28 after the
+  API architecture migration.
 
 ### T3 — No CI
 - **Problem:** no `.github/workflows`, no GitLab CI, no Jenkinsfile anywhere.
-- **Affected:** every merge. Nothing prevents T1 from persisting.
+- **Affected:** every merge. Nothing prevents regressions from persisting.
 - **Severity:** Medium. **Next:** a minimal workflow running `scripts/test.sh`.
 
 ---
@@ -77,6 +73,7 @@ file's own rule.
   (`BookingServiceImpl:180`, `:482`). `checked_in`/`checked_out` appear only in reads.
 - **Knock-on:** `ReviewServiceImpl:92` requires `checked_out` for proof-of-stay ⇒ **no
   guest can ever leave a review**. `CheckIn` entity and `check_ins` table are unused.
+  (The guest check-in page now shows an honest "not available" state — see DATA_FLOW §9.)
 - **Severity:** High (blocks two shipped features).
 
 ### A5 — Dead RBAC layer
@@ -126,18 +123,6 @@ file's own rule.
 ---
 
 ## API / developer experience
-
-### D1 — `backoffice-hotel` codegen points at the wrong schema
-- **Problem:** `backoffice-hotel/codegen.ts` sets
-  `schema: '../backend-hotel/src/main/resources/graphql/schema.graphqls'`. That file is
-  a 401-byte skeleton containing only `schema {}`, two scalars and **empty** `type Query`
-  / `type Mutation`. Every real type lives in `graphql/<domain>/*.graphqls`.
-- **Evidence:** `cat backend-hotel/src/main/resources/graphql/schema.graphqls`.
-  `frontend-hotel/codegen.ts` correctly uses `graphql/**/*.graphqls`.
-- **Affected:** `npm run graphql:generate` in the back-office. The committed generated
-  files predate the schema split.
-- **Severity:** Medium — regenerating types is currently impossible there.
-- **Next:** one-line fix to the same glob.
 
 ### D2 — Back-office disabled by default, contrary to the README
 - **Problem:** `docker-compose.yml` gives the `backoffice` service `profiles:

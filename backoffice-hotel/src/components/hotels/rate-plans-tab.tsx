@@ -1,17 +1,21 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@apollo/client/react';
 import { useState } from 'react';
 import { Pencil, Plus, Unlink } from 'lucide-react';
-import { proxyRequest } from '@/lib/api';
+import {
+  createRatePlan,
+  linkRoomTypeRatePlan,
+  setRatePlanPrices,
+  unlinkRoomTypeRatePlan,
+  updateRatePlan,
+} from '@/api/rest/endpoints';
+import { useApollo } from '@/api/apollo/provider';
+import { invalidateAfterWrite } from '@/api/invalidation';
 import {
   AdminHotelWorkspaceDocument,
-  CreateRatePlanDocument,
-  LinkRoomTypeRatePlanDocument,
   RatePlanStatus,
-  SetRatePlanPricesDocument,
-  UnlinkRoomTypeRatePlanDocument,
-  UpdateRatePlanDocument,
   type AdminRatePlanInput,
   type RatePlanPriceInput,
 } from '@/graphql/generated/graphql';
@@ -48,9 +52,9 @@ interface PriceDraft {
 }
 
 export function RatePlansTab({ hotelId }: { hotelId: string }) {
-  const { data } = useQuery({
-    queryKey: ['adminHotel', hotelId],
-    queryFn: () => proxyRequest(AdminHotelWorkspaceDocument, { hotelId }),
+  const { data } = useQuery(AdminHotelWorkspaceDocument, {
+    variables: { hotelId },
+    skip: !hotelId,
   });
   if (!data?.adminHotel) return null;
   return <RatePlansContent hotelId={hotelId} />;
@@ -58,12 +62,14 @@ export function RatePlansTab({ hotelId }: { hotelId: string }) {
 
 function RatePlansContent({ hotelId }: { hotelId: string }) {
   const queryClient = useQueryClient();
+  const apollo = useApollo();
   const [editing, setEditing] = useState<{ id: string | null; form: AdminRatePlanInput } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [priceEditor, setPriceEditor] = useState<{ linkId: string; roomTypeName: string; prices: PriceDraft[] } | null>(null);
   const [linkTarget, setLinkTarget] = useState<string | null>(null);
 
-  const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['adminHotel', hotelId] });
+  const invalidate = () =>
+    invalidateAfterWrite(apollo, queryClient, 'admin.ratePlans.create', [['adminHotel', hotelId]]);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -71,9 +77,9 @@ function RatePlansContent({ hotelId }: { hotelId: string }) {
       if (!editing.form.name?.trim()) throw new Error('Name is required.');
       if (!editing.form.code?.trim()) throw new Error('Code is required.');
       if (editing.id) {
-        return proxyRequest(UpdateRatePlanDocument, { id: editing.id, input: editing.form });
+        return updateRatePlan(editing.id, editing.form);
       }
-      return proxyRequest(CreateRatePlanDocument, { hotelId, input: editing.form });
+      return createRatePlan(hotelId, editing.form);
     },
     onSuccess: () => {
       setEditing(null);
@@ -85,7 +91,7 @@ function RatePlansContent({ hotelId }: { hotelId: string }) {
 
   const link = useMutation({
     mutationFn: (roomTypeId: string) =>
-      proxyRequest(LinkRoomTypeRatePlanDocument, { roomTypeId, ratePlanId: linkTarget! }),
+      linkRoomTypeRatePlan(roomTypeId, linkTarget!),
     onSuccess: () => {
       setLinkTarget(null);
       invalidate();
@@ -93,7 +99,7 @@ function RatePlansContent({ hotelId }: { hotelId: string }) {
   });
 
   const unlink = useMutation({
-    mutationFn: (linkId: string) => proxyRequest(UnlinkRoomTypeRatePlanDocument, { linkId }),
+    mutationFn: (linkId: string) => unlinkRoomTypeRatePlan(linkId),
     onSuccess: invalidate,
   });
 
@@ -105,10 +111,7 @@ function RatePlansContent({ hotelId }: { hotelId: string }) {
         validTo: p.validTo,
         priceAmount: Number(p.priceAmount),
       }));
-      return proxyRequest(SetRatePlanPricesDocument, {
-        linkId: priceEditor.linkId,
-        prices,
-      });
+      return setRatePlanPrices(priceEditor.linkId, prices);
     },
     onSuccess: () => {
       setPriceEditor(null);
@@ -116,9 +119,9 @@ function RatePlansContent({ hotelId }: { hotelId: string }) {
     },
   });
 
-  const { data } = useQuery({
-    queryKey: ['adminHotel', hotelId],
-    queryFn: () => proxyRequest(AdminHotelWorkspaceDocument, { hotelId }),
+  const { data } = useQuery(AdminHotelWorkspaceDocument, {
+    variables: { hotelId },
+    skip: !hotelId,
   });
   if (!data?.adminHotel) return null;
   const ratePlans = data.adminHotel.ratePlans;

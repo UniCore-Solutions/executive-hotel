@@ -53,13 +53,12 @@ public class CatalogAdminServiceImpl implements CatalogAdminService {
 	private final ReferenceQueryService reference;
 	private final AuditService audit;
 	private final CurrentUserAccessor currentUser;
-	private final AvailabilityService availability;
 
 	public CatalogAdminServiceImpl(HotelRepository hotelRepository,
 			RoomTypeRepository roomTypeRepository, RoomRepository roomRepository,
 			AmenityRepository amenityRepository, HotelPolicyAdminService hotelPolicyAdmin,
 			MediaAdminService mediaAdmin, ReferenceQueryService reference, AuditService audit,
-			CurrentUserAccessor currentUser, AvailabilityService availability) {
+			CurrentUserAccessor currentUser) {
 		this.hotelRepository = hotelRepository;
 		this.roomTypeRepository = roomTypeRepository;
 		this.roomRepository = roomRepository;
@@ -69,7 +68,6 @@ public class CatalogAdminServiceImpl implements CatalogAdminService {
 		this.reference = reference;
 		this.audit = audit;
 		this.currentUser = currentUser;
-		this.availability = availability;
 	}
 
 	// ---------------------------------------------------------------- hotel
@@ -225,6 +223,10 @@ public class CatalogAdminServiceImpl implements CatalogAdminService {
 			throw DomainException.validation("occupancy cannot be negative");
 		}
 		roomTypeRepository.save(rt);
+		// Inventory is derived from physical rooms (V26 trigger): a new room
+		// type has zero rooms until rooms are added, whatever totalInventory
+		// the caller sent.
+		rt.setTotalInventory((int) roomRepository.countActiveByRoomTypeId(rt.getId()));
 		audit.record(actor, "room_type.created", "room_type", rt.getId(), hotelId,
 				Map.of("name", rt.getName()));
 		return rt;
@@ -252,13 +254,7 @@ public class CatalogAdminServiceImpl implements CatalogAdminService {
 		applyIfPresent(in.sizeSqm(), rt::setSizeSqm);
 		applyIfPresent(in.viewType(), rt::setViewType);
 		if (in.totalInventory() != null) {
-			int newTotal = nonNegative(in.totalInventory(), "totalInventory");
-			int floor = availability.maxSoldUnits(rt.getId());
-			if (newTotal < floor) {
-				throw DomainException.conflict("totalInventory cannot be lower than the "
-						+ floor + " units already sold/blocked for this room type");
-			}
-			rt.setTotalInventory(newTotal);
+			requireDerivedInventory(rt.getId(), nonNegative(in.totalInventory(), "totalInventory"));
 		}
 		if (in.status() != null) {
 			rt.setStatus(validStatus(in.status(), "room type"));
@@ -394,17 +390,25 @@ public class CatalogAdminServiceImpl implements CatalogAdminService {
 		RoomType rt = roomTypeRepository.findById(roomTypeId)
 				.orElseThrow(() -> DomainException.validation("room type not found"));
 		requireStaffAccess(rt.getHotelId());
-		int floor = availability.maxSoldUnits(roomTypeId);
-		if (totalInventory < floor) {
-			throw DomainException.conflict("totalInventory cannot be lower than the "
-					+ floor + " units already sold/blocked for this room type");
-		}
-		rt.setTotalInventory(nonNegative(totalInventory, "totalInventory"));
-		rt.setUpdatedAt(Instant.now());
-		return roomTypeRepository.save(rt);
+		requireDerivedInventory(roomTypeId, nonNegative(totalInventory, "totalInventory"));
+		return rt;
 	}
 
 	// ---------------------------------------------------------------- helpers
+
+	/**
+	 * Inventory is derived from physical rooms (V26): room_types.total_inventory
+	 * always equals the count of ACTIVE rooms of the type. A direct write that
+	 * disagrees with the derived value is rejected — staff must add or
+	 * deactivate physical rooms instead.
+	 */
+	private void requireDerivedInventory(UUID roomTypeId, int requested) {
+		long derived = roomRepository.countActiveByRoomTypeId(roomTypeId);
+		if (requested != derived) {
+			throw DomainException.validation("totalInventory is managed through physical rooms — "
+					+ "add or deactivate rooms instead (current inventory: " + derived + ")");
+		}
+	}
 
 	/** Unique slug from a name (collision strategy: append -2, -3, …). */
 	private String uniqueHotelSlug(String name) {

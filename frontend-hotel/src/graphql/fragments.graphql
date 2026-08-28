@@ -1,0 +1,128 @@
+fragment ReservationSummary on Reservation {
+  id
+  reference
+  hotelId
+  status
+  paymentStatus
+  checkInDate
+  checkOutDate
+  adults
+  children
+  currencyCode
+  subtotalAmount
+  discountAmount
+  taxAmount
+  feeAmount
+  totalAmount
+  source
+  notes
+  createdAt
+  guest {
+    id
+    firstName
+    lastName
+    email
+    phone
+    countryCode
+  }
+  roomLines {
+    id
+    roomTypeId
+    ratePlanId
+    checkInDate
+    checkOutDate
+    nights
+    ratePerNight
+    subtotalAmount
+    status
+    roomTypeName
+    roomTypeImageUrl
+    ratePlanName
+  }
+  extras {
+    id
+    extraId
+    name
+    quantity
+    unitPrice
+    totalPrice
+  }
+  charges {
+    id
+    name
+    chargeType
+    amount
+  }
+  cancellation {
+    id
+    reason
+    reasonNote
+    isRefundable
+    penaltyAmount
+    refundAmount
+    cancelledAt
+  }
+}
+
+fragment HotelSummary on Hotel {
+  id
+  name
+  brand
+  description
+  hotelType
+  addressLine1
+  addressLine2
+  city
+  countryCode
+  latitude
+  longitude
+  phone
+  email
+  starRating
+  checkInTime
+  checkOutTime
+  defaultCurrency
+  status
+  averageRating
+  amenities {
+    id
+    name
+    icon
+    category
+  }
+  media {
+    id
+    url
+    altText
+    category
+    isPrimary
+    sortOrder
+  }
+}
+
+fragment RoomTypeSummary on RoomType {
+  id
+  hotelId
+  hotelName
+  currencyCode
+  name
+  description
+  maxAdults
+  maxChildren
+  bedConfiguration
+  sizeSqm
+  viewType
+  status
+  amenities {
+    id
+    name
+    category
+  }
+  media {
+    id
+    url
+    altText
+    isPrimary
+  }
+  pricePerNight
+}

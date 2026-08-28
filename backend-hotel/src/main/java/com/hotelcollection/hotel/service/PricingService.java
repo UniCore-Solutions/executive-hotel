@@ -2,7 +2,9 @@ package com.hotelcollection.hotel.service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import com.hotelcollection.hotel.entity.RatePlan;
@@ -40,4 +42,11 @@ public interface PricingService {
 	 */
 	CancellationEvaluation evaluateCancellation(RatePlan plan, BigDecimal lineSubtotal,
 			BigDecimal ratePerNight, LocalDate checkInDate);
+
+	/**
+	 * Display names for rate plans by id (batch) — used by reservation room
+	 * lines, which persist only the rate-plan id (a snapshot). Plans that no
+	 * longer exist are omitted from the map.
+	 */
+	Map<UUID, String> ratePlanNamesByIds(Collection<UUID> ids);
 }

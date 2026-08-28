@@ -93,7 +93,7 @@ describe('CheckinFlow', () => {
     params = new URLSearchParams('ref=RC-TEST1');
     render(wrap());
     expect(
-      await screen.findByText('Enter your booking reference and email to start check-in.')
+      await screen.findByText('Enter your booking reference and email to look up your check-in.')
     ).toBeInTheDocument();
   });
 
@@ -112,5 +112,21 @@ describe('CheckinFlow', () => {
     await userEvent.click(findBtn);
     expect(await screen.findByText("You're all checked in")).toBeInTheDocument();
     expect(screen.getByText('RC-TEST1')).toBeInTheDocument();
+  });
+
+  it('shows the not-available state for a confirmed reservation instead of faking check-in', async () => {
+    const { reservations } = await import('@/services/reservations');
+    vi.mocked(reservations.find).mockResolvedValue(mockReservation);
+    params = new URLSearchParams('ref=RC-TEST1');
+    render(wrap());
+    const emailInput = await screen.findByLabelText(/Email used at booking/);
+    const { default: userEvent } = await import('@testing-library/user-event');
+    await userEvent.type(emailInput, 'demo@hotelcollection.com');
+    const findBtn = await screen.findByText('Find my booking');
+    await userEvent.click(findBtn);
+    expect(
+      await screen.findByText('Online check-in is not available yet')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Checked in')).not.toBeInTheDocument();
   });
 });

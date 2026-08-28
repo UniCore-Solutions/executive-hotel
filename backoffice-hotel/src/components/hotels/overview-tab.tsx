@@ -1,15 +1,15 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@apollo/client/react';
 import { useState } from 'react';
-import { Check } from 'lucide-react';
-import { proxyRequest } from '@/lib/api';
+import { Check, Upload } from 'lucide-react';
+import { setHotelAmenities, setHotelMedia, updateHotel, uploadMedia } from '@/api/rest/endpoints';
+import { useApollo } from '@/api/apollo/provider';
+import { invalidateAfterWrite } from '@/api/invalidation';
 import {
   AdminAmenitiesDocument,
   AdminHotelWorkspaceDocument,
-  SetHotelAmenitiesDocument,
-  SetHotelMediaDocument,
-  UpdateHotelDocument,
   type AdminHotelInput,
   type AdminHotelWorkspaceQuery,
   type MediaInput,
@@ -22,9 +22,9 @@ import { cn } from '@/lib/utils';
 import { Form, FormError, MutationError } from '@/components/admin/forms';
 
 function useWorkspace(hotelId: string) {
-  return useQuery({
-    queryKey: ['adminHotel', hotelId],
-    queryFn: () => proxyRequest(AdminHotelWorkspaceDocument, { hotelId }),
+  return useQuery(AdminHotelWorkspaceDocument, {
+    variables: { hotelId },
+    skip: !hotelId,
   });
 }
 
@@ -42,6 +42,7 @@ function OverviewContent({
   workspace: NonNullable<AdminHotelWorkspaceQuery['adminHotel']>;
 }) {
   const queryClient = useQueryClient();
+  const apollo = useApollo();
   const [form, setForm] = useState<AdminHotelInput | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const hotel = workspace.hotel;
@@ -64,26 +65,25 @@ function OverviewContent({
   };
 
   const update = useMutation({
-    mutationFn: (input: AdminHotelInput) =>
-      proxyRequest(UpdateHotelDocument, { id: hotelId, input }),
+    mutationFn: (input: AdminHotelInput) => updateHotel(hotelId, input),
     onSuccess: () => {
       setForm(null);
-      void queryClient.invalidateQueries({ queryKey: ['adminHotel', hotelId] });
+      invalidateAfterWrite(apollo, queryClient, 'admin.hotels.update', [['adminHotel', hotelId]]);
     },
   });
 
-  const amenitiesQuery = useQuery({
-    queryKey: ['adminAmenities'],
-    queryFn: () => proxyRequest(AdminAmenitiesDocument, {}),
-  });
+  const amenitiesQuery = useQuery(AdminAmenitiesDocument, {});
   const selectedAmenities = workspace.amenities.map((a) => a.id);
   const setAmenities = useMutation({
-    mutationFn: (amenityIds: string[]) =>
-      proxyRequest(SetHotelAmenitiesDocument, { hotelId, amenityIds }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['adminHotel', hotelId] }),
+    mutationFn: (amenityIds: string[]) => setHotelAmenities(hotelId, amenityIds),
+    onSuccess: () =>
+      invalidateAfterWrite(apollo, queryClient, 'admin.hotels.amenities', [
+        ['adminHotel', hotelId],
+      ]),
   });
 
   const [media, setMedia] = useState<MediaInput[] | null>(null);
+  const [uploading, setUploading] = useState(false);
   const mediaDraft = media ?? workspace.media.map((m) => ({
     url: m.url,
     altText: m.altText ?? undefined,
@@ -92,13 +92,31 @@ function OverviewContent({
     sortOrder: m.sortOrder,
   }));
   const setMediaMutation = useMutation({
-    mutationFn: (rows: MediaInput[]) => proxyRequest(SetHotelMediaDocument, { hotelId, media: rows }),
+    mutationFn: (rows: MediaInput[]) => setHotelMedia(hotelId, rows),
     onSuccess: () => {
       setMedia(null);
-      void queryClient.invalidateQueries({ queryKey: ['adminHotel', hotelId] });
+      invalidateAfterWrite(apollo, queryClient, 'admin.hotels.media', [['adminHotel', hotelId]]);
     },
     onError: (err) => setMediaError(err instanceof Error ? err.message : 'Could not save media.'),
   });
+
+  async function handleUpload(index: number, file: File | undefined) {
+    if (!file) return;
+    setUploading(true);
+    setMediaError(null);
+    try {
+      const uploaded = await uploadMedia(file, { type: 'hotel', id: hotelId }, {
+        category: mediaDraft[index]?.category ?? 'gallery',
+      });
+      const next = [...mediaDraft];
+      next[index] = { ...next[index], url: uploaded.url };
+      setMedia(next);
+    } catch (err) {
+      setMediaError(err instanceof Error ? err.message : 'Could not upload the image.');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   function set<K extends keyof AdminHotelInput>(key: K, value: AdminHotelInput[K]) {
     setForm((f) => (f ?? current) && { ...(f ?? current), [key]: value });
@@ -193,7 +211,7 @@ function OverviewContent({
             <CardTitle>Amenities</CardTitle>
           </CardHeader>
           <CardContent>
-            {amenitiesQuery.isLoading ? (
+            {amenitiesQuery.loading ? (
               <p className="text-sm text-muted-foreground">Loading catalog…</p>
             ) : (
               <div className="flex flex-wrap gap-2">
@@ -235,16 +253,32 @@ function OverviewContent({
             <div className="space-y-3">
               {mediaDraft.map((row, index) => (
                 <div key={index} className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                  <Input
-                    aria-label={`Media URL ${index + 1}`}
-                    placeholder="https://…/image.jpg"
-                    value={row.url ?? ''}
-                    onChange={(e) => {
-                      const next = [...mediaDraft];
-                      next[index] = { ...row, url: e.target.value };
-                      setMedia(next);
-                    }}
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      aria-label={`Media URL ${index + 1}`}
+                      placeholder="https://…/image.jpg"
+                      value={row.url ?? ''}
+                      onChange={(e) => {
+                        const next = [...mediaDraft];
+                        next[index] = { ...row, url: e.target.value };
+                        setMedia(next);
+                      }}
+                    />
+                    <label className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium text-muted-foreground hover:border-gold/40">
+                      <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+                      {uploading ? 'Uploading…' : 'Upload'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        disabled={uploading}
+                        onChange={(e) => {
+                          void handleUpload(index, e.target.files?.[0]);
+                          e.currentTarget.value = '';
+                        }}
+                      />
+                    </label>
+                  </div>
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"

@@ -1,5 +1,5 @@
 /** QuoteTable — pricing breakdown, exact port of RC.ui.quoteTable (ui.js). */
-import type { PriceBreakdown, CurrencyCode } from '@/types';
+import type { PriceBreakdown, CurrencyCode, QuoteChargeLine } from '@/types';
 import { fmtPrice } from '@/lib/format';
 
 interface QuoteTableProps {
@@ -19,10 +19,17 @@ export function QuoteTable({
 }: QuoteTableProps) {
   const displayCurrency: CurrencyCode = (b.currency ?? currency) as CurrencyCode;
   const fmt = (n: number) => fmtPrice(n, displayCurrency);
-  const taxLabel =
-    b.taxRate != null && b.taxRate > 0
-      ? `Taxes & fees (${Math.round(b.taxRate * 100)}%)`
-      : 'Taxes & fees';
+
+  /* Tax rows: itemized charges straight from the backend when present (the
+     only legitimate breakdown), otherwise a single aggregate line. Percent
+     labels are never derived client-side — the backend's charges carry the
+     names (e.g. "VAT", "City tax"), so no rate math happens here. */
+  const taxRows: Array<[string, string, number]> = b.charges?.length
+    ? b.charges.map((c: QuoteChargeLine) => [c.name, '', c.amount] as [string, string, number])
+    : b.taxes > 0
+      ? ([['Taxes & fees', '', b.taxes]] as Array<[string, string, number]>)
+      : [];
+
   const rows: Array<[string, string, string, boolean]> = [
     [
       'Rooms',
@@ -53,7 +60,9 @@ export function QuoteTable({
       rows.push(['Extras & services', '', fmt(b.extrasTotal), false]);
     }
   }
-  rows.push([taxLabel, '', fmt(b.taxes), false]);
+  for (const [label, sub, amount] of taxRows) {
+    rows.push([label, sub, fmt(amount), false]);
+  }
 
   const totalRow = highlight ? (
     <div className="bg-gold/[0.09] border-gold/25 mt-3 flex items-baseline justify-between gap-3 rounded-2xl border px-4 py-3">

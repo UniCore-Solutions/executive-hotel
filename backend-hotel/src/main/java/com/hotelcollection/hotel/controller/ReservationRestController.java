@@ -41,7 +41,8 @@ public class ReservationRestController {
 		}
 		CreateResult result = bookingService.create(new CreateReservationInput(in.hotelId(),
 				in.checkInDate(), in.checkOutDate(), in.adults(), in.children(), in.currencyCode(),
-				in.guest(), in.rooms(), in.extras(), in.promoCode(), idempotencyKey.trim()));
+				in.guest(), in.rooms(), in.extras(), in.promoCode(), idempotencyKey.trim(),
+				in.arrivalSlot(), in.specialRequests()));
 		return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
 				.body(result.reservation());
 	}

@@ -158,35 +158,3 @@ query AdminAmenities {
     category
   }
 }
-
-mutation CreateHotel($input: AdminHotelInput!) {
-  createHotel(input: $input) {
-    id
-    name
-    status
-  }
-}
-
-mutation UpdateHotel($id: ID!, $input: AdminHotelInput!) {
-  updateHotel(id: $id, input: $input) {
-    id
-    name
-    status
-  }
-}
-
-mutation SetHotelAmenities($hotelId: ID!, $amenityIds: [ID!]!) {
-  setHotelAmenities(hotelId: $hotelId, amenityIds: $amenityIds) {
-    id
-    name
-  }
-}
-
-mutation SetHotelMedia($hotelId: ID!, $media: [MediaInput!]!) {
-  setHotelMedia(hotelId: $hotelId, media: $media) {
-    id
-    url
-    altText
-    isPrimary
-  }
-}

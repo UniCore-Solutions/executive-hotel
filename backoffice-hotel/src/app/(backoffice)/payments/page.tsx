@@ -1,7 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { proxyRequest } from '@/lib/api';
+import { useQuery } from '@apollo/client/react';
 import { formatDateTime, formatMoney, statusLabel } from '@/lib/format';
 import { AdminPaymentsDocument } from '@/graphql/generated/graphql';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,14 +19,12 @@ import { useHotelScope } from '@/context/HotelScopeContext';
 export default function PaymentsPage() {
   const { hotels, activeHotelId } = useHotelScope();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['adminPayments', activeHotelId],
-    queryFn: () =>
-      proxyRequest(AdminPaymentsDocument, {
-        hotelId: activeHotelId ?? '',
-        page: { page: 0, size: 50 },
-      }),
-    enabled: !!activeHotelId,
+  const { data, loading } = useQuery(AdminPaymentsDocument, {
+    variables: {
+      hotelId: activeHotelId ?? '',
+      page: { page: 0, size: 50 },
+    },
+    skip: !activeHotelId,
   });
 
   if (hotels.length === 0) {
@@ -45,7 +42,7 @@ export default function PaymentsPage() {
   return (
     <div>
       <PageHeader title="Payments" description="Payments collected for the selected hotel" />
-      {isLoading ? (
+      {loading ? (
         <Skeleton className="h-72 w-full" />
       ) : payments.length === 0 ? (
         <Card>

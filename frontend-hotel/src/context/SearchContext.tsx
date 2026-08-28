@@ -32,7 +32,6 @@ export interface SearchContextValue {
   setChildrenAges: (ages: number[]) => void;
   setPromo: (promo: string, sync?: boolean) => void;
   setCurrency: (cur: CurrencyCode) => void;
-  setDestination: (dest: string, name?: string) => void;
   reset: () => void;
   syncUrl: (extra?: Record<string, string>) => void;
   nights: () => number;
@@ -71,7 +70,6 @@ function SearchFallback({ children }: { children: ReactNode }) {
       setChildrenAges: () => {},
       setPromo: () => {},
       setCurrency: () => {},
-      setDestination: () => {},
       reset: () => {},
       syncUrl: () => {},
       nights: () => 0,
@@ -183,13 +181,6 @@ function SearchUrlProvider({ children }: { children: ReactNode }) {
     [pathname, router, withFacets]
   );
 
-  const setDestination = useCallback(
-    (dest: string, name?: string) => {
-      setStateInternal((s) => ({ ...s, destination: dest, destinationName: name }));
-    },
-    []
-  );
-
   const reset = useCallback(() => {
     setStateInternal(getDefaultState());
   }, []);
@@ -215,7 +206,6 @@ function SearchUrlProvider({ children }: { children: ReactNode }) {
       setChildrenAges,
       setPromo,
       setCurrency,
-      setDestination,
       reset,
       syncUrl,
       nights: () => nightsBetween(state.checkin, state.checkout),
@@ -243,7 +233,6 @@ function SearchUrlProvider({ children }: { children: ReactNode }) {
       setChildrenAges,
       setPromo,
       setCurrency,
-      setDestination,
       reset,
       syncUrl,
       sheetOpen,

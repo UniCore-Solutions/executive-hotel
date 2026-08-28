@@ -9,8 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import { proxyRequest } from '@/lib/api';
+import { useQuery } from '@apollo/client/react';
 import { AdminHotelsDocument } from '@/graphql/generated/graphql';
 import { useSession } from '@/context/SessionContext';
 
@@ -31,26 +30,24 @@ export function HotelScopeProvider({ children }: { children: ReactNode }) {
   const searchParams = useSearchParams();
   const urlHotel = searchParams.get('hotel');
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['hotelScope'],
-    queryFn: () =>
-      proxyRequest(AdminHotelsDocument, { page: { page: 0, size: 100 } }).then(
-        (d) => d.adminHotels.items,
-      ),
-    enabled: !!me,
+  const { data, loading } = useQuery(AdminHotelsDocument, {
+    variables: { page: { page: 0, size: 100 } },
+    skip: !me,
   });
 
   const [localHotel, setLocalHotel] = useState<string | null>(
     () => (typeof window === 'undefined' ? null : window.localStorage.getItem(STORAGE_KEY)),
   );
 
+  const hotels = data?.adminHotels.items ?? [];
+
   const activeHotelId = useMemo(() => {
     if (urlHotel) return urlHotel;
     if (localHotel) return localHotel;
     const first = me?.hotelIds?.[0] ?? null;
-    if (first && data?.some((h) => h.id === first)) return first;
-    return data?.[0]?.id ?? null;
-  }, [urlHotel, localHotel, me, data]);
+    if (first && hotels.some((h) => h.id === first)) return first;
+    return hotels[0]?.id ?? null;
+  }, [urlHotel, localHotel, me, hotels]);
 
   const selectHotel = useCallback(
     (id: string) => {
@@ -65,12 +62,12 @@ export function HotelScopeProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      hotels: data ?? [],
-      loading: isLoading,
+      hotels,
+      loading,
       activeHotelId,
       selectHotel,
     }),
-    [data, isLoading, activeHotelId, selectHotel],
+    [hotels, loading, activeHotelId, selectHotel],
   );
 
   return <HotelScopeContext.Provider value={value}>{children}</HotelScopeContext.Provider>;

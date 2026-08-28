@@ -17,7 +17,6 @@ import com.hotelcollection.hotel.dto.availability.StaySearchInput;
 import com.hotelcollection.hotel.dto.availability.StaySearchRoom;
 import com.hotelcollection.hotel.entity.Hotel;
 import com.hotelcollection.hotel.entity.RoomType;
-import com.hotelcollection.hotel.repository.HotelRepository;
 import com.hotelcollection.hotel.service.AvailabilityService;
 import com.hotelcollection.hotel.service.CatalogQueryService;
 import com.hotelcollection.hotel.service.PricingService;
@@ -25,52 +24,52 @@ import com.hotelcollection.hotel.service.PricingService;
 /**
  * Stay-search GraphQL controller: composes the active hotel scope with live
  * availability, rates and room-type catalog data into one query so clients
- * avoid per-hotel fan-out.
+ * avoid per-hotel fan-out. Without a hotelId the search targets the
+ * platform's single active hotel (canonicalHotel); with one, that hotel.
  */
 @Controller
 public class StaySearchGraphQLController {
 
-	private final HotelRepository hotels;
-	private final AvailabilityService availability;
 	private final CatalogQueryService catalog;
+	private final AvailabilityService availability;
 	private final PricingService pricing;
 
-	public StaySearchGraphQLController(HotelRepository hotels, AvailabilityService availability,
-			CatalogQueryService catalog, PricingService pricing) {
-		this.hotels = hotels;
-		this.availability = availability;
+	public StaySearchGraphQLController(CatalogQueryService catalog,
+			AvailabilityService availability, PricingService pricing) {
 		this.catalog = catalog;
+		this.availability = availability;
 		this.pricing = pricing;
 	}
 
 	@QueryMapping
 	public List<StaySearchRoom> staySearch(@Argument StaySearchInput input) {
-		List<Hotel> scope = hotels.findAllActive();
+		Hotel hotel;
 		if (input.hotelId() != null) {
-			UUID wanted = input.hotelId();
-			scope = scope.stream().filter(h -> h.getId().equals(wanted)).toList();
+			hotel = catalog.getHotel(input.hotelId());
+			if (!"active".equals(hotel.getStatus())) {
+				throw com.hotelcollection.hotel.exception.DomainException
+						.notFound("hotel not found");
+			}
+		} else {
+			// single-hotel platform: the one active hotel is the search scope
+			hotel = catalog.canonicalHotel();
 		}
 
 		List<StaySearchRoom> out = new ArrayList<>();
-		for (Hotel hotel : scope) {
-			List<RoomAvailability> rows = availability.check(new AvailabilityInput(
-					hotel.getId(), input.checkInDate(), input.checkOutDate(),
-					input.adults(), input.children(), input.rooms()));
-			if (rows.isEmpty()) {
+		List<RoomAvailability> rows = availability.check(new AvailabilityInput(
+				hotel.getId(), input.checkInDate(), input.checkOutDate(),
+				input.adults(), input.children(), input.rooms()));
+		Map<UUID, RoomAvailability> byRoomType = rows.stream()
+				.collect(Collectors.toMap(RoomAvailability::roomTypeId, Function.identity()));
+
+		for (RoomType rt : catalog.activeRoomTypes(hotel.getId())) {
+			RoomAvailability row = byRoomType.get(rt.getId());
+			if (row == null) {
 				continue;
 			}
-			Map<UUID, RoomAvailability> byRoomType = rows.stream()
-					.collect(Collectors.toMap(RoomAvailability::roomTypeId, Function.identity()));
-
-			for (RoomType rt : catalog.activeRoomTypes(hotel.getId())) {
-				RoomAvailability row = byRoomType.get(rt.getId());
-				if (row == null) {
-					continue;
-				}
-				out.add(new StaySearchRoom(hotel.getId(), hotel.getName(), rt, row.status(),
-						row.capacityFits(), pricing.rates(hotel.getId(), rt.getId(),
-								input.checkInDate())));
-			}
+			out.add(new StaySearchRoom(hotel.getId(), hotel.getName(), rt, row.status(),
+					row.capacityFits(), pricing.rates(hotel.getId(), rt.getId(),
+							input.checkInDate())));
 		}
 		return out;
 	}

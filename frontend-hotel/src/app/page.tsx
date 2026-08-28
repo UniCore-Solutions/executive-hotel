@@ -1,10 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { OFFERS, PROPERTY } from '@/data';
 import HeaderTheme from '@/components/layout/HeaderTheme';
 import StickySearchBar from '@/components/home/StickySearchBar';
-import RoomsGrid from '@/components/home/RoomsGrid';
-import FeaturedHotels from '@/components/home/FeaturedHotels';
 import FeaturedRooms from '@/components/home/FeaturedRooms';
 import FeaturedReviews from '@/components/home/FeaturedReviews';
 import RecentActivity from '@/components/home/RecentActivity';
@@ -13,22 +10,36 @@ import { Stars } from '@/components/ui/Stars';
 import { Icon } from '@/components/ui/Icon';
 import { getPlatformContent, type FeaturedExperience } from '@/services/platform';
 import { getHomepage } from '@/services/homepage';
+import { getCanonicalHotel } from '@/services/canonicalHotel';
+import { getRoomTypes, getOffers, getHotelDetails } from '@/services/catalog';
 import { formatPrice } from '@/lib/format';
 import type { IconName } from '@/constants/icons';
+
+/* Single-hotel platform home page. Every section is sourced from the backend
+   (canonical hotel + platform content). There is no hotel collection and no
+   fixture fallback: if the backend cannot provide the data, the error
+   boundary renders the real failure state. */
 
 const HERO_FALLBACK_IMAGE =
   'https://cf.bstatic.com/xdata/images/hotel/max1024x768/572984359.jpg?k=c319f2502790e9a3a12181017bfb98066f040aebf48c6f02f4665c04a5aad074&o=';
 
-export const metadata: Metadata = {
-  title: 'Executive Hotel — 4★ in the Agdal district',
-  description:
-    'Executive Hotel — 4-star rooms with free Wi-Fi in the Agdal district, a restaurant serving French, Mediterranean and Moroccan cuisine, a free buffet breakfast and free private parking.',
-  openGraph: {
-    title: 'Executive Hotel — Agdal',
-    description:
-      "4-star comfort in Rabat's Agdal district — free Wi-Fi, free parking, a restaurant serving French, Mediterranean and Moroccan cuisine, and a free buffet breakfast.",
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  try {
+    const hotel = await getCanonicalHotel();
+    return {
+      title: `${hotel.name} — ${hotel.city ?? 'rooms & availability'}`,
+      description: hotel.description ?? `${hotel.name} — direct booking, live availability.`,
+      openGraph: {
+        title: `${hotel.name} — ${hotel.city ?? ''}`,
+        description: hotel.description ?? undefined,
+        type: 'website',
+        siteName: hotel.name,
+      },
+    };
+  } catch {
+    return { title: 'Hotel' };
+  }
+}
 
 const EXP_ICONS: Record<string, React.ReactNode> = {
   eye: (
@@ -66,11 +77,27 @@ const EXP_ICONS: Record<string, React.ReactNode> = {
 };
 
 export default async function HomePage() {
-  const platform = await getPlatformContent();
+  const hotel = await getCanonicalHotel();
+  const [platform, homepage, details] = await Promise.all([
+    getPlatformContent(),
+    getHomepage(),
+    getHotelDetails(hotel.id).catch(() => null),
+  ]);
   const hero = platform.hero;
   const featuredExperiences = platform.featuredExperiences;
-  const homepage = await getHomepage();
-  const P = PROPERTY;
+  const [roomTypes, offers] = await Promise.all([
+    getRoomTypes(hotel.id),
+    getOffers(hotel.id).catch(() => []),
+  ]);
+
+  const rating = hotel.averageRating ?? null;
+  const reviewCount = details?.reviewsCount ?? 0;
+  const address = [
+    hotel.addressLine1,
+    hotel.addressLine2,
+    hotel.city,
+    hotel.countryCode,
+  ].filter(Boolean).join(', ');
 
   const featuredPrice = (e: FeaturedExperience) => {
     if (e.priceAmount === null) return null;
@@ -90,7 +117,7 @@ export default async function HomePage() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={hero?.imageUrl ?? HERO_FALLBACK_IMAGE}
-          alt={hero?.imageAlt ?? 'Lobby with a wooden feature wall at Executive Hotel'}
+          alt={hero?.imageAlt ?? `${hotel.name} — ${hotel.city}`}
           className="absolute inset-0 h-full w-full object-cover"
         />
         <div className="from-navy-dark/70 via-navy-dark/40 to-navy-dark/25 absolute inset-0 bg-gradient-to-t" />
@@ -101,14 +128,13 @@ export default async function HomePage() {
 
         <div className="relative mx-auto flex w-full max-w-7xl flex-col justify-end px-4 pt-28 pb-12 sm:px-6 lg:px-8 lg:pt-40 lg:pb-20">
           <p className="eyebrow text-gold-light text-[11px] font-semibold tracking-[0.3em] uppercase">
-            {hero?.eyebrow ?? 'Rabat · Agdal'}
+            {hero?.eyebrow ?? [hotel.city, hotel.countryCode].filter(Boolean).join(' · ')}
           </p>
           <h1 className="font-display mt-3 max-w-3xl text-3xl leading-[1.15] font-semibold text-white sm:mt-4 sm:text-5xl sm:leading-[1.05] lg:text-6xl">
-            {hero?.title ?? 'Four-star comfort in the heart of Rabat.'}
+            {hero?.title ?? hotel.name}
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/85 sm:mt-5 sm:text-base sm:leading-relaxed lg:text-lg">
-            {hero?.subtitle ??
-              'Air-conditioned rooms with free Wi-Fi in the Agdal district — a restaurant serving French, Mediterranean and Moroccan cuisine, a free buffet breakfast and free private parking.'}
+            {hero?.subtitle ?? hotel.description}
           </p>
 
           <StickySearchBar />
@@ -117,19 +143,23 @@ export default async function HomePage() {
             className="mt-5 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px] leading-snug text-white/80 sm:mt-6 sm:flex sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-2 sm:text-sm sm:leading-normal"
             data-hero-facts
           >
-            <span className="inline-flex items-center gap-1.5">
-              <svg className="text-gold-light h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                <path d="M10 1.5 12.6 7l6 .6-4.5 4 1.3 5.9L10 14.4 4.6 17.5 6 11.6 1.5 7.6l6-.6L10 1.5Z" />
-              </svg>
-              <strong>{P.rating.toFixed(1)}</strong>
-            </span>
+            {rating !== null ? (
+              <span className="inline-flex items-center gap-1.5">
+                <svg className="text-gold-light h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10 1.5 12.6 7l6 .6-4.5 4 1.3 5.9L10 14.4 4.6 17.5 6 11.6 1.5 7.6l6-.6L10 1.5Z" />
+                </svg>
+                <strong>{rating.toFixed(1)}</strong>
+              </span>
+            ) : null}
             <span>
-              <strong>{P.reviewCount}</strong> guest reviews
+              <strong>{reviewCount}</strong> guest reviews
             </span>
             <span className="hidden opacity-40 sm:inline">|</span>
-            <span>{P.rooms.length} room types &amp; suites</span>
+            <span>
+              {roomTypes.length} room type{roomTypes.length === 1 ? '' : 's'} &amp; suites
+            </span>
             <span className="hidden opacity-40 sm:inline">|</span>
-            <span>Check-in 15:00</span>
+            <span>Check-in {hotel.checkInTime ?? '15:00'}</span>
           </div>
 
           {hero?.ctaLabel && hero.ctaTarget ? (
@@ -145,9 +175,6 @@ export default async function HomePage() {
 
       {/* ======================= RECENT ACTIVITY ======================= */}
       <RecentActivity />
-
-      {/* ======================= FEATURED HOTELS (backend-curated) ======================= */}
-      {homepage.hotels.length ? <FeaturedHotels hotels={homepage.hotels} /> : null}
 
       {/* ======================= ROOMS ======================= */}
       <section
@@ -177,7 +204,12 @@ export default async function HomePage() {
         {homepage.roomTypes.length ? (
           <FeaturedRooms roomTypes={homepage.roomTypes} />
         ) : (
-          <RoomsGrid />
+          <div className="border-navy/10 mt-10 rounded-3xl border bg-white p-10 text-center">
+            <p className="font-display text-navy text-xl font-semibold">No rooms yet</p>
+            <p className="text-navy/60 mt-2 text-sm">
+              Check back soon — availability is published as rooms become bookable.
+            </p>
+          </div>
         )}
       </section>
 
@@ -189,17 +221,16 @@ export default async function HomePage() {
       >
         <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
           <p className="eyebrow text-gold-light text-[11px] font-semibold tracking-[0.3em] uppercase">
-            Around Rabat
+            Around {hotel.city ?? 'the hotel'}
           </p>
           <h2 id="exp-title" className="font-display mt-2 text-3xl font-semibold lg:text-4xl">
             Experiences
           </h2>
           <p className="mt-3 max-w-2xl text-white/60">
-            Rabat&apos;s great sights are all within a short ride from the hotel — the kasbah, the
-            tower and the river.
+            {hotel.description}
           </p>
           <div
-            className={`mt-10 grid gap-5 sm:grid-cols-2 ${homepage.experiences.length ? 'lg:grid-cols-3' : featuredExperiences?.length ? 'lg:grid-cols-3' : 'lg:grid-cols-4'}`}
+            className={`mt-10 grid gap-5 sm:grid-cols-2 ${homepage.experiences.length || featuredExperiences?.length ? 'lg:grid-cols-3' : 'lg:grid-cols-4'}`}
           >
             {homepage.experiences.length
               ? homepage.experiences.map((e) => {
@@ -208,7 +239,7 @@ export default async function HomePage() {
                   return (
                     <a
                       key={e.id}
-                      href={`/hotel?hotelid=${e.hotelId}`}
+                      href={`/hotel?hotelid=${hotel.id}`}
                       className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 transition-colors hover:bg-white/[0.08]"
                     >
                       <span className="bg-gold/15 border-gold/30 text-gold-light flex h-10 w-10 items-center justify-center rounded-full border">
@@ -223,7 +254,9 @@ export default async function HomePage() {
                       </span>
                       <h3 className="font-display mt-4 text-lg font-semibold">{e.name}</h3>
                       <p className="mt-1.5 text-sm text-white/60">{e.description}</p>
-                      {e.location ? <p className="mt-1 text-xs text-white/40">{e.location}</p> : null}
+                      {e.location ? (
+                        <p className="mt-1 text-xs text-white/40">{e.location}</p>
+                      ) : null}
                       {price ? (
                         <p className="text-gold-light mt-3 text-sm font-semibold">{price}</p>
                       ) : null}
@@ -257,121 +290,111 @@ export default async function HomePage() {
                     </div>
                   );
                 })
-              : P.experiences.map((e) => (
-                  <div
-                    key={e.name}
-                    className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 transition-colors hover:bg-white/[0.08]"
-                  >
-                    <span className="bg-gold/15 border-gold/30 text-gold-light flex h-10 w-10 items-center justify-center rounded-full border">
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        {EXP_ICONS[e.icon] || EXP_ICONS.eye}
-                      </svg>
-                    </span>
-                    <h3 className="font-display mt-4 text-lg font-semibold">{e.name}</h3>
-                    <p className="mt-1.5 text-sm text-white/60">{e.desc}</p>
-                  </div>
-                ))}
+              : null}
           </div>
         </div>
       </section>
 
-      {/* ======================= HIGHLIGHTS ======================= */}
-      <section className="border-navy/10 border-y bg-white" aria-labelledby="hl-title">
-        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
+      {/* ======================= FACILITIES ======================= */}
+      {hotel.amenities.length ? (
+        <section className="border-navy/10 border-y bg-white" aria-labelledby="hl-title">
+          <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
+            <div className="flex items-end justify-between gap-6">
+              <div>
+                <p className="eyebrow text-gold-dark text-[11px] font-semibold tracking-[0.3em] uppercase">
+                  Why stay with us
+                </p>
+                <h2
+                  id="hl-title"
+                  className="font-display text-navy mt-2 text-3xl font-semibold lg:text-4xl"
+                >
+                  Facilities &amp; services
+                </h2>
+              </div>
+              <Link
+                href={`/hotel?hotelid=${hotel.id}#facilities`}
+                className="text-navy hover:text-gold-dark hidden items-center gap-2 text-sm font-semibold transition-colors sm:inline-flex"
+              >
+                All facilities <span aria-hidden="true">→</span>
+              </Link>
+            </div>
+            <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {hotel.amenities.map((a) => (
+                <div key={a.id} className="border-navy/10 bg-paper rounded-3xl border p-6">
+                  <span className="bg-gold/15 border-gold/30 text-gold-dark flex h-10 w-10 items-center justify-center rounded-full border">
+                    <Icon name={a.icon as IconName} className="h-5 w-5" />
+                  </span>
+                  <h3 className="font-display text-navy mt-4 text-lg font-semibold">{a.name}</h3>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {/* ======================= OFFERS ======================= */}
+      {offers.length ? (
+        <section
+          id="offers"
+          className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24"
+          aria-labelledby="offers-title"
+        >
           <div className="flex items-end justify-between gap-6">
             <div>
               <p className="eyebrow text-gold-dark text-[11px] font-semibold tracking-[0.3em] uppercase">
-                Why stay with us
+                Value
               </p>
               <h2
-                id="hl-title"
+                id="offers-title"
                 className="font-display text-navy mt-2 text-3xl font-semibold lg:text-4xl"
               >
-                Facilities &amp; services
+                Current offers
               </h2>
             </div>
-            <Link
-              href="/hotel#facilities"
+            <a
+              href="/offers"
               className="text-navy hover:text-gold-dark hidden items-center gap-2 text-sm font-semibold transition-colors sm:inline-flex"
             >
-              All facilities <span aria-hidden="true">→</span>
-            </Link>
+              All offers <span aria-hidden="true">→</span>
+            </a>
           </div>
-          <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {P.facilities.map((f) => (
-              <div key={f.name} className="border-navy/10 bg-paper rounded-3xl border p-6">
-                <span className="bg-gold/15 border-gold/30 text-gold-dark flex h-10 w-10 items-center justify-center rounded-full border">
-                  <Icon name={f.icon as IconName} className="h-5 w-5" />
-                </span>
-                <h3 className="font-display text-navy mt-4 text-lg font-semibold">{f.name}</h3>
-                <p className="text-navy/60 mt-1.5 text-sm">{f.desc}</p>
-              </div>
+          <div className="mt-10 grid gap-6 md:grid-cols-3">
+            {offers.map((o) => (
+              <a
+                key={o.code}
+                href="/offers"
+                className="group border-navy/10 hover:shadow-navy/10 flex flex-col gap-3 rounded-3xl border bg-white p-6 shadow-sm transition-shadow hover:shadow-2xl"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-display text-gold-dark text-3xl font-semibold">
+                    {o.badge}
+                  </span>
+                  <span className="text-navy/45 text-[11px] font-bold tracking-[0.18em] uppercase">
+                    Code{' '}
+                    <span className="text-navy bg-paper border-navy/10 rounded-lg border px-2 py-0.5">
+                      {o.code}
+                    </span>
+                  </span>
+                </div>
+                <h3 className="font-display text-navy group-hover:text-gold-dark text-xl font-semibold transition-colors">
+                  {o.title}
+                </h3>
+                <p className="text-navy/65 text-sm">{o.desc}</p>
+                <div className="mt-auto flex flex-wrap gap-1.5">
+                  {o.conditions.slice(0, 2).map((c) => (
+                    <span
+                      key={c}
+                      className="text-navy/55 bg-paper border-navy/8 rounded-full border px-2.5 py-1 text-[11px]"
+                    >
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              </a>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* ======================= OFFERS ======================= */}
-      <section
-        id="offers"
-        className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24"
-        aria-labelledby="offers-title"
-      >
-        <div className="flex items-end justify-between gap-6">
-          <div>
-            <p className="eyebrow text-gold-dark text-[11px] font-semibold tracking-[0.3em] uppercase">
-              Value
-            </p>
-            <h2
-              id="offers-title"
-              className="font-display text-navy mt-2 text-3xl font-semibold lg:text-4xl"
-            >
-              Current offers
-            </h2>
-          </div>
-          <a
-            href="/offers"
-            className="text-navy hover:text-gold-dark hidden items-center gap-2 text-sm font-semibold transition-colors sm:inline-flex"
-          >
-            All offers <span aria-hidden="true">→</span>
-          </a>
-        </div>
-        <div className="mt-10 grid gap-6 md:grid-cols-3">
-          {OFFERS.slice(0, 3).map((o) => (
-            <a
-              key={o.code}
-              href="/offers"
-              className="group border-navy/10 hover:shadow-navy/10 flex flex-col gap-3 rounded-3xl border bg-white p-6 shadow-sm transition-shadow hover:shadow-2xl"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <span className="font-display text-gold-dark text-3xl font-semibold">
-                  {o.badge}
-                </span>
-                <span className="text-navy/45 text-[11px] font-bold tracking-[0.18em] uppercase">
-                  Code{' '}
-                  <span className="text-navy bg-paper border-navy/10 rounded-lg border px-2 py-0.5">
-                    {o.code}
-                  </span>
-                </span>
-              </div>
-              <h3 className="font-display text-navy group-hover:text-gold-dark text-xl font-semibold transition-colors">
-                {o.title}
-              </h3>
-              <p className="text-navy/65 text-sm">{o.desc}</p>
-              <div className="mt-auto flex flex-wrap gap-1.5">
-                {o.conditions.slice(0, 2).map((c) => (
-                  <span
-                    key={c}
-                    className="text-navy/55 bg-paper border-navy/8 rounded-full border px-2.5 py-1 text-[11px]"
-                  >
-                    {c}
-                  </span>
-                ))}
-              </div>
-            </a>
-          ))}
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       {/* ======================= REVIEWS ======================= */}
       <section
@@ -380,71 +403,42 @@ export default async function HomePage() {
         aria-labelledby="reviews-title"
       >
         <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
-<div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p className="eyebrow text-gold-dark text-[11px] font-semibold tracking-[0.3em] uppercase">
-                  Guest book
-                </p>
-                <h2
-                  id="reviews-title"
-                  className="font-display text-navy mt-2 text-3xl font-semibold lg:text-4xl"
-                >
-                  In their words
-                </h2>
-              </div>
-              {homepage.reviews.length ? null : (
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <p className="font-display text-navy text-4xl font-semibold">
-                      {P.rating.toFixed(1)}
-                    </p>
-                    <p className="text-navy/55 text-xs">from {P.reviewCount} guest reviews</p>
-                  </div>
-                  <Stars rating={P.rating} size="lg" />
-                </div>
-              )}
-            </div>
-            {homepage.reviews.length ? (
-              <FeaturedReviews reviews={homepage.reviews} />
-            ) : (
-              <div
-                className="no-scrollbar snap-x-mandatory mt-10 flex gap-5 overflow-x-auto pb-2"
-                role="region"
-                aria-label="Guest reviews"
-                tabIndex={0}
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="eyebrow text-gold-dark text-[11px] font-semibold tracking-[0.3em] uppercase">
+                Guest book
+              </p>
+              <h2
+                id="reviews-title"
+                className="font-display text-navy mt-2 text-3xl font-semibold lg:text-4xl"
               >
-                {P.reviews.map((rv) => (
-                  <article
-                    key={rv.title}
-                    className="snap-card border-navy/10 flex w-[85%] shrink-0 flex-col rounded-3xl border bg-white p-6 shadow-sm sm:w-[380px]"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <span className="bg-navy text-gold-light font-display flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold">
-                          {rv.author
-                            .split(' ')
-                            .map((w) => w[0])
-                            .slice(0, 2)
-                            .join('')}
-                        </span>
-                        <div>
-                          <p className="text-navy text-sm font-semibold">{rv.author}</p>
-                          <p className="text-navy/50 text-[11px]">
-                            {rv.country} · {rv.stay}
-                          </p>
-                        </div>
-                      </div>
-                      <Stars rating={rv.rating} size="sm" />
-                    </div>
-                    <h3 className="font-display text-navy mt-4 font-semibold">{rv.title}</h3>
-                    <p className="text-navy/65 mt-1.5 text-sm">{rv.text}</p>
-                    <p className="text-navy/40 mt-auto pt-4 text-[11px]">{rv.date}</p>
-                  </article>
-                ))}
+                In their words
+              </h2>
+            </div>
+            {rating !== null ? (
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <p className="font-display text-navy text-4xl font-semibold">
+                    {rating.toFixed(1)}
+                  </p>
+                  <p className="text-navy/55 text-xs">from {reviewCount} guest reviews</p>
+                </div>
+                <Stars rating={rating} size="lg" />
               </div>
-            )}
+            ) : null}
           </div>
-        </section>
+          {homepage.reviews.length ? (
+            <FeaturedReviews reviews={homepage.reviews} />
+          ) : (
+            <div className="border-navy/10 mt-10 rounded-3xl border bg-white p-10 text-center">
+              <p className="font-display text-navy text-xl font-semibold">No reviews yet</p>
+              <p className="text-navy/60 mt-2 text-sm">
+                Be the first to share your stay.
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* ======================= LOCATION ======================= */}
       <section
@@ -460,36 +454,21 @@ export default async function HomePage() {
               id="loc-title"
               className="font-display text-navy mt-2 text-3xl font-semibold lg:text-4xl"
             >
-              In the Agdal quarter
+              {hotel.city ?? hotel.name}
             </h2>
-            <p className="text-navy/65 mt-4 max-w-lg">
-              72 Rue Oued Sebou, 10106 Rabat, Morocco — steps from Mohammed V University and the
-              National Library, with free private parking on site and Rabat-Ville station
-              2.3&nbsp;km away.
-            </p>
-            <ul className="mt-6 space-y-3 text-sm">
-              {P.location.distances.map((d) => (
-                <li
-                  key={d.label}
-                  className="border-navy/8 flex items-baseline justify-between gap-4 border-b pb-3"
-                >
-                  <span className="text-navy font-medium">{d.label}</span>
-                  <span className="text-navy/55 text-right">{d.value}</span>
-                </li>
-              ))}
-            </ul>
+            <p className="text-navy/65 mt-4 max-w-lg">{address}</p>
           </div>
           <div className="shadow-navy/20 relative overflow-hidden rounded-3xl shadow-2xl">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="https://cf.bstatic.com/xdata/images/hotel/max1024x768/576912113.jpg?k=e4a8439005872a2f65d93838b01e518ee5386fcf62eceaf457b1d91023f99a68&o="
-              alt="Lobby waiting area with chairs and tables at Executive Hotel"
+              src={hotel.media[0]?.url ?? HERO_FALLBACK_IMAGE}
+              alt={hotel.media[0]?.altText ?? `${hotel.name} — ${hotel.city}`}
               loading="lazy"
               className="h-[320px] w-full object-cover lg:h-[400px]"
             />
             <div className="from-navy-dark/80 absolute inset-x-0 bottom-0 bg-gradient-to-t to-transparent p-5">
-              <p className="text-sm font-semibold text-white">{P.name}</p>
-              <p className="text-xs text-white/70">72 Rue Oued Sebou · Agdal, Rabat</p>
+              <p className="text-sm font-semibold text-white">{hotel.name}</p>
+              <p className="text-xs text-white/70">{address}</p>
             </div>
           </div>
         </div>
@@ -509,11 +488,10 @@ export default async function HomePage() {
             id="nl-title"
             className="font-display text-navy mt-2 text-3xl font-semibold lg:text-4xl"
           >
-            5% off your first direct booking
+            News &amp; offers from {hotel.name}
           </h2>
           <p className="text-navy/60 mx-auto mt-3 max-w-lg">
-            Monthly letters from Rabat — new offers and seasonal rates. Use code{' '}
-            <strong className="text-gold-dark">WELCOME5</strong> when you book.
+            Monthly letters from {hotel.city ?? hotel.name} — new offers and seasonal rates.
           </p>
           <NewsletterForm />
         </div>
@@ -527,19 +505,20 @@ export default async function HomePage() {
               Plan your stay
             </p>
             <h2 id="plan-title" className="font-display mt-2 text-3xl font-semibold lg:text-4xl">
-              Your room is waiting in the Agdal quarter
+              Your room is waiting in {hotel.city ?? hotel.name}
             </h2>
-            <p className="mt-3 text-white/70">
-              72 Rue Oued Sebou, 10106 Rabat — steps from Mohammed V University and the National
-              Library, with free private parking on site.
-            </p>
+            <p className="mt-3 text-white/70">{address}</p>
             <div className="mt-5 flex items-center gap-3">
-              <span className="inline-flex items-center gap-1.5 text-white/85">
-                <Stars rating={P.rating} size="sm" />
-                <strong>{P.rating.toFixed(1)}</strong>
-              </span>
-              <span className="opacity-40">|</span>
-              <span>{P.reviewCount} guest reviews</span>
+              {rating !== null ? (
+                <>
+                  <span className="inline-flex items-center gap-1.5 text-white/85">
+                    <Stars rating={rating} size="sm" />
+                    <strong>{rating.toFixed(1)}</strong>
+                  </span>
+                  <span className="opacity-40">|</span>
+                </>
+              ) : null}
+              <span>{reviewCount} guest reviews</span>
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap gap-3">

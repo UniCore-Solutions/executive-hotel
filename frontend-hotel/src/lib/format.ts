@@ -1,7 +1,15 @@
-/** FX + price display (ports of RC.fx and RC.fmtPrice — mock.js/common.js). */
+/** FX + price display (ports of RC.fx and RC.fmtPrice — mock.js/common.js).
+    One FX table for the whole app: rates come from the NEXT_PUBLIC_FX_* env
+    vars (baked at build time; .env.example documents the values) and are
+    DISPLAY-ONLY — the backend prices and persists in MAD only. */
 import type { CurrencyCode } from '@/types';
 
-export const FX: Record<CurrencyCode, number> = { MAD: 1, EUR: 0.091, USD: 0.1, GBP: 0.078 };
+export const FX: Record<CurrencyCode, number> = {
+  MAD: 1,
+  EUR: Number.parseFloat(process.env.NEXT_PUBLIC_FX_EUR ?? '0.091'),
+  USD: Number.parseFloat(process.env.NEXT_PUBLIC_FX_USD ?? '0.100'),
+  GBP: Number.parseFloat(process.env.NEXT_PUBLIC_FX_GBP ?? '0.078'),
+};
 export const CURRENCIES: CurrencyCode[] = ['MAD', 'EUR', 'USD', 'GBP'];
 
 export const CURRENCY_INFO: Array<{ code: CurrencyCode; symbol: string; label: string }> = [

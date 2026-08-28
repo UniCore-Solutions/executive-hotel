@@ -26,7 +26,7 @@ export default function NewsletterForm() {
       setConsent(false);
       setBusy(false);
       toast({
-        message: 'Welcome to Executive Hotel — WELCOME5 is ready when you are.',
+        message: 'Welcome to the hotel newsletter.',
         type: 'ok',
         title: 'Subscribed',
       });

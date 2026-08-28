@@ -35,11 +35,7 @@ export function ExtrasPicker({
   const guests = adults + childCount;
   const getDefaultQty = (extra: Extra) => (extra.unit === 'per person' ? guests : 1);
   const getMaxQty = (extra: Extra) =>
-    extra.unit === 'per person'
-      ? Math.max(8, guests)
-      : extra.id === 'late-checkout' || extra.id === 'airport-shuttle'
-        ? 1
-        : 6;
+    extra.unit === 'per person' ? Math.max(8, guests) : 6;
 
   const updateQty = (id: string, delta: number) => {
     const extra = allExtras.find((e) => e.id === id);

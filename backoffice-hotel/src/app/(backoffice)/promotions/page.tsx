@@ -1,16 +1,17 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@apollo/client/react';
 import { useState } from 'react';
 import { Pencil, Plus } from 'lucide-react';
 import { proxyRequest } from '@/lib/api';
+import { createPromotion, setPromotionStatus, updatePromotion } from '@/api/rest/endpoints';
+import { useApollo } from '@/api/apollo/provider';
+import { invalidateAfterWrite } from '@/api/invalidation';
 import { formatDateTime, formatMoney } from '@/lib/format';
 import {
   AdminPromotionsDocument,
-  CreatePromotionDocument,
   PromotionStatus,
-  SetPromotionStatusDocument,
-  UpdatePromotionDocument,
   type AdminPromotionInput,
 } from '@/graphql/generated/graphql';
 import { Button } from '@/components/ui/button';
@@ -53,14 +54,15 @@ export default function PromotionsPage() {
   const [editing, setEditing] = useState<{ id: string | null; form: AdminPromotionInput; hotelId: string | null | undefined } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const apollo = useApollo();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['adminPromotions', activeHotelId],
-    queryFn: () => proxyRequest(AdminPromotionsDocument, { hotelId: activeHotelId ?? '' }),
-    enabled: !!activeHotelId,
+  const { data, loading } = useQuery(AdminPromotionsDocument, {
+    variables: { hotelId: activeHotelId ?? '' },
+    skip: !activeHotelId,
   });
 
-  const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['adminPromotions'] });
+  const invalidate = () =>
+    invalidateAfterWrite(apollo, queryClient, 'admin.promotions.create', [['adminPromotions']]);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -68,12 +70,9 @@ export default function PromotionsPage() {
       if (!editing.form.code?.trim()) throw new Error('Code is required.');
       if (!editing.form.name?.trim()) throw new Error('Name is required.');
       if (editing.id) {
-        return proxyRequest(UpdatePromotionDocument, { id: editing.id, input: editing.form });
+        return updatePromotion(editing.id, editing.form);
       }
-      return proxyRequest(CreatePromotionDocument, {
-        hotelId: editing.hotelId,
-        input: editing.form,
-      });
+      return createPromotion(editing.hotelId ?? null, editing.form);
     },
     onSuccess: () => {
       setEditing(null);
@@ -85,7 +84,7 @@ export default function PromotionsPage() {
 
   const setStatus = useMutation({
     mutationFn: (args: { id: string; status: PromotionStatus }) =>
-      proxyRequest(SetPromotionStatusDocument, args),
+      setPromotionStatus(args.id, args.status),
     onSuccess: invalidate,
   });
 
@@ -116,7 +115,7 @@ export default function PromotionsPage() {
           </Button>
         }
       />
-      {isLoading ? (
+      {loading ? (
         <Skeleton className="h-72 w-full" />
       ) : promotions.length === 0 ? (
         <Card>

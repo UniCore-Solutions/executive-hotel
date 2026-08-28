@@ -47,7 +47,7 @@ class DatabaseIntegrityIntegrationTest {
 	void flywayAppliedAllMigrations() {
 		Integer applied = jdbc.queryForObject(
 				"SELECT count(*) FROM flyway_schema_history WHERE success = TRUE", Integer.class);
-		assertThat(applied).isEqualTo(25);
+		assertThat(applied).isEqualTo(30);
 	}
 
 	@Test
@@ -291,13 +291,24 @@ class DatabaseIntegrityIntegrationTest {
 	@Test
 	void roomTypeInventoryCannotGoBelowSoldUnits() {
 		fixture();
-		jdbc.update("INSERT INTO availability (id, room_type_id, stay_date, rooms_sold) VALUES (gen_random_uuid(), ?, '2026-09-01', 3)", roomType1);
-		// a room type with no sales can be reduced freely
-		jdbc.update("UPDATE room_types SET total_inventory = 2 WHERE id = ?", roomType2);
-		// reduction below sold units is rejected atomically (V18 trigger);
-		// statement must be last — the RAISE aborts the transaction
+		// give roomType1 two ACTIVE physical rooms (derived inventory 2)
+		jdbc.update("INSERT INTO rooms (id, hotel_id, room_type_id, room_number, status,"
+				+ " housekeeping_status, maintenance_status, created_at, updated_at) "
+				+ "VALUES (gen_random_uuid(), ?, ?, '801', 'active', 'clean', 'ok', now(), now())",
+				hotel1, roomType1);
+		jdbc.update("INSERT INTO rooms (id, hotel_id, room_type_id, room_number, status,"
+				+ " housekeeping_status, maintenance_status, created_at, updated_at) "
+				+ "VALUES (gen_random_uuid(), ?, ?, '802', 'active', 'clean', 'ok', now(), now())",
+				hotel1, roomType1);
+		jdbc.update("INSERT INTO availability (id, room_type_id, stay_date, rooms_sold) VALUES (gen_random_uuid(), ?, '2026-09-01', 1)", roomType1);
+
+		// inventory is derived from active rooms — deactivating one room while
+		// one unit is sold is legal (1 >= 1), deactivating the last room below
+		// sold units is rejected atomically; statement must be last — the
+		// RAISE aborts the transaction
+		jdbc.update("UPDATE rooms SET status = 'inactive' WHERE room_type_id = ? AND room_number = '802'", roomType1);
 		assertThatThrownBy(() -> jdbc.update(
-				"UPDATE room_types SET total_inventory = 2 WHERE id = ?", roomType1))
+				"UPDATE rooms SET status = 'inactive' WHERE room_type_id = ? AND room_number = '801'", roomType1))
 				.isInstanceOf(org.springframework.jdbc.UncategorizedSQLException.class)
 				.hasMessageContaining("total_inventory cannot be lower than sold units");
 	}

@@ -3,12 +3,6 @@ extend type Query {
 	adminInvoices(hotelId: ID!, page: PageInput): InvoicePage!
 }
 
-extend type Mutation {
-	createPayment(input: CreatePaymentInput!): Payment!
-	capturePayment(input: CapturePaymentInput!): Payment!
-	issueInvoice(input: ReservationLookupInput!): Invoice!
-}
-
 enum PaymentStatus {
 	pending
 	authorized

@@ -3,23 +3,18 @@
 import {
   HotelByIdDocument,
   HotelDetailsDocument,
-  HotelExperiencesDocument,
   HotelOffersDocument,
-  HotelReviewsDocument,
   HotelRoomTypesDocument,
   RoomTypeByIdDocument,
-  StayAvailabilityDocument,
-  StayRatesDocument,
   StaySearchDocument,
   type HotelByIdQuery,
   type HotelDetailsQuery,
-  type HotelExperiencesQuery,
   type HotelOffersQuery,
-  type HotelReviewsQuery,
   type HotelRoomTypesQuery,
   type RoomTypeByIdQuery,
   type StayAvailabilityQuery,
   type StayRatesQuery,
+  type StaySearchQuery,
 } from '@/graphql/generated/graphql';
 import type {
   Availability,
@@ -33,21 +28,16 @@ import type {
   StayRoomResult,
 } from '@/types';
 import { gqlRequest } from './graphqlClient';
+import { getCanonicalHotel } from './canonicalHotel';
 import { toISODate } from '@/lib/dates';
+import { FX } from '@/lib/format';
 import { demandFor } from './availability';
 
-import { parse } from 'graphql';
-import type { TypedDocumentNode } from '@graphql-typed-document-node/core';
-
-const FX: Record<string, number> = {
-  MAD: 1,
-  EUR: Number.parseFloat(process.env.NEXT_PUBLIC_FX_EUR ?? '0.091'),
-  USD: Number.parseFloat(process.env.NEXT_PUBLIC_FX_USD ?? '0.100'),
-  GBP: Number.parseFloat(process.env.NEXT_PUBLIC_FX_GBP ?? '0.078'),
-};
-
+/** Convert a price denominated in {@code currencyCode} (MAD today) to MAD —
+    the single FX table (lib/format.ts) keeps search cards and quote displays
+    consistent. */
 export function toBaseMad(amount: number, currencyCode: string | null | undefined): number {
-  const fx = currencyCode ? FX[currencyCode] : undefined;
+  const fx = currencyCode ? (FX as Record<string, number>)[currencyCode] : undefined;
   if (!fx || fx === 1) return amount;
   return Math.round((amount / fx) * 100) / 100;
 }
@@ -90,13 +80,6 @@ function stayInputOf(
   };
 }
 
-/** RatesInput has no `rooms` field — rates are per room type, independent of
-    the number of rooms requested. */
-function ratesInputOf(hotelId: string, params: StayParams) {
-  const { rooms: _rooms, ...rest } = stayInputOf(hotelId, params);
-  return { ...rest, hotelId };
-}
-
 export function mapRoomTypeToRoom(roomType: RoomTypeSource, hotelName?: string): Room {
   return {
     id: roomType.id,
@@ -110,7 +93,10 @@ export function mapRoomTypeToRoom(roomType: RoomTypeSource, hotelName?: string):
     category: roomType.name.toLowerCase().includes('suite') ? 'suite' : 'standard',
     amenities: roomType.amenities.map((a) => a.name),
     pricePerNight: toBaseMad(roomType.pricePerNight ?? 0, roomType.currencyCode),
-    cancellationPolicy: 'Free cancellation up to 2 days before check-in',
+    // The room-level field is unpopulated for real rooms; cancellation terms
+    // live on the rate plan (RoomRateOption.cancellationPolicy), which the
+    // room and booking pages display. Nothing is invented here.
+    cancellationPolicy: '',
     availability: 'available',
     importantInfo: [],
     hotelId: roomType.hotelId,
@@ -140,10 +126,12 @@ export function mapOfferToOffer(offer: BackendOffer): Offer {
     bookingWindow: { from: offer.bookingWindowStart ?? '', to: offer.bookingWindowEnd ?? '' },
     stayWindow: { from: offer.stayWindowStart ?? '', to: offer.stayWindowEnd ?? '' },
     minNights: offer.minNights ?? 1,
-    eligiblePlans: offer.appliesToAllRatePlans ? ['bb', 'hb', 'ro'] : ['bb'],
+    eligiblePlans: ['bb', 'hb', 'ro'],
+    // The backend discounts are percentage/fixed_amount today; the badge
+    // renders the value with the right sign for either.
     badge:
-      offer.discountType === 'NIGHT'
-        ? `${offer.discountValue} free`
+      offer.discountType === 'fixed_amount'
+        ? `−${offer.discountValue}`
         : `−${offer.discountValue}%`,
     conditions,
   };
@@ -157,7 +145,17 @@ export async function getOffers(hotelId: string): Promise<Offer[]> {
     .slice(0, 3);
 }
 
-type BackendReview = HotelReviewsQuery['reviews']['items'][number];
+type BackendReview = NonNullable<HotelDetailsQuery['hotelDetails']>['reviews']['items'][number];
+
+type BackendExperience = NonNullable<HotelDetailsQuery['hotelDetails']>['experiences'][number];
+
+export function mapExperienceToExperience(experience: BackendExperience): Experience {
+  return {
+    name: experience.name,
+    desc: experience.description ?? '',
+    icon: 'eye',
+  };
+}
 
 export function mapReviewToReview(review: BackendReview): Review {
   return {
@@ -169,29 +167,6 @@ export function mapReviewToReview(review: BackendReview): Review {
     title: review.title ?? '',
     text: review.comment ?? '',
   };
-}
-
-export async function getReviews(hotelId: string): Promise<Review[]> {
-  const { reviews } = await gqlRequest(HotelReviewsDocument, {
-    hotelId,
-    page: { page: 0, size: 10 },
-  });
-  return reviews.items.map(mapReviewToReview);
-}
-
-type BackendExperience = HotelExperiencesQuery['experiences'][number];
-
-export function mapExperienceToExperience(experience: BackendExperience): Experience {
-  return {
-    name: experience.name,
-    desc: experience.description ?? '',
-    icon: 'eye',
-  };
-}
-
-export async function getExperiences(hotelId: string): Promise<Experience[]> {
-  const { experiences } = await gqlRequest(HotelExperiencesDocument, { hotelId });
-  return experiences.map(mapExperienceToExperience);
 }
 
 type BackendAvailability = StayAvailabilityQuery['availability'][number];
@@ -260,194 +235,120 @@ export function mapHotelToProperty(hotel: BackendHotel): Property {
   };
 }
 
-type StayResult = Array<{
-  room: Room;
-  availability: Availability;
-  plans: RatePlan[];
-  hotelId?: string;
-  hotelName?: string;
-}>;
-
-type BatchAvailability = StayAvailabilityQuery['availability'][number];
-type BatchRate = StayRatesQuery['rates'][number];
-type BatchRoomType = HotelRoomTypesQuery['roomTypes'][number];
-
-interface StayBatchSlice {
-  availability: BatchAvailability[];
-  rates: BatchRate[];
-  roomTypes: BatchRoomType[];
-}
-
-type StayBatchData = Record<string, unknown>;
-
-const ROOM_TYPE_SELECTION = `
-  id hotelId hotelName currencyCode name description maxAdults maxChildren
-  bedConfiguration sizeSqm viewType status
-  amenities { id name category }
-  media { id url altText isPrimary }
-  pricePerNight
-`;
-
-const batchDocuments = new Map<
-  number,
-  TypedDocumentNode<StayBatchData, Record<string, unknown>>
->();
-
-function stayBatchDocument(
-  n: number
-): TypedDocumentNode<StayBatchData, Record<string, unknown>> {
-  const cached = batchDocuments.get(n);
-  if (cached) return cached;
-  const defs: string[] = [];
-  const fields: string[] = [];
-  for (let i = 0; i < n; i++) {
-    defs.push(`$a${i}: AvailabilityInput!`, `$r${i}: RatesInput!`, `$h${i}: ID!`);
-    fields.push(
-      `a${i}: availability(input: $a${i}) { roomTypeId available status capacityFits }`,
-      `r${i}: rates(input: $r${i}) { roomTypeId ratePlanId ratePlanCode ratePlanName mealPlan pricePerNight currencyCode cancellationPolicy isRefundable }`,
-      `t${i}: roomTypes(hotelId: $h${i}) { ${ROOM_TYPE_SELECTION} }`
-    );
-  }
-  const doc = parse(`query StayBatch(${defs.join(', ')}) { ${fields.join(' ')} }`) as unknown as TypedDocumentNode<StayBatchData, Record<string, unknown>>;
-  batchDocuments.set(n, doc);
-  return doc;
-}
-
-function assembleStaySlice(slice: StayBatchSlice): StayResult {
-  return slice.roomTypes
-    .filter((rt) => rt.status === 'active')
-    .map((rt) => {
-      const avail = slice.availability.find((a) => a.roomTypeId === rt.id);
-      if (!avail || avail.status === 'soldout' || !avail.capacityFits) return null;
-      const room = mapRoomTypeToRoom(rt);
-      return {
-        room,
-        availability: mapAvailabilityStatus(avail.status),
-        plans: ratePlansForRoom(rt.id, slice.rates),
-        hotelId: rt.hotelId,
-        hotelName: room.hotelName,
-      };
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null);
-}
-
-/** One round trip for availability + rates + room types across N hotels. */
-async function stayBatch(
-  hotels: Array<{ id: string }>,
+/** One staySearch round trip: every room type of the hotel + its availability
+    status and rates for the requested stay. The single-hotel platform needs
+    no multi-hotel aliasing — this one query is the shared read for search,
+    the hotel grid, the room page and the booking page. */
+async function staySearchRows(
+  hotelId: string,
   params: StayParams
-): Promise<Map<string, StayResult>> {
-  const out = new Map<string, StayResult>();
-  if (hotels.length === 0) return out;
-  const variables: Record<string, unknown> = {};
-  hotels.forEach((h, i) => {
-    variables[`h${i}`] = h.id;
-    variables[`a${i}`] = stayInputOf(h.id, params);
-    variables[`r${i}`] = ratesInputOf(h.id, params);
-  });
-  const data = await gqlRequest(stayBatchDocument(hotels.length), variables);
-  hotels.forEach((h, i) => {
-    const t = data[`t${i}`];
-    const a = data[`a${i}`];
-    const r = data[`r${i}`];
-    out.set(
-      h.id,
-      Array.isArray(t) && Array.isArray(a) && Array.isArray(r)
-        ? assembleStaySlice({
-            roomTypes: t as BatchRoomType[],
-            availability: a as BatchAvailability[],
-            rates: r as BatchRate[],
-          })
-        : []
-    );
-  });
-  return out;
-}
-
-async function stayResultsFor(hotelId: string, params: StayParams): Promise<StayResult> {
-  const batches = await stayBatch([{ id: hotelId }], params);
-  return batches.get(hotelId) ?? [];
-}
-
-/** Availability-driven room search across one hotel (hotelId) or all active
-    hotels (hotelId undefined) — one backend staySearch round trip. */
-export async function searchStay(
-  hotelId: string | undefined,
-  params: StayParams = {}
-): Promise<SearchResultEntry[]> {
-  const input = { ...stayInputOf(hotelId ?? '', params), hotelId };
+): Promise<StaySearchQuery['staySearch']> {
+  const input = { ...stayInputOf(hotelId ?? '', params), hotelId: hotelId || undefined };
   const { staySearch } = await gqlRequest(StaySearchDocument, { input });
-  return staySearch
+  return staySearch;
+}
+
+function mapStayRows(rows: StaySearchQuery['staySearch']) {
+  return rows
     .filter(
       (row) =>
         row.status !== 'soldout' && row.capacityFits && row.roomType.status === 'active'
     )
-    .map((row) => {
-      const room = mapRoomTypeToRoom(row.roomType);
-      return {
-        room,
-        availability: mapAvailabilityStatus(row.status),
-        plans: ratePlansForRoom(row.roomType.id, row.rates),
-        hotelId: row.hotelId,
-        hotelName: room.hotelName,
-        demand: demandFor(room),
-      };
-    });
+    .map((row) => ({
+      room: mapRoomTypeToRoom(row.roomType),
+      availability: mapAvailabilityStatus(row.status),
+      plans: ratePlansForRoom(row.roomType.id, row.rates),
+      hotelId: row.hotelId,
+      hotelName: row.hotelName,
+    }));
 }
 
-/** All rooms with availability for one hotel (backend mode). */
+/** Availability-driven room search across one hotel (hotelId) or the
+    canonical hotel (hotelId undefined) — one backend staySearch round trip. */
+export async function searchStay(
+  hotelId: string | undefined,
+  params: StayParams = {}
+): Promise<SearchResultEntry[]> {
+  const rows = await staySearchRows(hotelId ?? '', params);
+  return mapStayRows(rows).map((entry) => ({ ...entry, demand: demandFor(entry.room) }));
+}
+
+/** All rooms with availability for one hotel (backend mode) — one staySearch
+    round trip. The hotel itself is not re-fetched: callers already hold it
+    (HotelDetails on the hotel page). */
 export async function getStay(
   hotelId: string,
   params: StayParams = {}
-): Promise<{
-  hotel: Property;
-  rooms: Array<{ room: Room; availability: Availability; plans: RatePlan[]; fits: boolean }>;
-} | null> {
-  const [{ hotel }, results] = await Promise.all([
-    gqlRequest(HotelByIdDocument, { id: hotelId }),
-    stayResultsFor(hotelId, params),
-  ]);
-  if (!hotel) return null;
-  return {
-    hotel: mapHotelToProperty(hotel),
-    rooms: results.map((e) => ({
-      room: e.room,
-      availability: e.availability,
-      plans: e.plans,
-      fits: true,
-    })),
-  };
+): Promise<
+  Array<{ room: Room; availability: Availability; plans: RatePlan[]; fits: boolean }> | null
+> {
+  const rows = await staySearchRows(hotelId, params);
+  return mapStayRows(rows).map((e) => ({ ...e, fits: true }));
 }
 
-/** Room detail with availability + plans + siblings (backend mode). */
+/** Room detail with availability + plans + siblings — two round trips:
+    staySearch (room types + availability + rates) + HotelById (property).
+    The hotel id is resolved from the cached canonical hotel when absent. */
 export async function getStayRoom(
   hotelId: string | undefined,
   roomId: string,
   params: StayParams = {}
 ): Promise<StayRoomResult | null> {
-  const rt = (await gqlRequest(RoomTypeByIdDocument, { id: roomId })).roomType;
-  if (!rt || rt.status !== 'active') return null;
-  const hId = hotelId ?? rt.hotelId;
-  const [{ hotel }, { availability }, { rates }, { roomTypes }] = await Promise.all([
+  const hId = hotelId ?? (await getCanonicalHotelId());
+  const [rows, { hotel }] = await Promise.all([
+    staySearchRows(hId, params),
     gqlRequest(HotelByIdDocument, { id: hId }),
-    gqlRequest(StayAvailabilityDocument, { input: stayInputOf(hId, params) }),
-    gqlRequest(StayRatesDocument, { input: ratesInputOf(hId, params) }),
-    gqlRequest(HotelRoomTypesDocument, { hotelId: hId }),
   ]);
   if (!hotel) return null;
-  const availFor = (id: string) =>
-    mapAvailabilityStatus(availability.find((a) => a.roomTypeId === id)?.status ?? 'soldout');
+  const rowFor = (id: string) => rows.find((r) => r.roomType.id === id);
+  const mine = rowFor(roomId);
+  if (!mine || mine.roomType.status !== 'active') return null;
+  const availFor = (id: string) => mapAvailabilityStatus(rowFor(id)?.status ?? 'soldout');
   return {
     property: mapHotelToProperty(hotel),
-    room: mapRoomTypeToRoom(rt),
-    availability: availFor(rt.id),
-    plans: ratePlansForRoom(rt.id, rates),
-    fits: availability.find((a) => a.roomTypeId === rt.id)?.capacityFits ?? false,
-    siblingRooms: roomTypes
-      .filter((x) => x.id !== rt.id && x.status === 'active')
-      .map((x) => ({
-        room: mapRoomTypeToRoom(x),
-        availability: availFor(x.id),
-        plans: ratePlansForRoom(x.id, rates),
+    room: mapRoomTypeToRoom(mine.roomType),
+    availability: availFor(roomId),
+    plans: ratePlansForRoom(roomId, mine.rates),
+    fits: mine.capacityFits ?? false,
+    siblingRooms: rows
+      .filter((r) => r.roomType.id !== roomId && r.roomType.status === 'active')
+      .map((r) => ({
+        room: mapRoomTypeToRoom(r.roomType),
+        availability: availFor(r.roomType.id),
+        plans: ratePlansForRoom(r.roomType.id, r.rates),
+      })),
+  };
+}
+
+/** Stay-variant refresh for the room page: only the availability/rates of the
+    stay change when the guest edits dates — the room and hotel entities are
+    already on screen, so only staySearch is re-run (no hotel/room re-fetch). */
+export async function refreshRoomStay(
+  hotelId: string,
+  roomId: string,
+  params: StayParams = {}
+): Promise<{
+  availability: Availability;
+  fits: boolean;
+  siblings: Array<{
+    room: Room;
+    availability: Availability;
+    plans: RatePlan[];
+  }>;
+} | null> {
+  const rows = await staySearchRows(hotelId, params);
+  const mine = rows.find((r) => r.roomType.id === roomId);
+  if (!mine) return null;
+  const availFor = (id: string) => mapAvailabilityStatus(rows.find((r) => r.roomType.id === id)?.status ?? 'soldout');
+  return {
+    availability: availFor(roomId),
+    fits: mine.capacityFits ?? false,
+    siblings: rows
+      .filter((r) => r.roomType.id !== roomId && r.roomType.status === 'active')
+      .map((r) => ({
+        room: mapRoomTypeToRoom(r.roomType),
+        availability: availFor(r.roomType.id),
+        plans: ratePlansForRoom(r.roomType.id, r.rates),
       })),
   };
 }
@@ -461,6 +362,18 @@ export async function getProperty(id?: string): Promise<Property | null> {
 export async function getHotelById(id: string) {
   const { hotel } = await gqlRequest(HotelByIdDocument, { id });
   return hotel;
+}
+
+/** The platform's single property id (single-hotel platform). */
+export async function getCanonicalHotelId(): Promise<string> {
+  return (await getCanonicalHotel()).id;
+}
+
+/** Resolve one room type by backend UUID (recently-viewed rooms etc.). */
+export async function getRoomTypeById(roomId: string): Promise<Room | null> {
+  const { roomType } = await gqlRequest(RoomTypeByIdDocument, { id: roomId });
+  if (!roomType || roomType.status !== 'active') return null;
+  return mapRoomTypeToRoom(roomType);
 }
 
 type BackendHotelDetails = NonNullable<HotelDetailsQuery['hotelDetails']>;

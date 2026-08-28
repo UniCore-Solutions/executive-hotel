@@ -244,6 +244,43 @@ class RestApiIntegrationTest {
 	}
 
 	@Test
+	void accountlessGuestCanPayWithGuestEmail() throws Exception {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		String guestEmail = "pay-guest-" + System.nanoTime() + "@example.com";
+		Map<String, Object> body = Map.of(
+				"hotelId", fx.hotelId(),
+				"checkInDate", LocalDate.now().plusDays(9).toString(),
+				"checkOutDate", LocalDate.now().plusDays(10).toString(),
+				"adults", 2, "children", 0,
+				"currencyCode", TestFixtures.CURRENCY,
+				"guest", Map.of("firstName", "Omar", "lastName", "Guest", "email", guestEmail),
+				"rooms", List.of(Map.of("roomTypeId", fx.roomType().getId(),
+						"ratePlanId", fx.ratePlan().getId())),
+				"extras", List.of());
+		HttpResponse<String> created = postWithKey("/api/v1/reservations", body,
+				"rest-pay-guest-key-" + System.nanoTime(), null);
+		assertThat(created.statusCode()).isEqualTo(201);
+		String reservationId = objectMapper.readTree(created.body()).get("id").asText();
+
+		// anonymous payment with the guest email as proof of possession → 201
+		HttpResponse<String> anonPay = post("/api/v1/payments",
+				Map.of("reservationId", UUID.fromString(reservationId), "amount", 1000.0,
+						"currencyCode", TestFixtures.CURRENCY, "provider", "mock",
+						"idempotencyKey", "rest-pay-guest-key2-" + System.nanoTime(),
+						"guestEmail", guestEmail),
+				null);
+		assertThat(anonPay.statusCode()).isEqualTo(201);
+		String paymentId = objectMapper.readTree(anonPay.body()).get("id").asText();
+
+		// anonymous capture with the same proof → captured
+		HttpResponse<String> anonCapture = post("/api/v1/payments/" + paymentId + "/capture",
+				Map.of("guestEmail", guestEmail), null);
+		assertThat(anonCapture.statusCode()).isEqualTo(200);
+		assertThat(objectMapper.readTree(anonCapture.body()).get("status").asText())
+				.isEqualTo("captured");
+	}
+
+	@Test
 	void reviewRequiresAuthenticatedGuest() throws Exception {
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
 

@@ -3,7 +3,8 @@
 /* Persistent segmented search bar — port of RC.searchBarHTML / mountSearchBar
    (common.js). Hotel · Dates · Guests · Search Rooms, with floating popover
    panels and a mobile pill that opens the global bottom sheet.
-   On the homepage, adds a Hotel segment before Dates. */
+   Single-hotel platform: the Hotel segment is a STATIC label of the one
+   canonical property — there is no hotel picker and no "All hotels". */
 import { Button } from '@/components/ui/button';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -12,9 +13,9 @@ import { useToast } from '@/context/ToastContext';
 import { useLang } from '@/hooks/useLang';
 import { dateLabel, guestsLabel, stateToQuery, startOfDay } from '@/lib/dates';
 import { recordSearch } from '@/services/activity';
+import { getCanonicalHotel, type CanonicalHotel } from '@/services/canonicalHotel';
 import Calendar from '@/components/search/Calendar';
 import GuestsPanel from '@/components/search/GuestsPanel';
-import DestinationPicker from '@/components/search/DestinationPicker';
 
 const SEG_ICONS = {
   dest: (
@@ -79,12 +80,31 @@ export default function SearchBar({
   const { state, setDate, errors, openSheet } = useSearch();
   const { toast } = useToast();
   const { t } = useLang();
-  const [panel, setPanel] = useState<'' | 'dest' | 'dates' | 'guests'>('');
+  const [panel, setPanel] = useState<'' | 'dates' | 'guests'>('');
   const [panelDir, setPanelDir] = useState<'down' | 'up'>('down');
+  const [canonical, setCanonical] = useState<CanonicalHotel | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
   const isHome = pathname === '/' || pathname === '/search';
+
+  /* The one property of the platform — shown as a static label. */
+  useEffect(() => {
+    let alive = true;
+    getCanonicalHotel()
+      .then((h) => alive && setCanonical(h))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const destLabel = () => {
+    if (canonical) {
+      return [canonical.name, canonical.city].filter(Boolean).join(' · ');
+    }
+    return 'Loading hotel…';
+  };
 
   /* One popover at a time; close on outside click, scroll-out-of-view or resize. */
   useEffect(() => {
@@ -152,11 +172,6 @@ export default function SearchBar({
     router.push(`/search${stateToQuery(state)}`);
   };
 
-  const destLabel = () => {
-    if (!state.destination) return 'All hotels';
-    return state.destinationName || 'Hotel selected';
-  };
-
   /**
    * A segment button that fills its parent container entirely.
    * The parent wrapper MUST have `flex` display for this to work.
@@ -173,7 +188,7 @@ export default function SearchBar({
       id={id}
       onClick={() => {
         setPanelDir('down');
-        setPanel(open ? '' : (id.replace('seg-', '') as '' | 'dest' | 'dates' | 'guests'));
+        setPanel(open ? '' : (id.replace('seg-', '') as '' | 'dates' | 'guests'));
       }}
       className="group flex min-h-[52px] min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-left transition-colors hover:bg-navy/[0.04] lg:min-h-[56px] lg:gap-3 lg:px-4 lg:py-2.5"
       aria-haspopup="dialog"
@@ -196,6 +211,15 @@ export default function SearchBar({
     </button>
   );
 
+  /** Static hotel segment — the single canonical property, not a picker. */
+  const hotelSegment = (
+    <div className="relative min-w-0 flex-[1.1]">
+      <div className="flex h-full">
+        {segButton('seg-dest', SEG_ICONS.dest, 'HOTEL', destLabel(), false)}
+      </div>
+    </div>
+  );
+
   return (
     <div ref={barRef} className={`searchbar-wrap relative ${className || ''}`} style={panel ? { zIndex: 90 } : undefined}>
       {/* ===== DESKTOP / TABLET (md+) ===== */}
@@ -208,27 +232,7 @@ export default function SearchBar({
           {/* Hotel segment — homepage only */}
           {isHome && (
             <>
-              <div className="relative min-w-0 flex-[1.1]">
-                <div className="flex h-full">
-                  {segButton(
-                    'seg-dest',
-                    SEG_ICONS.dest,
-                    'HOTEL',
-                    destLabel(),
-                    panel === 'dest'
-                  )}
-                </div>
-                {panel === 'dest' && (
-                  <div
-                    ref={panelRef}
-                    className={`shadow-navy/15 border-navy/10 absolute left-0 z-[90] w-[400px] max-w-[calc(100vw-2rem)] rounded-3xl border bg-white p-4 shadow-2xl ${panelDir === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'}`}
-                    role="dialog"
-                    aria-label="Choose hotel"
-                  >
-                    <DestinationPicker onSelect={() => setPanel('')} />
-                  </div>
-                )}
-              </div>
+              {hotelSegment}
               <div className="bg-navy/10 my-2 hidden w-px lg:block" aria-hidden="true" />
             </>
           )}
@@ -341,19 +345,17 @@ export default function SearchBar({
                 />
               </svg>
             </span>
-            <span className="min-w-0 flex-1">
-              <span className="text-navy/45 block text-[10px] font-semibold tracking-[0.14em] uppercase">
-                {isHome ? 'Hotel · Dates · Guests' : `${t('dates')} · ${t('guests')}`}
+              <span className="min-w-0 flex-1">
+                <span className="text-navy/45 block text-[10px] font-semibold tracking-[0.14em] uppercase">
+                  {isHome ? 'Hotel · Dates · Guests' : `${t('dates')} · ${t('guests')}`}
+                </span>
+                <span
+                  id="mobile-search-value"
+                  className="text-navy block truncate text-sm font-semibold"
+                >
+                  {isHome ? `${destLabel()} · ${dateLabel(state)}` : `${dateLabel(state)} · ${guestsLabel(state)}`}
+                </span>
               </span>
-              <span
-                id="mobile-search-value"
-                className="text-navy block truncate text-sm font-semibold"
-              >
-                {isHome && state.destination
-                  ? `${destLabel()} · ${dateLabel(state)}`
-                  : `${dateLabel(state)} · ${guestsLabel(state)}`}
-              </span>
-            </span>
             <span className="bg-navy shrink-0 rounded-full px-4 py-2.5 text-xs font-bold tracking-widest text-white uppercase">
               {t('search')}
             </span>

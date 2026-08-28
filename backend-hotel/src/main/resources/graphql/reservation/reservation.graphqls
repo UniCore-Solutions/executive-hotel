@@ -5,12 +5,6 @@ extend type Query {
 	adminGuests(hotelId: ID!, query: String, page: PageInput): AdminGuestPage!
 }
 
-extend type Mutation {
-	createReservation(input: CreateReservationInput!): ReservationResult!
-	cancelReservation(input: CancelReservationInput!): ReservationResult!
-	adminCancelReservation(reservationId: ID!, reasonCode: String, reasonNote: String): Reservation!
-}
-
 type Reservation {
 	id: ID!
 	reference: String!
@@ -66,6 +60,13 @@ type ReservationRoomLine {
 	ratePerNight: Float!
 	subtotalAmount: Float!
 	status: String!
+	# Resolved from the current catalog (roomLines persist only the room-type
+	# id) — the display identity for confirmation/lookup/check-in views.
+	roomTypeName: String!
+	roomTypeImageUrl: String
+	# Resolved from the current rate catalog (roomLines persist only the
+	# rate-plan id) — the display name for confirmation/lookup views.
+	ratePlanName: String
 }
 
 type ReservationExtraLine {

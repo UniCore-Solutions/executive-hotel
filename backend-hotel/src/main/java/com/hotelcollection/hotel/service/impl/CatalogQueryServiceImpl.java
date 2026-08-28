@@ -141,6 +141,20 @@ public class CatalogQueryServiceImpl implements CatalogQueryService {
 
 	@Override
 	@Transactional(readOnly = true)
+	public Hotel canonicalHotel() {
+		List<Hotel> active = hotelRepository.findAllActive();
+		if (active.isEmpty()) {
+			throw DomainException.notFound("no active hotel");
+		}
+		if (active.size() > 1) {
+			throw DomainException.conflict("more than one active hotel — "
+					+ "the platform is a single-property platform");
+		}
+		return active.get(0);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
 	public boolean hotelExists(UUID id) {
 		return hotelRepository.existsById(id);
 	}

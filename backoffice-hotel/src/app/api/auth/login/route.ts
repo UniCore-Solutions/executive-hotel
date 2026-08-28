@@ -1,8 +1,20 @@
 import { NextResponse } from 'next/server';
-import { ApiError, serverRequest } from '@/lib/api';
 import { setSessionCookie } from '@/lib/session';
-import { LoginDocument } from '@/graphql/generated/graphql';
 
+const BACKEND_REST_URL =
+  (process.env.HOTEL_API_URL ?? 'http://localhost:8180/graphql').replace(
+    /\/graphql\/?$/,
+    ''
+  ) + '/api/v1';
+
+interface LoginEnvelope {
+  token: string;
+  me: { id: string; email: string; firstName?: string | null; lastName?: string | null };
+}
+
+/** Login — REST write (POST /api/v1/auth/login, the API rule: GraphQL =
+    READ, REST = WRITE/ACTION). The returned JWT goes into the httpOnly
+    bo_session cookie; the browser never sees it. */
 export async function POST(request: Request): Promise<NextResponse> {
   let input: { email?: string; password?: string };
   try {
@@ -14,18 +26,26 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'email and password are required' }, { status: 400 });
   }
   try {
-    const data = await serverRequest(LoginDocument, {
-      input: { email: input.email, password: input.password },
+    const res = await fetch(BACKEND_REST_URL + '/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: input.email, password: input.password }),
+      cache: 'no-store',
     });
-    setSessionCookie(data.login.token);
-    return NextResponse.json({ me: data.login.me });
-  } catch (err) {
-    if (err instanceof ApiError) {
+    const body = (await res.json().catch(() => null)) as
+      | LoginEnvelope
+      | { code?: string; message?: string }
+      | null;
+    if (!res.ok || !body || !('token' in body)) {
+      const err = body as { code?: string; message?: string } | null;
       return NextResponse.json(
-        { error: err.message, code: err.code ?? 'UNAUTHORIZED' },
+        { error: err?.message ?? 'Incorrect email or password.', code: err?.code ?? 'UNAUTHORIZED' },
         { status: 401 },
       );
     }
+    setSessionCookie(body.token);
+    return NextResponse.json({ me: body.me });
+  } catch {
     return NextResponse.json({ error: 'sign in failed' }, { status: 502 });
   }
 }

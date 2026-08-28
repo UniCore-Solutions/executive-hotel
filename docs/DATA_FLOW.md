@@ -48,6 +48,9 @@ RoomDetails.tsx / BookingFlow.tsx
 ```
 
 Since commit `82c4414` the guest frontend performs **no pricing arithmetic**.
+`Quote.charges[]` (itemized tax/fee lines — name/type/amount straight from
+`tax_fee_types`) is exposed in the schema since the 2026-08-28 redesign; the UI
+renders those rows verbatim and never derives a tax percentage.
 `services/pricing.ts` was reduced to promo-code *validation hints only*, and its offer
 catalog is hydrated from the backend by `pricingHydration.ensurePricingSources()`
 (empty by default, so stale fixture offers can never leak in).
@@ -58,27 +61,34 @@ catalog is hydrated from the backend by `pricingHydration.ensurePricingSources()
 
 ```
 /booking  BookingFlow.tsx
-  1. getQuote(...)                                     → live total shown to the guest
+  1. getQuote(...)                                     → live total shown to the guest (GraphQL read)
   2. reservations.create({ idempotencyKey, ... })
-       → gqlRequest(CreateReservationDocument) ──► ReservationGraphQLController
-         → BookingServiceImpl.create()   [ @Transactional — all of the following commit together ]
-            ├─ findByIdempotencyKey → early return if replayed
-            ├─ hotel must be status='active'
-            ├─ room-type capacity check (maxAdults / maxChildren)
-            ├─ PricingService.quote()   ← RE-PRICED SERVER-SIDE; client totals never trusted
-            ├─ InventoryService.lockAndSell()
-            │     ensureRow(roomTypeId, night) upsert  → SELECT … FOR UPDATE over the range
-            │     → sell(units, totalInventory) or CONFLICT "no availability left"
-            ├─ findOrCreateGuest(email)
-            ├─ INSERT reservations (+ rooms, extras, charges, status_history)
-            │     DataIntegrityViolation on idempotency_key → return the racing winner
-            └─ EventPublisher.publish("booking.confirmed", …) → INSERT event_outbox
+       → REST POST /api/v1/reservations  (Idempotency-Key header)
+       → (BFF /api/rest proxy injects the httpOnly-cookie Bearer)
+       → ReservationRestController → BookingServiceImpl.create()
+          [ @Transactional — all of the following commit together ]
+             ├─ findByIdempotencyKey → early return if replayed (200 vs 201)
+             ├─ hotel must be status='active'
+             ├─ room-type capacity check (maxAdults / maxChildren)
+             ├─ PricingService.quote()   ← RE-PRICED SERVER-SIDE; client totals never trusted
+             ├─ InventoryService.lockAndSell()
+             │     ensureRow(roomTypeId, night) upsert  → SELECT … FOR UPDATE over the range
+             │     → sell(units, totalInventory) or CONFLICT "no availability left"
+             ├─ findOrCreateGuest(email)
+             ├─ INSERT reservations (+ rooms, extras, charges, status_history)
+             │     arrival_slot + special_requests persisted (V29) — collected by
+             │     the booking form, previously dropped
+             │     DataIntegrityViolation on idempotency_key → return the racing winner
+             └─ EventPublisher.publish("booking.confirmed", …) → INSERT event_outbox
   3. payment.charge()
-       → createPayment  → server validates amount ≤ remaining balance and currency match
-       → capturePayment → ⚠ no PSP: provider reference becomes "MOCK-XXXXXXXX"
-                          → reservation.payment_status = captured when fully paid
-                          → outbox "payment.created" / "payment.captured"
-  4. redirect /confirmation?ref=RC-XXXXXX
+       → REST POST /api/v1/payments → createPayment (server validates amount ≤ remaining
+         balance and currency match)
+       → REST POST /api/v1/payments/{id}/capture → ⚠ no PSP: provider reference
+         becomes "MOCK-XXXXXXXX"
+         → reservation.payment_status = captured when fully paid
+         → outbox "payment.created" / "payment.captured"
+  4. Apollo cache invalidated (MyReservations) via src/api/invalidation.ts
+  5. redirect /confirmation?ref=RC-XXXXXX
 ```
 
 Idempotency, server-side re-pricing, and inventory locking are all genuine. The only
@@ -108,30 +118,28 @@ OutboxRelay.recoverStaleClaims @Scheduled(30s)
 
 ---
 
-## 5. Guest auth — REAL, ⚠ non-persistent
+## 5. Guest auth — REAL, httpOnly-cookie session
 
 ```
 LoginForm → SessionContext.login()
-  → services/auth.ts  fetch POST :8180/api/v1/auth/login   (bypasses the /graphql proxy)
-    → AuthRestController → AuthServiceImpl → bcrypt verify → JwtService.issue()
-  ← { token, me{ userId, email, roles, hotelIds } }
-  → stored in `let _token` / `let _session`  ⚠ module memory only
-  → graphqlClient.ts attaches `Authorization: Bearer <token>` to every GraphQL request
-
-⚠ Page reload wipes the session. `restoreSession()` exists but is never called.
-⚠ `reset(email)` returns a success message without contacting the backend — there is no
-   password-reset flow anywhere in the system.
+  → services/auth.ts  fetch POST /api/auth/login   (same-origin BFF)
+    → BFF → REST POST :8180/api/v1/auth/login → AuthServiceImpl → bcrypt verify → JwtService.issue()
+  → setSessionCookie(): httpOnly `guest_session` cookie (30 d), browser never sees the JWT
+  → /api/graphql + /api/rest BFF proxies inject `Authorization: Bearer` from the cookie
 ```
+
+⚠ No email provider exists: password reset, newsletter and contact forms are honest
+"not available" states — no canned success, no localStorage pretending.
 
 ## 6. Back-office auth — REAL, correct
 
 ```
 /login → POST /api/auth/login (BFF route handler)
-  → serverRequest(LoginDocument) ──► backend GraphQL `login`
+  → REST POST :8180/api/v1/auth/login
   → setSessionCookie(token): httpOnly, sameSite=lax, secure in prod, 7 days
-Every later call → POST /api/graphql
+Every later call → POST /api/graphql (reads) or /api/rest/... (writes)
   → getSessionToken() from the cookie → injects `Authorization: Bearer`
-  → forwards to HOTEL_API_URL, streams the response body back
+  → forwards to HOTEL_API_URL
 ⇒ the token never reaches the browser and the backend URL is never exposed.
 ```
 
@@ -141,7 +149,8 @@ Every later call → POST /api/graphql
 
 ```
 /reservation → reservations.cancel({ reference, email, reasonCode, reasonNote })
-  → BookingServiceImpl.cancel()
+  → REST POST /api/v1/reservations/{reference}/cancel (BFF /api/rest proxy)
+  → ReservationRestController → BookingServiceImpl.cancel()
      ├─ lookup by reference + guest email
      ├─ account-backed reservations refuse anonymous cancellation (403)
      ├─ reject if already cancelled / checked_in / checked_out
@@ -156,7 +165,6 @@ Every later call → POST /api/graphql
 ---
 
 ## 8. Media upload — REAL
-
 ```
 Back-office → REST POST /api/v1/media/upload (multipart, authenticated)
   → MediaRestController → MediaStorageService → MediaStorageProvider
@@ -166,20 +174,31 @@ Back-office → REST POST /api/v1/media/upload (multipart, authenticated)
     ⚠ MEDIA_BASE_URL must be browser-resolvable (hence localhost:8180, not `backend`)
 ```
 
+## 8b. Country reference (guest selectors) — REAL since 2026-08-28
+
+```
+CountryCombobox / PhoneField (guest forms)
+  → services/countries.ts  getCountries()
+    → gqlRequest(CountriesDocument) ──► CatalogGraphQLController.countries()
+      → ReferenceQueryService.countries() → CountryRepository → countries (V24 list,
+        V28 adds calling_code; no hardcoded client list)
+  → flags rendered as emoji derived from the ISO code (no assets)
+  → PhoneField output stays E.164 via libphonenumber-js (formatting only)
+```
+
 ---
 
 ## 9. Flows that stop before reaching the backend
 
 | Flow | Where it ends |
 |---|---|
-| **Online check-in** (`/checkin`) | Looks the reservation up for real, validates the form, then `setTimeout(900ms)` and flips local state. Source comment: *"Backend has no check-in mutation — mark as checked in client-side."* Nothing is persisted; `check_ins` stays empty; the reservation never leaves `confirmed`. |
-| **Newsletter** | `services/newsletter.ts` → `localStorage['rc_newsletter_v1']`. No endpoint exists. |
-| **Site search** | `services/siteSearch.ts` scans the static `DATA` fixture, not the backend. |
+| **Online check-in** (`/checkin`) | Looks the reservation up for real (GraphQL read), then shows an honest **"Online check-in is not available yet"** state — no client-side simulation (the backend has no check-in mutation; it is a REST write when built). |
+| **Newsletter** | Honest "not available" state — no endpoint exists; no localStorage pretending. |
 | **Cookie consent / recent activity** | `localStorage` by design (`rc_consent_v1`, `rc_recent_searches_v1`, `rc_recent_rooms_v1`). |
-| **Password reset** | Returns a canned success string; no backend call. |
+| **Password reset / contact form** | Honest "not available" states — no email provider exists anywhere. |
 | **Notifications** | Back-office reads `notifications`; nothing ever writes it. |
-| **Reviews after stay** | `createReview` demands a `checked_out` reservation; no code path can produce one. |
-| **Homepage sections** | `getHomepage()` catches every error and returns `EMPTY_HOMEPAGE`; the page silently falls back to fixture sections, so a backend outage looks like normal content. |
+| **Reviews after stay** | `createReview` (REST) demands a `checked_out` reservation; no code path can produce one. |
+| **Homepage sections** | `getHomepage()` propagates errors — no silent fixture fallback (canonical task). |
 
 ---
 
@@ -192,14 +211,11 @@ Several routes have **two modes** selected by the presence of a `hotelid` UUID q
 /hotel?hotelid=<uuid>     → BACKEND: getHotelById() + live availability + rates
 ```
 
-Still fixture-sourced (`import … from '@/data'`): `app/page.tsx` (home),
-`app/hotel/page.tsx` (legacy branch), `app/index-2/page.tsx`, `app/faq/faq-client.tsx`,
-`components/layout/{Header,Footer,SearchSheet}.tsx`,
-`components/home/{RoomsGrid,DiscoverSection,RecentActivity}.tsx`,
-`components/offers/OffersGrid.tsx`, `components/room/RoomDetails.tsx` (EXTRAS),
-`services/{siteSearch,availability}.ts`.
+Still fixture-sourced (`import … from '@/data'`): `src/data/index.ts` is unit-test
+fixtures + the `img()` utility only — no page imports it. `services/availability.ts`
+re-exports `img`/`IMG_FALLBACK` for fallback images.
 
 > **This matters more than it looks.** The fixture describes *Executive Hotel* in Rabat.
-> The seeded database contains *Azure Bay Resort* (Lisbon), *Dar Zellij* (Marrakech) and
+> The seeded database contains *Executive Hotel* (Lisbon), *Dar Zellij* (Marrakech) and
 > *Villa Aurelia* (Rome). A visitor moving from the home page into search crosses from
 > one fictional hotel into three entirely different real ones.

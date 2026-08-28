@@ -8,12 +8,14 @@ import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/context/ToastContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useModal } from '@/context/ModalContext';
+import { useApollo } from '@/api/apollo/provider';
+import { REST_INVALIDATIONS, invalidateGraphql } from '@/api/invalidation';
 import { reservations, type BackendReservation } from '@/services/reservations';
 import { GraphqlClientError } from '@/services/graphqlClient';
 import { getExtras } from '@/services/extras';
 import { fmt, fromISODate, inStayWindow } from '@/lib/dates';
 import { fmtPrice } from '@/lib/format';
-import { image } from '@/services/availability';
+import { image, IMG_FALLBACK } from '@/services/availability';
 import { QuoteTable } from '@/components/ui/QuoteTable';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -67,6 +69,7 @@ export default function ReservationFlow() {
   const { toast } = useToast();
   const { currency } = useCurrency();
   const { open } = useModal();
+  const apollo = useApollo();
 
   const deepRef = useMemo(
     () =>
@@ -222,6 +225,9 @@ export default function ReservationFlow() {
         onConfirm={async (reason) => {
           try {
             await reservations.cancel(res.reference, res.guest.email || '', 'guest_requested', reason);
+            if (apollo) {
+              invalidateGraphql(apollo, REST_INVALIDATIONS['reservations.cancel']);
+            }
             const updated = await reservations.find(res.reference, res.guest.email || '');
             if (updated) setRes(updated);
             toast({
@@ -284,12 +290,18 @@ export default function ReservationFlow() {
             <div id="view-room" className="mt-4 flex items-center gap-4">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={image(roomLine?.roomTypeId ?? '', 400)}
-                alt="Room"
+                src={
+                  roomLine?.roomTypeImageUrl
+                    ? image(roomLine.roomTypeImageUrl, 400)
+                    : IMG_FALLBACK
+                }
+                alt={roomLine?.roomTypeName ?? 'Room'}
                 className="h-20 w-20 rounded-2xl object-cover"
               />
               <div className="min-w-0">
-                <p className="font-display text-navy text-xl font-semibold">Room</p>
+                <p className="font-display text-navy text-xl font-semibold">
+                  {roomLine?.roomTypeName ?? 'Room'}
+                </p>
                 <p className="text-navy/55 mt-0.5 text-xs">
                   {roomLine ? `${roomLine.nights} night${roomLine.nights !== 1 ? 's' : ''}` : ''}
                   {roomLine?.ratePerNight ? ` · ${fmtPrice(roomLine.ratePerNight, currency)}/night` : ''}
@@ -324,7 +336,7 @@ export default function ReservationFlow() {
                   Rate
                 </dt>
                 <dd className="text-navy mt-1">
-                  {roomLine?.ratePlanId ? `Plan ${roomLine.ratePlanId.slice(0, 8)}` : ''}
+                  {roomLine?.ratePlanName || 'Standard rate'}
                   {res.discountAmount > 0 ? ` · promo applied` : ''}
                 </dd>
               </div>

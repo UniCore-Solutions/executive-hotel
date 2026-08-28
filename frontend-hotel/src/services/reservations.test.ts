@@ -35,22 +35,20 @@ describe('bookingKey', () => {
   });
 });
 
-describe('reservations.create — transaction currency boundary (Task 2)', () => {
+describe('reservations.create — REST write with MAD-only transaction currency (API rule)', () => {
   it('always sends currencyCode "MAD" to createReservation, never a display currency', async () => {
     vi.resetModules();
-    const gqlRequest = vi.fn().mockResolvedValue({
-      createReservation: {
-        reservation: { id: 'res-1', reference: 'RC-TEST01' },
-        created: true,
-      },
+    const post = vi.fn().mockResolvedValue({
+      status: 201,
+      data: { id: 'res-1', reference: 'RC-TEST01' },
     });
-    vi.doMock('@/services/graphqlClient', () => ({
-      gqlRequest: (...args: unknown[]) => gqlRequest(...args),
-      TRANSACTION_CURRENCY: 'MAD',
+    vi.doMock('@/api/rest/client', () => ({
+      restClient: { post },
+      ApiError: class ApiError extends Error {},
     }));
 
-    const { reservations: mockedReservations } = await import('@/services/reservations');
-    await mockedReservations.create({
+    const { createReservation } = await import('@/api/rest/endpoints');
+    await createReservation({
       hotelId: 'hotel-1',
       checkInDate: '2026-09-10',
       checkOutDate: '2026-09-12',
@@ -61,11 +59,18 @@ describe('reservations.create — transaction currency boundary (Task 2)', () =>
       idempotencyKey: 'bk-test-key',
     });
 
-    expect(gqlRequest).toHaveBeenCalledTimes(1);
-    const [, variables] = gqlRequest.mock.calls[0] as [unknown, { input: { currencyCode: string } }];
-    expect(variables.input.currencyCode).toBe('MAD');
+    expect(post).toHaveBeenCalledTimes(1);
+    const [url, body, config] = post.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+      { headers: Record<string, string> },
+    ];
+    expect(url).toBe('/v1/reservations');
+    expect(body.currencyCode).toBe('MAD');
+    expect(body.idempotencyKey).toBe('bk-test-key');
+    expect(config.headers['Idempotency-Key']).toBe('bk-test-key');
 
-    vi.doUnmock('@/services/graphqlClient');
+    vi.doUnmock('@/api/rest/client');
     vi.resetModules();
   });
 });

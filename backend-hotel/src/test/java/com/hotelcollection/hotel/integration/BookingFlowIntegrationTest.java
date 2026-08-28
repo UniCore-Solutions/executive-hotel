@@ -76,7 +76,7 @@ class BookingFlowIntegrationTest {
 				TestFixtures.CURRENCY,
 				new GuestInput("Amine", "El Idrissi", GUEST_EMAIL, "+212600000000", "MA"),
 				List.of(new RoomInput(fx.roomType().getId(), fx.ratePlan().getId())),
-				List.of(), null, idempotencyKey);
+				List.of(), null, idempotencyKey, null, null);
 	}
 
 	@Test

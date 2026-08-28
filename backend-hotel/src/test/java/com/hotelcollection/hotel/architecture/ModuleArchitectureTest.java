@@ -58,6 +58,19 @@ public class ModuleArchitectureTest {
 			.should(haveAtMostConstructorDependencies(11))
 			.because("services above 11 collaborators should be split");
 
+	/**
+	 * API rule: GraphQL = READ, REST = WRITE/ACTION. No GraphQL mutation
+	 * handlers may exist anywhere in main source — every state change goes
+	 * through the REST controllers (/api/v1/**).
+	 */
+	@ArchTest
+	static final ArchRule NO_GRAPHQL_MUTATIONS = noClasses()
+			.that().resideOutsideOfPackages("com.hotelcollection.hotel.test",
+					"com.hotelcollection.hotel.integration")
+			.should().dependOnClassesThat()
+			.haveSimpleName("MutationMapping")
+			.because("writes are REST (/api/v1/**); the GraphQL schema has no Mutation root");
+
 	private static ArchCondition<JavaClass> haveAtMostConstructorDependencies(int max) {
 		return new ArchCondition<>("have at most " + max + " constructor dependencies") {
 			@Override

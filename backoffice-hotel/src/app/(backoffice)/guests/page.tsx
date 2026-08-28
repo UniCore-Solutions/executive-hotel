@@ -1,9 +1,8 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery } from '@apollo/client/react';
 import { useDeferredValue, useState } from 'react';
 import { Search } from 'lucide-react';
-import { proxyRequest } from '@/lib/api';
 import { formatDate, formatMoney } from '@/lib/format';
 import { AdminGuestsDocument } from '@/graphql/generated/graphql';
 import { Card, CardContent } from '@/components/ui/card';
@@ -25,15 +24,13 @@ export default function GuestsPage() {
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query.trim());
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['adminGuests', activeHotelId, deferredQuery],
-    queryFn: () =>
-      proxyRequest(AdminGuestsDocument, {
-        hotelId: activeHotelId ?? '',
-        query: deferredQuery || undefined,
-        page: { page: 0, size: 50 },
-      }),
-    enabled: !!activeHotelId,
+  const { data, loading } = useQuery(AdminGuestsDocument, {
+    variables: {
+      hotelId: activeHotelId ?? '',
+      query: deferredQuery || undefined,
+      page: { page: 0, size: 50 },
+    },
+    skip: !activeHotelId,
   });
 
   if (hotels.length === 0) {
@@ -66,7 +63,7 @@ export default function GuestsPage() {
           />
         </label>
       </div>
-      {isLoading ? (
+      {loading ? (
         <Skeleton className="h-72 w-full" />
       ) : guests.length === 0 ? (
         <Card>

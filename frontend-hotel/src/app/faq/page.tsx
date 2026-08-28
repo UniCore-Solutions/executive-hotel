@@ -2,14 +2,23 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import HeaderTheme from '@/components/layout/HeaderTheme';
 import FaqClient from './faq-client';
+import { getHotelDetails, getCanonicalHotelId } from '@/services/catalog';
 
 export const metadata: Metadata = {
   title: 'FAQ — Executive Hotel',
   description:
-    'Answers about check-in, bookings, cancellation and staying at Executive Hotel in Rabat.',
+    'Answers about check-in, bookings, cancellation and staying at Executive Hotel, Lisbon.',
 };
 
-export default function FaqPage() {
+export default async function FaqPage() {
+  const canonicalId = await getCanonicalHotelId();
+  const details = await getHotelDetails(canonicalId);
+  const faqs = (details?.faqs ?? []).map((f) => ({
+    question: f.question,
+    answer: f.answer,
+    category: f.category ?? null,
+  }));
+
   return (
     <>
       <HeaderTheme theme="light" />
@@ -28,12 +37,12 @@ export default function FaqPage() {
           .
         </p>
 
-        <FaqClient />
+        <FaqClient faqs={faqs} />
 
         <div className="border-navy/10 mt-12 rounded-3xl border bg-white p-6 text-center">
           <p className="font-display text-navy text-xl font-semibold">Still curious?</p>
           <p className="text-navy/55 mt-1 text-sm">
-            Our team answers within a few hours, Rabat time (GMT+1).
+            Our team answers within a few hours, Lisbon time (WET).
           </p>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             <Link
@@ -43,10 +52,10 @@ export default function FaqPage() {
               Contact us
             </Link>
             <a
-              href="tel:+212537771000"
+              href="tel:+351210000101"
               className="bg-paper border-navy/15 text-navy hover:border-navy/30 rounded-xl border px-5 py-3 text-xs font-bold tracking-widest uppercase"
             >
-              +212 5 37 77 10 00
+              +351 21 000 0101
             </a>
           </div>
         </div>

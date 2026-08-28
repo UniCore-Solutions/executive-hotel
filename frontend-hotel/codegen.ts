@@ -6,6 +6,12 @@ const config: CodegenConfig = {
   generates: {
     'src/graphql/generated/': {
       preset: 'client',
+      presetConfig: {
+        // Fragments are reuse helpers for the shared selections; the
+        // services map the raw result types, so keep fields inlined instead
+        // of behind the $fragmentRefs masking indirection.
+        fragmentMasking: false,
+      },
       config: {
         scalars: {
           DateTime: 'string',

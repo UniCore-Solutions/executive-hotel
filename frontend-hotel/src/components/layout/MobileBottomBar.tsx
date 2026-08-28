@@ -42,7 +42,6 @@ export default function MobileBottomBar() {
   if (!variant) return null;
 
   const hasDates = !!(state.checkin && state.checkout);
-  const hasDest = !!state.destination;
 
   const handleClick = () => {
     if (variant === 'home') {
@@ -99,7 +98,7 @@ export default function MobileBottomBar() {
                 </svg>
                 <div className="min-w-0 flex-1">
                   <p className="text-navy truncate text-sm font-semibold">
-                    {hasDest ? (state.destinationName || 'Hotel selected') : 'Where to?'}
+                    {hasDates ? 'Search availability' : 'Check availability'}
                   </p>
                   <p className="text-navy/50 truncate text-[11px]">
                     {hasDates

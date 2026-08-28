@@ -60,18 +60,26 @@ public class AuthServiceImpl implements AuthService {
 		if (in.password() == null || in.password().length() < 6) {
 			throw DomainException.validation("password must be at least 6 characters");
 		}
-		// generic error on existing email: no account enumeration on registration
-		if (userRepository.findByEmailIgnoreCase(normalizedEmail).isPresent()) {
+
+		// Account completion: an accountless booking provisioned a passwordless
+		// 'provisioned' user for this email — registration completes it (sets
+		// the password, activates it, refreshes the profile) instead of
+		// creating a duplicate. Any other existing account keeps the generic
+		// no-enumeration error.
+		User existing = userRepository.findByEmailIgnoreCase(normalizedEmail).orElse(null);
+		if (existing != null && !"provisioned".equals(existing.getStatus())) {
 			throw DomainException.validation("registration failed — please check your details");
 		}
 
-		User user = new User();
-		user.setEmail(normalizedEmail);
+		User user = existing != null ? existing : new User();
+		if (existing == null) {
+			user.setEmail(normalizedEmail);
+			user.setCreatedAt(Instant.now());
+		}
 		user.setPasswordHash(passwordEncoder.encode(in.password()));
 		user.setFirstName(in.firstName());
 		user.setLastName(in.lastName());
 		user.setStatus("active");
-		user.setCreatedAt(Instant.now());
 		user.setUpdatedAt(Instant.now());
 		userRepository.save(user);
 
@@ -81,14 +89,24 @@ public class AuthServiceImpl implements AuthService {
 					r.setName("guest");
 					return roleRepository.save(r);
 				});
-		UserRole assignment = new UserRole();
-		assignment.setUser(user);
-		assignment.setRole(guestRole);
-		userRoleRepository.save(assignment);
+		boolean hasGuestRole = user.getUserRoles() != null
+				&& user.getUserRoles().stream().anyMatch(ur -> ur.getRole() != null
+						&& "guest".equals(ur.getRole().getName()));
+		if (!hasGuestRole) {
+			UserRole assignment = new UserRole();
+			assignment.setUser(user);
+			assignment.setRole(guestRole);
+			userRoleRepository.save(assignment);
+		}
 
-		guestProvisioning.provision(user.getId(), in.firstName(), in.lastName(), normalizedEmail);
+		guestProvisioning.provisionOrLink(user.getId(), in.firstName(), in.lastName(),
+				normalizedEmail);
 
-		return new AuthPayload(issueToken(user), currentUserOf(user));
+		// Re-read with roles: the in-memory userRoles collection is never
+		// populated by saving assignments (mappedBy side) — the token must
+		// carry the guest role.
+		User withRoles = userRepository.findByIdWithRoles(user.getId()).orElse(user);
+		return new AuthPayload(issueToken(withRoles), currentUserOf(withRoles));
 	}
 
 	@Override

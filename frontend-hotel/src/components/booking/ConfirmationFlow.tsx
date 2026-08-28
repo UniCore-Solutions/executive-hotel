@@ -12,10 +12,11 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { reservations, type BackendReservation } from '@/services/reservations';
 import { GraphqlClientError } from '@/services/graphqlClient';
 import { getExtras } from '@/services/extras';
+import { getHotelById } from '@/services/catalog';
 import { buildIcs } from '@/lib/ics';
 import { fmt, fmtShort, fromISODate, nightsBetween } from '@/lib/dates';
 import { fmtPrice } from '@/lib/format';
-import { image } from '@/services/availability';
+import { image, IMG_FALLBACK } from '@/services/availability';
 import { QR } from '@/components/ui/QR';
 import { QuoteTable } from '@/components/ui/QuoteTable';
 import type { Extra, PriceBreakdown } from '@/types';
@@ -70,6 +71,21 @@ export default function ConfirmationFlow() {
     }
   }, [res?.hotelId]);
 
+  /* The booking's hotel identity — resolved from the backend so the
+     confirmation, JSON-LD and calendar file carry the real property name
+     and location instead of a hardcoded brand string. */
+  const [hotelMeta, setHotelMeta] = useState<{ name: string; city?: string; countryCode?: string } | null>(null);
+  useEffect(() => {
+    if (!res?.hotelId) return;
+    let alive = true;
+    getHotelById(res.hotelId)
+      .then((h) => alive && h && setHotelMeta({ name: h.name, city: h.city ?? '', countryCode: h.countryCode ?? '' }))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [res?.hotelId]);
+
   useEffect(() => {
     if (!ref || res) return;
     // BookingFlow carries the guest email straight into the confirmation
@@ -98,7 +114,8 @@ export default function ConfirmationFlow() {
 
   useEffect(() => {
     if (!res) return;
-    const roomName = 'Room';
+    const roomName = res.roomLines[0]?.roomTypeName ?? 'Room';
+    const hotel = hotelMeta?.name || 'the hotel';
     const jsonLd = {
       '@context': 'https://schema.org',
       '@type': 'Reservation',
@@ -110,11 +127,11 @@ export default function ConfirmationFlow() {
         name: roomName,
         hotel: {
           '@type': 'Hotel',
-          name: 'Executive Hotel Rabat',
+          name: hotel,
           address: {
             '@type': 'PostalAddress',
-            addressLocality: 'Rabat',
-            addressCountry: 'MA',
+            addressLocality: hotelMeta?.city ?? '',
+            addressCountry: hotelMeta?.countryCode ?? '',
           },
         },
       },
@@ -133,7 +150,8 @@ export default function ConfirmationFlow() {
     return () => {
       if (el.parentNode) el.parentNode.removeChild(el);
     };
-  }, [res]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res, hotelMeta]);
 
   const doLookup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,7 +222,18 @@ export default function ConfirmationFlow() {
   }
 
   const roomLine = res.roomLines[0];
+  const roomName = roomLine?.roomTypeName ?? 'Room';
+  const planName = roomLine?.ratePlanName ?? '';
   const price = derivePrice(res);
+  /* Payment timeline + summary reflect the real payment status from the
+     backend (pending/authorized/captured/failed), never a hardcoded state. */
+  const paymentDone = res.paymentStatus === 'captured';
+  const paymentLabel =
+    res.paymentStatus === 'captured'
+      ? 'Processed'
+      : res.paymentStatus === 'failed'
+        ? 'Failed'
+        : 'Pending';
   const extras = res.extras.map((x) => {
     const def = extrasDefs.find((e) => e.id === x.extraId);
     return {
@@ -219,13 +248,16 @@ export default function ConfirmationFlow() {
   const n = Math.max(1, nightsBetween(checkinD, checkoutD));
 
   const downloadIcs = () => {
+    const roomName = res.roomLines[0]?.roomTypeName ?? 'Room';
+    const hotel = hotelMeta?.name || 'the hotel';
+    const city = hotelMeta?.city || '';
     const ics = buildIcs({
-      summary: `Room — Executive Hotel Rabat`,
-      location: 'Rabat, Morocco',
+      summary: `${roomName} — ${hotel}`,
+      location: city,
       description: `Booking ${res.reference} · Check-in from 15:00 — check-out by 11:00.`,
       dtStart: res.checkInDate,
       dtEnd: res.checkOutDate,
-      uid: `${res.reference}@executivehotel.example`,
+      uid: `${res.reference}@${(hotelMeta?.name ?? 'hotel').toLowerCase().replace(/\s+/g, '')}.example`,
     });
     const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -279,10 +311,11 @@ export default function ConfirmationFlow() {
           ✓
         </span>
         <h1 className="font-display text-navy mt-4 text-3xl font-semibold lg:text-4xl">
-          You&apos;re booked — see you in Rabat
+          You&apos;re booked{hotelMeta?.city ? ` — see you in ${hotelMeta.city}` : ''}
         </h1>
         <p className="text-navy/60 mt-2 text-sm" id="conf-email-line">
-          Confirmation for {res.guest.firstName} {res.guest.lastName} sent to {res.guest.email}
+          Confirmation for {res.guest.firstName} {res.guest.lastName} · booked under{' '}
+          {res.guest.email}
         </p>
         <div className="bg-paper border-navy/10 mt-5 inline-flex items-center gap-3 rounded-2xl border px-5 py-3">
           <span className="text-navy/50 text-xs font-semibold tracking-widest uppercase">
@@ -315,7 +348,7 @@ export default function ConfirmationFlow() {
         <ol id="timeline" className="mt-5 grid gap-4 sm:grid-cols-4">
           {[
             ['Booking confirmed', `Today · ${res.reference}`, true],
-            ['Payment', 'Processed', true],
+            ['Payment', paymentLabel, paymentDone],
             ['Check-in', `${fmtShort(checkinD)} · 15:00`, true],
             [
               'Check-out',
@@ -368,14 +401,14 @@ export default function ConfirmationFlow() {
           <div id="conf-room" className="flex items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={image(roomLine?.roomTypeId ?? '', 400)}
-              alt="Room"
+              src={image(roomLine?.roomTypeImageUrl || IMG_FALLBACK, 400)}
+              alt={roomName}
               className="h-20 w-20 rounded-2xl object-cover"
             />
             <div className="min-w-0">
-              <p className="font-display text-navy text-xl font-semibold">Room</p>
+              <p className="font-display text-navy text-xl font-semibold">{roomName}</p>
               <p className="text-navy/55 mt-0.5 text-xs">
-                {roomLine?.ratePlanId ? `Plan ${roomLine.ratePlanId.slice(0, 8)}` : ''}
+                {planName || 'Room'}
                 {roomLine?.nights ? ` · ${roomLine.nights} night${roomLine.nights !== 1 ? 's' : ''}` : ''}
               </p>
             </div>
@@ -402,7 +435,7 @@ export default function ConfirmationFlow() {
             <div>
               <dt className="text-navy/45 text-xs font-semibold tracking-widest uppercase">Rate</dt>
               <dd className="text-navy mt-1">
-                {roomLine?.ratePlanId ? `Plan ${roomLine.ratePlanId.slice(0, 8)}` : ''}
+                {planName || 'Standard rate'}
                 {res.discountAmount > 0 ? ' · promo applied' : ''}
               </dd>
             </div>
@@ -462,7 +495,13 @@ export default function ConfirmationFlow() {
                 currency={currency}
                 totalLabel="Paid total"
                 highlight
-                note="Payment processed at booking."
+                note={
+                  paymentDone
+                    ? 'Payment processed.'
+                    : res.paymentStatus === 'failed'
+                      ? 'Payment failed — retry from Manage booking.'
+                      : 'Payment pending — complete it from Manage booking.'
+                }
               />
             </div>
           </div>
@@ -481,7 +520,7 @@ export default function ConfirmationFlow() {
       </div>
 
       <p className="text-navy/40 mt-10 text-center text-[11px]">
-        A confirmation email has been sent to the address above.
+        Keep your reference handy — you can manage or cancel your booking anytime.
       </p>
     </div>
   );

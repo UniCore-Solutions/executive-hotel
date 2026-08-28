@@ -1,9 +1,108 @@
 # CURRENT_STATE
 
-**Assessed:** 2026-08-27 · **Branch:** `main` · **HEAD:** `82c4414`
-**Working tree:** uncommitted (still, as of this update), now substantially larger than
-the count below — see §Stopping point for what's out of date. Read §Stopping point
-before touching anything.
+**Assessed:** 2026-08-27 · **Branch:** `feature/canonical-single-hotel`
+
+> **Update 2026-08-28 (anonymous booking fixed end to end).** Accountless
+> checkout was broken in two places and is now verified live through the BFF:
+> - The `/api/rest` proxy doubled the API version prefix (`/api/rest/v1/reservations`
+>   → backend `/api/v1/v1/reservations` → 401 "authentication required") and
+>   dropped client headers (Idempotency-Key). It now strips the redundant `v1/`
+>   and forwards the client's headers (auth is still injected server-side).
+> - The backend filter chain required authentication for `/api/v1/payments` even
+>   though `PaymentServiceImpl` documents the accountless guest-email proof path;
+>   `SecurityConfig` now permits the payment endpoints (the service still enforces
+>   owner-or-staff-or-guest-email, returning 401/403 itself).
+> - Verified anonymously through `localhost:3000`: create reservation → 201 with a
+>   silent `provisioned` passwordless account linked (V27), pay with guest email →
+>   201, capture with guest email → captured, cancel → cancelled, idempotent replay
+>   → same reference. New backend test `accountlessGuestCanPayWithGuestEmail`.
+
+> **Update 2026-08-28 (hotel identity + gallery).** The single-hotel identity was
+> split across two records — the platform brand ("Executive Hotel", header/footer)
+> and the canonical hotel ("Azure Bay Resort", breadcrumb/H1/gallery). **V30
+> unifies them**: the canonical hotel record (name/brand/slug), its media alt
+> texts, the platform description and the hero block are all "Executive Hotel"
+> now; seed.sql matches; the live DB is updated. Guest frontend: layout metadata +
+> JSON-LD derive from the canonical hotel, Header/Footer brand comes from the
+> hotel entity (no hardcoded fallback), and the hotel page gallery is a clean
+> 1-large + 2-stacked section below the solid header (dark-theme overlap removed;
+> mobile gets a snap carousel). Verified: typecheck/lint/build clean, 73/73
+> vitest, live SSR checks on all routes.
+
+> **Update 2026-08-28 (hotel→room→booking redesign).** Guest journey redesigned and
+> data-plumbed end to end (details in docs/FRONTEND.md):
+> - **`/booking` SSR crash fixed** — `useApollo()` threw during server render
+>   (Apollo cache is browser-only) and `/booking` lacked the `<Suspense>` boundary the
+>   other flows use; the page 500'd (the stale prod build surfaced it as a 404 page).
+>   Fixed on both layers.
+> - **Money:** `Quote.charges[]` (itemized tax/fee lines from `tax_fee_types`) exposed
+>   in the schema and rendered; the client-side "Taxes & fees (17%)" percentage label
+>   and the date-less "MAD 0" placeholder total are gone. The backend remains the only
+>   price source.
+> - **Reference data:** new `countries` GraphQL query (code+name+calling code,
+>   `V28__country_calling_codes.sql`); searchable country combobox + rebuilt phone
+>   field (E.164 output unchanged).
+> - **Booking form:** arrival slot + special requests now persisted (`V29`) — they
+>   were collected by the form and silently dropped by the API.
+> - **Room identity:** `ReservationRoomLine.roomTypeName`/`roomTypeImageUrl` replace
+>   the hardcoded "Room"/broken image in reservation/confirmation/check-in views.
+> - **Room page:** dedicated room experience (hotel gallery/identity hidden when a
+>   room is selected, room header, vertical essentials/good-to-know); hotel room-grid
+>   cards carry the stay state and show per-night rates only (no local
+>   price×nights total).
+> - **Cleanup:** single FX table (`lib/format.ts`, env-driven), header/footer phone
+>   from the hotel record, mock constants removed, `useApollo()` no longer throws.
+> - Verified: guest `tsc`/`eslint`/`vitest` (73/73)/`next build` clean; all guest
+>   routes live 200. **Backend fully verified too**: compiled + `./mvnw test`
+>   **169/169 green** (all 6 ArchUnit rules) in a maven container; images rebuilt
+>   (`./scripts/build.sh` + backoffice), stack restarted, V28/V29 applied to the live
+>   DB. Live-verified end to end: `countries` query, `Quote.charges[]` (City tax 5% +
+>   VAT 12%), `/booking` 200 on the deployed frontend, and a create→read→cancel
+>   booking round-trip (arrival slot + special requests persisted, room identity +
+>   itemized charges returned, inventory released on cancel).
+
+> **Canonical single-hotel task (this session).** The platform was consolidated to
+> exactly ONE active hotel (Executive Hotel, Lisbon) and inventory became
+> physical-room-derived end to end. Everything below is re-verified against the live
+> stack: backend on Flyway **V26** (152/152 tests green, all 5 ArchUnit rules), guest
+> frontend typecheck/lint/build clean (72/72 vitest), back-office typecheck/lint/build
+> clean. See [ARCHITECTURE.md](ARCHITECTURE.md) §8 for the business model.
+> Sections of this file that describe pre-canonical multi-hotel state are marked.
+
+> **Update 2026-08-28 (later) — GraphQL read consolidation (frontend-hotel).**
+> Per the API audit, guest reads now flow through the Apollo cache:
+> - `reservations.find/list` (lookup, my-bookings) execute via Apollo
+>   `client.query` (cache-first; REST writes evict via `src/api/invalidation.ts`).
+> - `getStayRoom`/`getStay` rebuilt on one `staySearch` round trip (room types +
+>   availability + rates) instead of 5 separate queries; the runtime
+>   string-built `StayBatch` aliasing query was deleted (single-hotel platform);
+>   `RoomDetails` stay edits now refresh only the stay-variant data.
+> - Shared `HotelSummary`/`RoomTypeSummary` fragments replace three duplicated
+>   selections (codegen `fragmentMasking: false`).
+> - Dead GraphQL surface removed: `HotelReviews`, `HotelExperiences`, `Hotels`
+>   queries + services; `Homepage.featuredHotels` selection.
+> - `PlatformBySlug` memoized per session (layout + home shared it as two
+>   requests); promo hydration is now one cached offers request via the
+>   canonical hotel (was hotels-list + per-hotel offers).
+> - Result: home 7→6 (with platform dedup 7→5 fresh), hotel page 4–5→3, room
+>   page 9→4 first load (staySearch + quote + extras + hydration), refreshStay
+>   5→1. Guest: typecheck/lint clean, 73/73 vitest, build green.
+
+> **Update 2026-08-28 — API architecture migration.** The whole platform now follows
+> one rule — **GraphQL = READ, REST = WRITE/ACTION** (see
+> [API_GUIDELINES.md](API_GUIDELINES.md)):
+> - The GraphQL schema has **no Mutation root** (35 mutation fields deleted); the
+>   ArchUnit rule `NO_GRAPHQL_MUTATIONS` bans them. All writes are REST under
+>   `/api/v1/**`, including the new `/api/v1/admin/**` family (catalog/rate/
+>   availability/promotions/users/reservations/reviews CRUD + profile).
+> - Guest frontend: Apollo Client (browser reads) + Axios (writes via the new
+>   `/api/rest/...` BFF proxy) + an invalidation registry; booking/payment/cancel
+>   writes go over REST; de-mocked newsletter/contact/password-reset/check-in to
+>   honest "unavailable" states; 73/73 vitest.
+> - Back-office: reads migrated to Apollo Client, all 20 writes to Axios/REST
+>   (TanStack Query keeps mutation lifecycle only), availability tab on the range
+>   endpoint, real media file upload added; codegen fixed. 10/10 vitest.
+> - Backend: **169/169 tests green** (was 152) including the new admin REST suite.
 
 Verified against: source, `docker exec` into the live PostgreSQL, live GraphQL queries
 against the running backend, the last `surefire-reports`, and freshly executed
@@ -41,12 +140,25 @@ Toolchain note: **`mvn` is not on PATH** — use `./mvnw`. JDK 21 and Node 24 ar
 
 **Backend**
 - Auth: register/login, bcrypt(12), HS256 JWT with fail-fast secret validation, rate limiting.
+- **Silent account provisioning (V27)**: accountless bookings create passwordless
+  `provisioned` user accounts linked to the guest; registration with the same email
+  completes the account (password set, status active) and pre-registration bookings appear
+  under "My bookings" — closes F-13.
 - RBAC by role name with hotel scoping; IDOR guards inside every admin service.
+- **Canonical single hotel** (V26): exactly one active hotel; `canonicalHotel` query
+  enforces it; non-canonical hotels and content deactivated; homepage featured queries
+  scoped to active hotels.
 - Catalog: hotels/room types/rooms/amenities/media/extras/FAQs/experiences/restaurants, search + sort.
+- **Physical-room inventory**: `room_types.total_inventory` is trigger-derived from
+  active rooms; availability = physical rooms − sold/ooo/blocked per night;
+  `RoomAvailability.free` exposes remaining units; admin totalInventory writes are
+  rejected with a clear message (manage rooms instead).
 - Pricing: DB-driven `quote` — nightly rates, extras (per-stay/night/guest), promos,
   taxes/fees by four calculation methods, totals identity.
 - Booking: idempotent creation, server-side re-pricing, pessimistic inventory
-  lock-and-sell, status history, cancellation with penalty evaluation + inventory release.
+  lock-and-sell (one unit per room line per night, half-open date intervals),
+  status history, cancellation with penalty evaluation + inventory release,
+  overbooking blocked at the database.
 - Payments: real persistence, server-validated amount/currency/balance, overpayment
   rejected, owner-or-staff guard, provider-reference idempotency.
 - Transactional outbox with claim/publish/settle phases and stale-claim recovery.
@@ -56,19 +168,23 @@ Toolchain note: **`mvn` is not on PATH** — use `./mvnw`. JDK 21 and Node 24 ar
 - Homepage + platform CMS content served from the database.
 
 **Back-office** — all 14 pages wired to real GraphQL through a BFF with httpOnly-cookie
-auth. The most finished client in the repo.
+auth. The most finished client in the repo. Availability tab: inventory column is now
+read-only (derived from physical rooms); staff manage out-of-order/blocked only.
 
 **Guest frontend** — search, hotel/room detail (backend mode), quote, reservation
-create/lookup/cancel, payment, confirmation, account bookings list.
-> A second, frontend-only deep audit (2026-08-27) found these flows **reach the backend
-> correctly but carry 4 P0 defects at the seams** — currency mis-denomination, orphaned
-> bookings on payment decline, wrong-stay availability, and a broken post-payment
-> handoff. See [FRONTEND.md](FRONTEND.md) for the full matrix and fix plan; do not treat
-> "REAL" here as "correct".
+create/lookup/cancel, payment, confirmation, account bookings list — all real.
+**Canonical single-hotel behavior:** no hotel picker anywhere (static hotel segment),
+index page renders the canonical property entirely from the backend (no collection
+section, no fixture fallbacks for facts/rooms/offers/reviews), `/hotel` without a
+`hotelid` redirects to the canonical property, FAQ/offers pages backend-driven,
+homepage service no longer swallows backend failures.
 
-**Database** — 54 tables, Flyway V1–V22 green, `ddl-auto: validate` in force.
-Seed present: 3 hotels, 9 room types, 13 rooms, 6 rate plans, 18 prices, 12 extras,
-12 reviews, 5 users, 28 amenities, 33 media, CMS blocks.
+**Database** — 54 tables, Flyway V1–V26 green, `ddl-auto: validate` in force.
+**Canonical single-hotel seed** (V26 + V30 + rewritten `scripts/seed.sql`): 1 active hotel
+(Executive Hotel, Lisbon), 3 room types, 8 physical rooms, 2 rate plans, 6 prices,
+1 promotion, 4 reviews, 12 media, CMS blocks. Inventory is trigger-derived from
+physical rooms; no availability rows are pre-seeded (sparse model) and no reservations
+are seeded — bookings are made live through the API.
 
 **Tests that pass** — `frontend-hotel`: `tsc --noEmit` clean, **63/63 vitest green**
 (run today). Backend: 13 of 15 test classes green including 26 database-integrity,
@@ -98,15 +214,15 @@ Seed present: 3 hotels, 9 room types, 13 rooms, 6 rate plans, 18 prices, 12 extr
 | `PaymentServiceImpl.capture()` | no PSP — invents `MOCK-XXXXXXXX` and marks captured |
 | `CheckinFlow.tsx` | `setTimeout(900)` then flips local state; comment: *"Backend has no check-in mutation"* |
 | `services/newsletter.ts` | `localStorage`, returns "(double opt-in, mocked)" |
-| `services/siteSearch.ts` | scans the static fixture — and is **unreferenced dead code**; no UI consumes it |
 | `services/auth.ts` `reset()` | canned success, no request |
-| `services/homepage.ts` | `catch { return EMPTY_HOMEPAGE }` — a backend outage is indistinguishable from normal content |
-| `services/availability.ts` `demandFor` | deterministic `hash % 1000` pseudo-demand |
+| `services/availability.ts` `demandFor` | deterministic `hash % 1000` pseudo-demand (display sort only — never availability) |
 | `services/consent.ts`, `activity.ts` | `localStorage` — by design |
 | `lib/qr.ts` | deterministic fake QR |
 | FX rates | duplicated and inconsistent: `catalog.ts` reads `NEXT_PUBLIC_FX_*`; `lib/format.ts` **hardcodes** its own table and ignores the env vars. The backend converts nothing (FRONTEND.md F-2). |
-| `app/booking/page.tsx` metadata | still advertises "secure (simulated) payment" |
-| `data/index.ts:205` | FAQ answer states "In this prototype, payment is simulated" |
+
+None of these touch the canonical hotel / availability / reservation flow: a backend
+failure there propagates (no mock fallbacks — `catalog.ts`, `canonicalHotel.ts`,
+`homepage.ts` all throw).
 
 Email/SMS is not mocked — it **does not exist**. No `JavaMailSender`, no provider, no
 SMTP config, no template rendering.
@@ -115,17 +231,18 @@ SMTP config, no template rendering.
 
 ## ✗ Broken
 
-1. **`./mvnw test` is RED.** `ModuleArchitectureTest` 2/5 failing:
-   `StaySearchGraphQLController.staySearch()` calls `HotelRepository.findAllActive()` at
-   `StaySearchGraphQLController.java:48`, violating both
-   `REPOSITORIES_ARE_ONLY_ACCESSED_FROM_SERVICES` and `CONTROLLERS_DELEGATE_TO_SERVICES`.
-   Verified still present in the current source.
+1. ~~**`./mvnw test` is RED.**~~ **Fixed in this task**: `StaySearchGraphQLController`
+   now resolves its hotel scope via `CatalogQueryService.canonicalHotel()`; all 5
+   ArchUnit rules pass (152/152 tests).
 2. **`backoffice-hotel` `npm run graphql:generate` cannot work.** `codegen.ts` points at
    `../backend-hotel/src/main/resources/graphql/schema.graphqls`, which is only the
    skeleton (`type Query` / `type Mutation` empty, scalars). The real schema lives in
    `graphql/<domain>/*.graphqls`. `frontend-hotel/codegen.ts` uses the correct glob.
 3. **Back-office is off by default.** `profiles: ["backoffice"]` in `docker-compose.yml`
    (commit `1e52894`) — `docker compose up` never starts it, contradicting the README.
+4. **Playwright e2e suite is stale** — targets the retired fixture world
+   (`e2e/helpers.ts` fixture room ids, `index-2.spec.ts` for a deleted route). Not part
+   of the build gates; needs a rewrite against the canonical flow.
 
 ---
 
@@ -148,66 +265,19 @@ SMTP config, no template rendering.
 
 ## 🛑 Where development stopped
 
-Two threads, in order:
+**Canonical single-hotel task complete on `feature/canonical-single-hotel`**
+(not merged). Everything described above is deployed to the live stack and verified.
+Remaining known scope, in order:
 
-**Thread A — pricing unification (committed, `82c4414`).** The guest frontend's second
-pricing engine was removed. `services/pricing.ts` is now promo-validation only, hydrated
-from the backend offer catalog; `RoomDetails.tsx` and `BookingFlow.tsx` call
-`getQuote()`. **This closes findings M2/M2a/M2b of `CURRENT_STATE_AUDIT.md`, which was
-written one commit earlier and is therefore already stale.**
-
-**Thread B — "replace all mocks with real backend integration" (IN PROGRESS,
-UNCOMMITTED).** `INTEGRATION_CHANGELOG.md` (untracked) declares Phases 1–5 complete:
-auth, reservations, payment, the booking/confirmation/check-in/account flows, plus
-deletion of `services/cancellation.ts` and rewritten tests. The working tree also
-carries backend changes (room-type `slug`: `V22`, `RoomType`, `RoomTypeRepository`,
-`CatalogQueryService`, `catalog.graphqls`), the EUR→MAD conversion (`V21`), and the
-documentation correction (new `ADR-009`, `ADR-008` marked superseded, `architecture.md`
-rewritten).
-
-Its own "Files NOT Modified" list is the exact remaining scope: home page, room details
-extras, search results, offers grid, promo field, header/footer/FAQ, and the
-`src/data/index.ts` fixture itself.
-
-**Nothing from Thread B is committed.** The last commit predates it.
-
-Also stranded in the tree: `frontend-hotel/cloudflared-linux-amd64.deb` (a downloaded
-installer, ~15 MB, untracked) and `backoffice-hotel/debug{2,3,4,5,6,-e2e}.mjs`.
-
----
-
-## Highest-priority next work (evidence-based, ordered)
-
-1. **Decide the fate of the uncommitted tree.** It is large, coherent, typechecks and
-   passes 63 unit tests. Either commit it (after running `./mvnw test` for the backend
-   half) or explicitly park it. Leaving ~2.2 k lines uncommitted is the single largest
-   risk to every subsequent session.
-2. **Fix the two ArchUnit failures.** Small, mechanical: move `findAllActive()` behind
-   `CatalogQueryService` and inject that into `StaySearchGraphQLController` instead of
-   `HotelRepository`. This turns the backend gate green and unblocks `make test`.
-3. **Finish Thread B's remaining scope** — the fixture-backed marketing surface. Until
-   this lands, the home page advertises a hotel the booking engine cannot sell.
-4. **Fix `backoffice-hotel/codegen.ts`** to the same glob `frontend-hotel` uses.
-5. **Resolve the Kafka dead end** — either add a consumer (notifications is the obvious
+1. **Check-in / check-out mutations.** They unblock the reservation lifecycle *and* the
+   review proof-of-stay, which are both currently unreachable.
+2. **Resolve the Kafka dead end** — either add a consumer (notifications is the obvious
    candidate, and would give `NotificationQueryService` a writer) or drop the hard
    `depends_on` so the backend can boot without a broker.
-6. **Implement check-in / check-out mutations.** They unblock the reservation lifecycle
-   *and* the review proof-of-stay, which are both currently unreachable. Not part of the
-   2026-08-27 (later) round — still open.
-7. ~~Persist the guest session~~ — **done 2026-08-27 (later)**: httpOnly-cookie BFF
-   pattern, mirrors the back-office; live-verified register/login/reload/logout round trip.
-8. ~~Work the frontend P0s~~ — **done 2026-08-27 (later)**: currency, booking/payment
-   atomicity (the approved subset), wrong-stay availability, and confirmation handoff
-   were all fixed in the session this file's "Thread B" describes; promo soft-failure and
-   GraphQL error-code plumbing (also flagged here as gaps) were fixed in a later session —
-   see `KNOWN_ISSUES.md`'s update note.
-9. **Reconcile `AGENTS.md` in both sub-projects** — both describe structures that no
-   longer exist. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §Documentation. Still open.
-10. **Extras/room-details fixture cleanup and itemized extras display** — **done
-    2026-08-27 (later)**: `RoomDetails.tsx` no longer seeds from the `EXTRAS` fixture;
-    `QuoteTable` itemizes extras by name/quantity/unit price via a new `Quote.extras`
-    GraphQL field.
-11. **Hotel details page + policies model** — **done 2026-08-27 (later)**: `HotelDetail.tsx`
-    now uses the `hotelDetails` aggregation query and renders restaurants/FAQ (previously
-    fetched by nobody); a new `hotel_policies` table/entity/GraphQL type/admin mutation
-    (`setHotelPolicies`) was built from scratch, since none of this existed before.
+3. **Rewrite the stale Playwright e2e suite** against the canonical single-hotel flow
+   (search → availability → book → verify inventory → sell-out).
+4. **Fix `backoffice-hotel/codegen.ts`** to the same glob `frontend-hotel` uses.
+5. **Reconcile `AGENTS.md` in both sub-projects** — both describe structures that no
+   longer exist. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §Documentation.
+6. **Newsletter/password-reset/contact remain local or canned** — blocked on there being
+   no email provider anywhere in the repo.

@@ -25,7 +25,10 @@ import com.hotelcollection.hotel.util.Validation;
  * Availability read model (C9): single inventory source. A room type is
  * available for a stay when every night of the stay has at least
  * {@code rooms} free units (the requested number of rooms); "few" when
- * the tightest night has at most 2 free units.
+ * the tightest night has at most 2 free units AND the type has more than
+ * 2 physical rooms in total — a small room type (e.g. a 2-room suite) is
+ * never labelled "few rooms left" at full availability, only "available"
+ * or "sold out".
  */
 @Service
 public class AvailabilityServiceImpl implements AvailabilityService {
@@ -78,13 +81,13 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 			AvailabilityStatus status;
 			if (minFree < in.rooms()) {
 				status = AvailabilityStatus.soldout;
-			} else if (minFree <= 2) {
+			} else if (minFree <= 2 && total > 2) {
 				status = AvailabilityStatus.few;
 			} else {
 				status = AvailabilityStatus.available;
 			}
 			result.add(new RoomAvailability(roomType.getId(), status != AvailabilityStatus.soldout,
-					status, capacityFits));
+					status, capacityFits, minFree));
 		}
 		return result;
 	}

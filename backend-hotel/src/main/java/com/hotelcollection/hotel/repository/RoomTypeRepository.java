@@ -42,6 +42,7 @@ public interface RoomTypeRepository extends JpaRepository<RoomType, UUID> {
 	@Query("""
 			select rt from RoomType rt
 			where rt.status = 'active' and rt.isFeaturedOnHomepage = true
+			  and rt.hotelId in (select h.id from Hotel h where h.status = 'active')
 			order by rt.name
 			""")
 	List<RoomType> findFeaturedOnHomepage();

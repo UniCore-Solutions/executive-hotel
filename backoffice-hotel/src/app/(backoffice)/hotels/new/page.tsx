@@ -3,9 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { proxyRequest } from '@/lib/api';
+import { createHotel } from '@/api/rest/endpoints';
 import {
-  CreateHotelDocument,
   HotelStatus,
   type AdminHotelInput,
 } from '@/graphql/generated/graphql';
@@ -44,9 +43,9 @@ export default function NewHotelPage() {
   });
 
   const mutation = useMutation({
-    mutationFn: (input: AdminHotelInput) => proxyRequest(CreateHotelDocument, { input }),
+    mutationFn: (input: AdminHotelInput) => createHotel(input),
     onSuccess: (data) => {
-      router.push(`/hotels/${data.createHotel.id}`);
+      router.push(`/hotels/${data.id}`);
     },
     onError: (err) => setError(err instanceof Error ? err.message : 'Could not create the hotel.'),
   });

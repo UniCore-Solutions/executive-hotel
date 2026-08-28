@@ -1,17 +1,17 @@
 """Hotel platform GraphQL API — designed from frontend product flows (see docs/graphql-api.md).
 
 The API contract is split per module under graphql/<module>/*.graphqls; this
-root file only declares the schema skeleton, scalars and the empty Query /
-Mutation roots that each module extends.
+root file only declares the schema skeleton, scalars and the empty Query root
+that each module extends.
+
+API rule (enforced): GraphQL = READ. All state changes are REST
+(/api/v1/**) — there is no Mutation root.
 """
 schema {
 	query: Query
-	mutation: Mutation
 }
 
 scalar LocalDate
 scalar DateTime
 
 type Query
-
-type Mutation

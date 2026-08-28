@@ -6,12 +6,12 @@
 
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { PROPERTY } from '@/data';
 import { useSearch } from '@/context/SearchContext';
 import { useToast } from '@/context/ToastContext';
 import { nightsBetween } from '@/lib/dates';
 import { allOffers, validatePromo } from '@/services/pricing';
 import { ensurePricingSources } from '@/services/pricingHydration';
+import { getRoomTypes, getCanonicalHotelId } from '@/services/catalog';
 import { searchURL } from '@/lib/links';
 
 const PLAN_LABELS: Record<string, string> = {
@@ -26,16 +26,21 @@ export default function OffersGrid() {
   const hasDates = !!(state.checkin && state.checkout);
   const nights = nightsBetween(state.checkin, state.checkout);
 
-  // Real backend promo catalog (SPRING25, MADINA15, …) — never the static
-  // fixture, which advertised codes that don't exist in the database (see
-  // docs/investigations/TASK2-TASK3-CURRENCY-AND-ATOMICITY.md, Task 6).
+  // Real backend promo catalog (SPRING25, …) — never the static fixture,
+  // which advertised codes that don't exist in the database.
   const [offers, setOffers] = useState(allOffers());
   const [offersLoaded, setOffersLoaded] = useState(offers.length > 0);
+  // Feasibility probes validate against a REAL room of the canonical hotel.
+  const [probeRoomId, setProbeRoomId] = useState<string | null>(null);
   useEffect(() => {
     ensurePricingSources().then(() => {
       setOffers(allOffers());
       setOffersLoaded(true);
     });
+    getCanonicalHotelId()
+      .then((id) => getRoomTypes(id))
+      .then((rooms) => setProbeRoomId(rooms[0]?.id ?? null))
+      .catch(() => {});
   }, []);
 
   const copy = async (code: string) => {
@@ -48,9 +53,8 @@ export default function OffersGrid() {
   };
 
   const feasibility = (code: string, plan: string) => {
-    if (!hasDates) return null;
-    const probe = PROPERTY.rooms[0]!;
-    const probePlan = `${probe.id}::${plan}`;
+    if (!hasDates || !probeRoomId) return null;
+    const probePlan = `${probeRoomId}::${plan}`;
     const res = validatePromo(code, { nights, checkin: state.checkin, planId: probePlan });
     if (res.valid) {
       return (

@@ -22,5 +22,11 @@ query Quote($input: QuoteInput!) {
       unitPrice
       totalPrice
     }
+    charges {
+      taxFeeTypeId
+      chargeType
+      name
+      amount
+    }
   }
 }

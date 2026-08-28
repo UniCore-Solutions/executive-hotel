@@ -5,12 +5,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { useToast } from '@/context/ToastContext';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export default function ContactForm() {
-  const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
   const [line, setLine] = useState<{ text: string; ok: boolean } | null>(null);
@@ -28,10 +26,9 @@ export default function ContactForm() {
       return;
     }
     setLine({
-      text: 'Message ready — in production this would reach our team. You can also call +212 5 37 27 88 60.',
-      ok: true,
+      text: 'Online messaging is not available yet — please call +212 5 37 27 88 60 or email us directly.',
+      ok: false,
     });
-    toast({ message: 'Thank you — we read every message.', type: 'ok', title: 'Message noted' });
   };
 
   return (
@@ -77,10 +74,12 @@ export default function ContactForm() {
         >
           {line ? line.text : ''}
         </p>
-        <Button type="submit" className="shadow-navy/15 py-3.5">
+        <Button type="submit" className="shadow-navy/15 py-3.5" disabled>
           Send message
         </Button>
-        <p className="text-navy/40 text-[11px]">Prototype: messages are not sent anywhere.</p>
+        <p className="text-navy/40 text-[11px]">
+          Online messaging is not available yet — call +212 5 37 27 88 60 instead.
+        </p>
       </div>
     </form>
   );

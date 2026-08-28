@@ -1,6 +1,14 @@
 # AGENTS.md — hotel-nextjs
 
-Next.js (App Router, TypeScript, Tailwind v4) reimplementation of the **Executive Boutique Hotel Rabat** guest frontend. The static HTML reference lives in `../hotel-html` (sibling directory) — product truth; this repo — engineering.
+> **⚠ This file's Architecture section below is STALE.** The authoritative context
+> lives in the repo-root `docs/` folder — read `docs/PROJECT_CONTEXT.md`,
+> `docs/CURRENT_STATE.md` and `docs/FRONTEND.md` first (see `docs/KNOWN_ISSUES.md`
+> §DOC1). Reality: single canonical hotel (Executive Hotel, Lisbon); the booking
+> funnel is real and backend-driven; `src/data` is unit-test fixtures only; the API
+> rule is **GraphQL = READ (Apollo Client), REST = WRITE/ACTION (Axios via the
+> `/api/rest` BFF proxy)** — see `docs/API_GUIDELINES.md` and `src/api/`.
+
+Next.js (App Router, TypeScript, Tailwind v4) implementation of the **Executive Hotel** guest frontend.
 
 ## Commands
 
