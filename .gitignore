@@ -29,5 +29,7 @@ logs/
 # Editors / OS
 .vscode/
 .idea/
+# Obsidian per-user workspace state for the docs vault — never commit
+docs/vault/.obsidian/
 .DS_Store
 Thumbs.db
