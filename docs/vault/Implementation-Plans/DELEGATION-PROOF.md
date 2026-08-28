@@ -40,38 +40,66 @@ The delegate's report was **not** taken as evidence. Claude Code:
 3. **Re-ran the tests independently** — 12/12 confirmed.
 4. **Found a gap the delegate's green run could not surface.**
 
-**Finding:** `stateToQuery` returns `''` when there are no params (`src/lib/dates.ts:205`),
-so the `q ? \`&${q.slice(1)}\` : ''` fallback in `roomURL` and `hotelRoomURL` is reachable.
-Every delegated test uses a fully-populated `fullState()`, so that branch is never exercised.
+**Initial finding (later withdrawn):** that `stateToQuery` can return `''`
+(`src/lib/dates.ts:205`), leaving the `q ? … : ''` fallback in `roomURL` and `hotelRoomURL`
+uncovered by tests that all use a fully-populated `fullState()`.
 
-This is exactly the value of the review gate: **the tests were green, met every stated
-acceptance criterion, and still left a real branch uncovered.** A passing report from a
-delegate says nothing about what was not tested.
+### The reviewer was wrong — and checking caught it
+
+Before delegating a follow-up task to add that coverage, the branch's reachability was
+verified rather than assumed. It is **not reachable**.
+
+`stateToParams` unconditionally sets `adults`, `children`, and `rooms`
+(`src/lib/dates.ts:187,188,192`), so the `URLSearchParams` is never empty, so `stateToQuery`
+never returns `''`. The fallback is **unreachable defensive code**, not an untested branch.
+
+The review error was inferring reachability from `stateToQuery`'s own ternary without reading
+its caller. **The delegate's 12 tests were complete as written.**
+
+## What this actually demonstrates
+
+The intended lesson was "review catches what a delegate's green run hides". The real lesson is
+better: **the review step is itself fallible, and the same verify-before-asserting discipline
+applies to the reviewer.** A confident review finding sent onward as a task would have had a
+delegate chasing an impossible test case.
+
+Both directions of the gate matter — verify the delegate's work, and verify your own critique
+of it.
 
 ## Outcome
 
-The generated file was **removed from the `chore/agent-infra` branch** — that branch carries
-agent infrastructure only and must not mix in application code. The work is preserved at
-`scratchpad/links.test.ts.delegated` and queued as a task below.
+The file was initially removed from `chore/agent-infra`, which carries agent infrastructure
+only. It was then added properly on its own stacked branch `feat/links-url-tests`, where it
+belongs.
+
+Verified there: 12/12 new tests pass; full guest-site suite 16 files / 85 tests green;
+`tsc --noEmit` clean in `src/`; ESLint clean.
+
+## Open follow-up (not a task yet)
+
+`roomURL` and `hotelRoomURL` carry a dead `q ? … : ''` branch. Harmless, but it invites
+exactly the misreading recorded above. Removing it is a small cleanup, deliberately **not**
+bundled into this task to keep scope tight.
 
 ## Conclusion
 
-The loop works: **invoke → parseable output → inspect real diff → independent test run →
-review → accept or reject.** Delegation is verified functional, not assumed.
+The loop works end to end: **invoke → parseable output → inspect real diff → independent test
+run → review → verify the review → accept → stacked branch → PR.** Delegation is verified
+functional, not assumed.
 
-## Queued follow-up
+## Task record
 
 | Field | Value |
 |---|---|
 | **ID** | LINKS-1 |
-| **Status** | not-started |
+| **Status** | in-review |
 | **Owner** | OpenCode (DeepSeek), reviewed by Claude Code |
 | **Scope** | Add `frontend-hotel/src/lib/links.test.ts` covering all five URL builders |
-| **Acceptance** | The 12 existing cases, **plus** coverage of the empty-query fallback branch in `roomURL` and `hotelRoomURL` |
+| **Acceptance** | All five functions, both optional-parameter branches, exact string assertions, suite green — **met** |
 | **Files** | `src/lib/links.ts`, `src/lib/dates.ts`, `src/lib/format.test.ts` |
-| **Tests** | `npx vitest run src/lib/links.test.ts` |
-| **Branch** | to be created with `gt create` on a feature stack, **not** on `chore/agent-infra` |
-| **Starting point** | `scratchpad/links.test.ts.delegated` |
+| **Tests** | `npx vitest run src/lib/links.test.ts` — 12/12 |
+| **Branch** | `feat/links-url-tests`, stacked on `chore/agent-infra` |
+| **Review** | approved — after the reviewer's own finding was checked and withdrawn |
 
 ## Related notes
 
