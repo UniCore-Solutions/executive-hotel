@@ -49,4 +49,11 @@ public interface PricingService {
 	 * longer exist are omitted from the map.
 	 */
 	Map<UUID, String> ratePlanNamesByIds(Collection<UUID> ids);
+
+	/**
+	 * Rate plans by id (batch) — used to resolve a reservation room line's
+	 * cancellation terms (isRefundable / freeCancellationUntil) for display.
+	 * Plans that no longer exist are omitted from the map.
+	 */
+	Map<UUID, RatePlan> ratePlansByIds(Collection<UUID> ids);
 }

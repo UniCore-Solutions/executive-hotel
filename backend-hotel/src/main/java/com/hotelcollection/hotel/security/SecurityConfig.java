@@ -93,7 +93,14 @@ public class SecurityConfig {
 						// enforces owner-or-staff-or-guest-email authorization
 						// itself (see PaymentServiceImpl.ensurePaymentAccess).
 						.requestMatchers("/api/v1/payments",
+								"/api/v1/payments/*",
 								"/api/v1/payments/*/capture").permitAll()
+						// Simulated-provider webhook: no user session at all (a real
+						// PSP callback wouldn't have one either) — authenticated
+						// instead by a shared secret checked inside the controller.
+						// Never called by the guest-facing frontend.
+						.requestMatchers("/api/v1/payments/*/webhook",
+								"/api/v1/payments/by-reservation/*/webhook").permitAll()
 						.requestMatchers("/api/v1/**").authenticated()
 						.anyRequest().denyAll())
 				.addFilterBefore(traceIdFilter, UsernamePasswordAuthenticationFilter.class)

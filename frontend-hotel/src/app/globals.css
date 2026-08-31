@@ -13,6 +13,13 @@
   --color-clay-light: #c97e5f;
   --color-paper: #f7f4ee;
   --color-ink: #20242c;
+  /* Semantic states, on the same warm/muted key as navy/gold/clay — not
+     Tailwind's default emerald/blue, which read as a different, generic
+     design system next to the rest of the palette. */
+  --color-success: #3c6e52;
+  --color-success-dark: #2a4f3b;
+  --color-info: #3a6b78;
+  --color-info-dark: #274a54;
 
   --font-display: var(--font-fraunces), 'Georgia', serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;

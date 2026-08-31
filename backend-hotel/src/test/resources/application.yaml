@@ -17,6 +17,20 @@ app:
   outbox:
     relay-interval-ms: 600000
     batch-size: 50
+  reservations:
+    hold-minutes: 15
+    # Slow, like the outbox relay above: tests that exercise hold expiry
+    # manipulate holdExpiresAt and call BookingService#expireHold directly
+    # rather than waiting on the real scheduled job.
+    hold-expiry-interval-ms: 600000
+  payments:
+    # Fast enough for a test to poll for the async outcome without a real
+    # multi-second sleep; only ever scheduled for provider "card" (see
+    # PaymentServiceImpl#scheduleSimulatedSettlement) — no existing test
+    # uses that provider, so this has no effect on them.
+    simulated-settlement-delay-min-ms: 50
+    simulated-settlement-delay-max-ms: 150
+    webhook-secret: test-only-webhook-secret
 spring:
   jpa:
     hibernate:

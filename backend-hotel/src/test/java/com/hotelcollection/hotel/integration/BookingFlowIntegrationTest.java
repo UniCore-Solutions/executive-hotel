@@ -115,7 +115,10 @@ class BookingFlowIntegrationTest {
 		assertThat(created.created()).isTrue();
 		Reservation reservation = created.reservation();
 		assertThat(reservation.getReference()).matches("RC-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}");
-		assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.confirmed);
+		// A fresh reservation is a payment hold, not yet confirmed — see
+		// docs/investigations/BOOKING_PAYMENT_UX_PLAN_2026-08-31.md.
+		assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.pending);
+		assertThat(reservation.getHoldExpiresAt()).isNotNull().isAfter(Instant.now());
 		assertThat(reservation.getTotalAmount()).isEqualByComparingTo(new BigDecimal("3360.00"));
 		assertThat(reservation.getRoomLines()).hasSize(1);
 		assertThat(reservation.getCharges()).hasSize(1);
@@ -127,8 +130,10 @@ class BookingFlowIntegrationTest {
 		assertThat(rows).hasSize(3);
 		assertThat(rows).allMatch(r -> r.getRoomsSold() == 1);
 
-		// --- outbox event written in the same transaction ---
-		assertThat(outboxRepository.findByEventType("booking.confirmed"))
+		// --- outbox event written in the same transaction (a hold, not yet a
+		// confirmation — that event fires separately once payment captures,
+		// see the capture assertions further below) ---
+		assertThat(outboxRepository.findByEventType("booking.created"))
 				.anyMatch(e -> e.getPayload() != null
 						&& String.valueOf(e.getPayload().get("reference")).equals(reservation.getReference()));
 
@@ -183,6 +188,12 @@ class BookingFlowIntegrationTest {
 		Reservation paid = bookingService.getByReferenceAndEmail(second.reservation().getReference(),
 				GUEST_EMAIL);
 		assertThat(paid.getPaymentStatus()).isEqualTo(PaymentStatus.captured);
+		// Capture promotes the payment hold to a real confirmation.
+		assertThat(paid.getStatus()).isEqualTo(ReservationStatus.confirmed);
+		assertThat(paid.getHoldExpiresAt()).isNull();
+		assertThat(outboxRepository.findByEventType("booking.confirmed"))
+				.anyMatch(e -> e.getPayload() != null
+						&& String.valueOf(e.getPayload().get("reference")).equals(paid.getReference()));
 
 		Invoice invoice = invoiceService.getOrCreateInvoice(second.reservation().getReference(), GUEST_EMAIL);
 		assertThat(invoice.getInvoiceNumber()).isEqualTo("INV-" + second.reservation().getReference());

@@ -12,6 +12,18 @@
     {
       "key": "token",
       "value": ""
+    },
+    {
+      "key": "webhookSecret",
+      "value": "dev-webhook-secret-123"
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin@hotelcollection.test"
+    },
+    {
+      "key": "adminPassword",
+      "value": "admin123"
     }
   ],
   "item": [
@@ -1493,6 +1505,976 @@
             "header": [],
             "url": "{{baseUrl}}/media/202608/5eaf6394-c140-4e4d-b08e-538c72117a4f.png"
           }
+        }
+      ]
+    },
+    {
+      "name": "10 · Payment Simulation (REST, current contract — 2026-08-31)",
+      "description": "Everything above this folder (notably '4 · Booking' and '5 · Billing') predates the REST-write migration and is stale — createReservation/createPayment/capturePayment are no longer GraphQL mutations (GraphQL is 100% read-only now; see docs/CURRENT_STATE.md and ModuleArchitectureTest's NO_GRAPHQL_MUTATIONS rule). This folder targets the CURRENT contract: reservations/payments are plain REST, and payment settlement is asynchronous (a simulated provider callback, or a real gateway's webhook eventually) rather than an immediate synchronous capture. See docs/investigations/BOOKING_PAYMENT_UX_PLAN_2026-08-31.md for the full design. Run each lettered scenario folder independently, top to bottom (a few seconds between the payment-create step and the poll/webhook steps, per its description).",
+      "item": [
+        {
+          "name": "A. Happy path — card auto-settles",
+          "item": [
+            {
+              "name": "1. Create reservation (prerequisite)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/reservations",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "reservations"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"hotelId\": \"00000000-0000-0000-0000-000000000001\",\n  \"checkInDate\": \"{{checkInDate}}\",\n  \"checkOutDate\": \"{{checkOutDate}}\",\n  \"adults\": 2,\n  \"children\": 0,\n  \"currencyCode\": \"MAD\",\n  \"guest\": {\n    \"firstName\": \"Postman\",\n    \"lastName\": \"Tester\",\n    \"email\": \"postman-happy@example.com\"\n  },\n  \"rooms\": [\n    {\n      \"roomTypeId\": \"00000000-0000-0000-0000-000000000001\",\n      \"ratePlanId\": \"00000000-0000-0000-0000-000000000001\"\n    }\n  ],\n  \"idempotencyKey\": \"{{idempotencyKey}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Creates the reservation the payment requests below act on. Note the response: status is 'pending', not 'confirmed' — the room is held but the booking only becomes 'confirmed' once a payment actually captures (see holdExpiresAt in the response)."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "(function () {",
+                      "// Randomized day offset: the four scenarios below run in the same",
+                      "// collection pass and must not contend for the same physical room on",
+                      "// the same nights (that would be a REAL 409 Conflict — no overbooking —",
+                      "// not a bug, just a test-data collision).",
+                      "const offsetDays = 30 + Math.floor(Math.random() * 300);",
+                      "const checkin = new Date(Date.now() + offsetDays*24*60*60*1000);",
+                      "const checkout = new Date(Date.now() + (offsetDays+2)*24*60*60*1000);",
+                      "const fmtDate = (d) => d.toISOString().slice(0,10);",
+                      "pm.collectionVariables.set('checkInDate', fmtDate(checkin));",
+                      "pm.collectionVariables.set('checkOutDate', fmtDate(checkout));",
+                      "pm.collectionVariables.set('idempotencyKey', 'postman-res-' + Date.now() + '-' + Math.floor(Math.random()*100000));",
+                      "})();"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "(function () {",
+                      "const resBody = pm.response.json();",
+                      "pm.collectionVariables.set('reservationId', resBody.id);",
+                      "pm.collectionVariables.set('reference', resBody.reference);",
+                      "pm.collectionVariables.set('totalAmount', resBody.totalAmount);",
+                      "pm.collectionVariables.set('guestEmail', resBody.guest.email);",
+                      "pm.test('201 Created, status pending', function () {",
+                      "  pm.expect(pm.response.code).to.eql(201);",
+                      "  pm.expect(resBody.status).to.eql('pending');",
+                      "  pm.expect(resBody.paymentStatus).to.eql('pending');",
+                      "});",
+                      "})();"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "2. Create payment (provider=card)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payments"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reservationId\": \"{{reservationId}}\",\n  \"amount\": {{totalAmount}},\n  \"currencyCode\": \"MAD\",\n  \"provider\": \"card\",\n  \"idempotencyKey\": \"postman-pay-{{$timestamp}}\",\n  \"guestEmail\": \"{{guestEmail}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "(function () {",
+                      "const payBody = pm.response.json();",
+                      "pm.collectionVariables.set('paymentId', payBody.id);",
+                      "pm.test('201 Created, status pending', function () {",
+                      "  pm.expect(pm.response.code).to.eql(201);",
+                      "  pm.expect(payBody.status).to.eql('pending');",
+                      "});",
+                      "})();"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get payment status (poll this)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payments/{{paymentId}}?guestEmail={{guestEmail}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payments",
+                    "{{paymentId}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "guestEmail",
+                      "value": "{{guestEmail}}"
+                    }
+                  ]
+                },
+                "description": "Re-send this a few times a couple of seconds apart to watch status flip from 'pending' to 'captured' or 'failed' — this is exactly what the frontend's usePaymentStatus hook polls (every 2s, up to 30s) instead of ever assuming success."
+              }
+            }
+          ],
+          "description": "createPayment with provider=card schedules the backend's own simulated settlement 1.5-4s later — nothing else to do, just poll step 3 until status flips to 'captured'."
+        },
+        {
+          "name": "B. Decline then retry (same reservation)",
+          "item": [
+            {
+              "name": "1. Create reservation (prerequisite)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/reservations",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "reservations"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"hotelId\": \"00000000-0000-0000-0000-000000000001\",\n  \"checkInDate\": \"{{checkInDate}}\",\n  \"checkOutDate\": \"{{checkOutDate}}\",\n  \"adults\": 2,\n  \"children\": 0,\n  \"currencyCode\": \"MAD\",\n  \"guest\": {\n    \"firstName\": \"Postman\",\n    \"lastName\": \"Tester\",\n    \"email\": \"postman-decline@example.com\"\n  },\n  \"rooms\": [\n    {\n      \"roomTypeId\": \"00000000-0000-0000-0000-000000000001\",\n      \"ratePlanId\": \"00000000-0000-0000-0000-000000000001\"\n    }\n  ],\n  \"idempotencyKey\": \"{{idempotencyKey}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Creates the reservation the payment requests below act on. Note the response: status is 'pending', not 'confirmed' — the room is held but the booking only becomes 'confirmed' once a payment actually captures (see holdExpiresAt in the response)."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "(function () {",
+                      "// Randomized day offset: the four scenarios below run in the same",
+                      "// collection pass and must not contend for the same physical room on",
+                      "// the same nights (that would be a REAL 409 Conflict — no overbooking —",
+                      "// not a bug, just a test-data collision).",
+                      "const offsetDays = 30 + Math.floor(Math.random() * 300);",
+                      "const checkin = new Date(Date.now() + offsetDays*24*60*60*1000);",
+                      "const checkout = new Date(Date.now() + (offsetDays+2)*24*60*60*1000);",
+                      "const fmtDate = (d) => d.toISOString().slice(0,10);",
+                      "pm.collectionVariables.set('checkInDate', fmtDate(checkin));",
+                      "pm.collectionVariables.set('checkOutDate', fmtDate(checkout));",
+                      "pm.collectionVariables.set('idempotencyKey', 'postman-res-' + Date.now() + '-' + Math.floor(Math.random()*100000));",
+                      "})();"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "(function () {",
+                      "const resBody = pm.response.json();",
+                      "pm.collectionVariables.set('reservationId', resBody.id);",
+                      "pm.collectionVariables.set('reference', resBody.reference);",
+                      "pm.collectionVariables.set('totalAmount', resBody.totalAmount);",
+                      "pm.collectionVariables.set('guestEmail', resBody.guest.email);",
+                      "pm.test('201 Created, status pending', function () {",
+                      "  pm.expect(pm.response.code).to.eql(201);",
+                      "  pm.expect(resBody.status).to.eql('pending');",
+                      "  pm.expect(resBody.paymentStatus).to.eql('pending');",
+                      "});",
+                      "})();"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "2. Create payment — force decline (simulateOutcome=fail)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payments"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reservationId\": \"{{reservationId}}\",\n  \"amount\": {{totalAmount}},\n  \"currencyCode\": \"MAD\",\n  \"provider\": \"card\",\n  \"idempotencyKey\": \"postman-pay-fail-{{$timestamp}}\",\n  \"guestEmail\": \"{{guestEmail}}\",\n  \"simulateOutcome\": \"fail\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "(function () {",
+                      "const payBody = pm.response.json();",
+                      "pm.collectionVariables.set('paymentId', payBody.id);",
+                      "pm.test('201 Created, status pending', function () {",
+                      "  pm.expect(pm.response.code).to.eql(201);",
+                      "  pm.expect(payBody.status).to.eql('pending');",
+                      "});",
+                      "})();"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3. Get payment status (expect 'failed' within a few seconds)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payments/{{paymentId}}?guestEmail={{guestEmail}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payments",
+                    "{{paymentId}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "guestEmail",
+                      "value": "{{guestEmail}}"
+                    }
+                  ]
+                },
+                "description": "Re-send this a few times a couple of seconds apart to watch status flip from 'pending' to 'captured' or 'failed' — this is exactly what the frontend's usePaymentStatus hook polls (every 2s, up to 30s) instead of ever assuming success."
+              }
+            },
+            {
+              "name": "4. Retry — new payment attempt, SAME reservation",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payments"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reservationId\": \"{{reservationId}}\",\n  \"amount\": {{totalAmount}},\n  \"currencyCode\": \"MAD\",\n  \"provider\": \"card\",\n  \"idempotencyKey\": \"postman-pay-retry-{{$timestamp}}\",\n  \"guestEmail\": \"{{guestEmail}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "(function () {",
+                      "const payBody = pm.response.json();",
+                      "pm.collectionVariables.set('paymentId', payBody.id);",
+                      "pm.test('201 Created, status pending', function () {",
+                      "  pm.expect(pm.response.code).to.eql(201);",
+                      "  pm.expect(payBody.status).to.eql('pending');",
+                      "});",
+                      "})();"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "5. Get payment status (expect 'captured')",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payments/{{paymentId}}?guestEmail={{guestEmail}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payments",
+                    "{{paymentId}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "guestEmail",
+                      "value": "{{guestEmail}}"
+                    }
+                  ]
+                },
+                "description": "Re-send this a few times a couple of seconds apart to watch status flip from 'pending' to 'captured' or 'failed' — this is exactly what the frontend's usePaymentStatus hook polls (every 2s, up to 30s) instead of ever assuming success."
+              }
+            }
+          ],
+          "description": "A decline never cancels the reservation — step 3 will show the reservation is still 'pending' (room held), so step 4 can pay again against the exact same reservationId. This mirrors the guest UI's /booking/retry screen."
+        },
+        {
+          "name": "C. Manual webhook control (simulateOutcome=timeout)",
+          "item": [
+            {
+              "name": "1. Create reservation (prerequisite)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/reservations",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "reservations"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"hotelId\": \"00000000-0000-0000-0000-000000000001\",\n  \"checkInDate\": \"{{checkInDate}}\",\n  \"checkOutDate\": \"{{checkOutDate}}\",\n  \"adults\": 2,\n  \"children\": 0,\n  \"currencyCode\": \"MAD\",\n  \"guest\": {\n    \"firstName\": \"Postman\",\n    \"lastName\": \"Tester\",\n    \"email\": \"postman-manual@example.com\"\n  },\n  \"rooms\": [\n    {\n      \"roomTypeId\": \"00000000-0000-0000-0000-000000000001\",\n      \"ratePlanId\": \"00000000-0000-0000-0000-000000000001\"\n    }\n  ],\n  \"idempotencyKey\": \"{{idempotencyKey}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Creates the reservation the payment requests below act on. Note the response: status is 'pending', not 'confirmed' — the room is held but the booking only becomes 'confirmed' once a payment actually captures (see holdExpiresAt in the response)."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "(function () {",
+                      "// Randomized day offset: the four scenarios below run in the same",
+                      "// collection pass and must not contend for the same physical room on",
+                      "// the same nights (that would be a REAL 409 Conflict — no overbooking —",
+                      "// not a bug, just a test-data collision).",
+                      "const offsetDays = 30 + Math.floor(Math.random() * 300);",
+                      "const checkin = new Date(Date.now() + offsetDays*24*60*60*1000);",
+                      "const checkout = new Date(Date.now() + (offsetDays+2)*24*60*60*1000);",
+                      "const fmtDate = (d) => d.toISOString().slice(0,10);",
+                      "pm.collectionVariables.set('checkInDate', fmtDate(checkin));",
+                      "pm.collectionVariables.set('checkOutDate', fmtDate(checkout));",
+                      "pm.collectionVariables.set('idempotencyKey', 'postman-res-' + Date.now() + '-' + Math.floor(Math.random()*100000));",
+                      "})();"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "(function () {",
+                      "const resBody = pm.response.json();",
+                      "pm.collectionVariables.set('reservationId', resBody.id);",
+                      "pm.collectionVariables.set('reference', resBody.reference);",
+                      "pm.collectionVariables.set('totalAmount', resBody.totalAmount);",
+                      "pm.collectionVariables.set('guestEmail', resBody.guest.email);",
+                      "pm.test('201 Created, status pending', function () {",
+                      "  pm.expect(pm.response.code).to.eql(201);",
+                      "  pm.expect(resBody.status).to.eql('pending');",
+                      "  pm.expect(resBody.paymentStatus).to.eql('pending');",
+                      "});",
+                      "})();"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "2. Create payment — simulateOutcome=timeout (never auto-settles)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payments"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reservationId\": \"{{reservationId}}\",\n  \"amount\": {{totalAmount}},\n  \"currencyCode\": \"MAD\",\n  \"provider\": \"card\",\n  \"idempotencyKey\": \"postman-pay-timeout-{{$timestamp}}\",\n  \"guestEmail\": \"{{guestEmail}}\",\n  \"simulateOutcome\": \"timeout\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "(function () {",
+                      "const payBody = pm.response.json();",
+                      "pm.collectionVariables.set('paymentId', payBody.id);",
+                      "pm.test('201 Created, status pending', function () {",
+                      "  pm.expect(pm.response.code).to.eql(201);",
+                      "  pm.expect(payBody.status).to.eql('pending');",
+                      "});",
+                      "})();"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3. Get payment status (stays 'pending' — nothing is happening on its own)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payments/{{paymentId}}?guestEmail={{guestEmail}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payments",
+                    "{{paymentId}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "guestEmail",
+                      "value": "{{guestEmail}}"
+                    }
+                  ]
+                },
+                "description": "Re-send this a few times a couple of seconds apart to watch status flip from 'pending' to 'captured' or 'failed' — this is exactly what the frontend's usePaymentStatus hook polls (every 2s, up to 30s) instead of ever assuming success."
+              }
+            },
+            {
+              "name": "4. Simulate webhook manually — payment.succeeded",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Webhook-Secret",
+                    "value": "{{webhookSecret}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payments/{{paymentId}}/webhook",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payments",
+                    "{{paymentId}}",
+                    "webhook"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"event\": \"payment.succeeded\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Simulates the payment provider's asynchronous callback — exactly what the backend fires on its own 1.5-4s after a card payment is created. No user session at all; authenticated only by the shared X-Webhook-Secret header (set PAYMENT_WEBHOOK_SECRET in the backend's .env, then set the same value in this environment's webhookSecret variable). The guest-facing frontend never calls this — it only ever polls the status check above."
+              }
+            },
+            {
+              "name": "5. Get payment status (now 'captured')",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payments/{{paymentId}}?guestEmail={{guestEmail}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payments",
+                    "{{paymentId}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "guestEmail",
+                      "value": "{{guestEmail}}"
+                    }
+                  ]
+                },
+                "description": "Re-send this a few times a couple of seconds apart to watch status flip from 'pending' to 'captured' or 'failed' — this is exactly what the frontend's usePaymentStatus hook polls (every 2s, up to 30s) instead of ever assuming success."
+              }
+            },
+            {
+              "name": "6. Re-send the SAME webhook again (idempotency check — should no-op, still 'captured')",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Webhook-Secret",
+                    "value": "{{webhookSecret}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payments/{{paymentId}}/webhook",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payments",
+                    "{{paymentId}}",
+                    "webhook"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"event\": \"payment.succeeded\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Simulates the payment provider's asynchronous callback — exactly what the backend fires on its own 1.5-4s after a card payment is created. No user session at all; authenticated only by the shared X-Webhook-Secret header (set PAYMENT_WEBHOOK_SECRET in the backend's .env, then set the same value in this environment's webhookSecret variable). The guest-facing frontend never calls this — it only ever polls the status check above."
+              }
+            },
+            {
+              "name": "7. Same webhook, but by RESERVATION REFERENCE instead of payment id",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-Webhook-Secret",
+                    "value": "{{webhookSecret}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payments/by-reservation/{{reference}}/webhook",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payments",
+                    "by-reservation",
+                    "{{reference}}",
+                    "webhook"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"event\": \"payment.succeeded\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Convenience variant of the webhook above for when you only have the reservation reference (e.g. RC-XXXXXX) handy, not the payment's UUID — resolves to that reservation's pending payment, or its most recent one if none is pending. Same idempotent processing either way."
+              }
+            }
+          ],
+          "description": "This is the scenario for testing the webhook mechanism directly, on demand, instead of waiting for the automatic one. Set PAYMENT_WEBHOOK_SECRET in the backend's .env and the same value in this environment's webhookSecret variable first."
+        },
+        {
+          "name": "D. Admin manual trigger (staff-gated, no secret needed)",
+          "item": [
+            {
+              "name": "1. Login as staff (REST) — prerequisite for admin webhook trigger",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/auth/login",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "login"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Seeded super_admin login (see the database-flyway skill / scripts/seed.sql) — password is admin123 for every seed user, not the README's password123."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "(function () {",
+                      "const loginBody = pm.response.json();",
+                      "// A distinct variable name, not the shared 'token' the pre-existing Auth",
+                      "// folder above uses — that one collides with an empty 'token' predefined",
+                      "// at environment scope (environment variables shadow collection variables",
+                      "// in Postman's resolution order), which would otherwise silently send an",
+                      "// empty Bearer header no matter what this script sets.",
+                      "if (loginBody.token) pm.collectionVariables.set('adminToken', loginBody.token);",
+                      "pm.test('login ok, token received', function () {",
+                      "  pm.expect(loginBody.token).to.be.a('string');",
+                      "});",
+                      "})();"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "1. Create reservation (prerequisite)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotencyKey}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/reservations",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "reservations"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"hotelId\": \"00000000-0000-0000-0000-000000000001\",\n  \"checkInDate\": \"{{checkInDate}}\",\n  \"checkOutDate\": \"{{checkOutDate}}\",\n  \"adults\": 2,\n  \"children\": 0,\n  \"currencyCode\": \"MAD\",\n  \"guest\": {\n    \"firstName\": \"Postman\",\n    \"lastName\": \"Tester\",\n    \"email\": \"postman-admin@example.com\"\n  },\n  \"rooms\": [\n    {\n      \"roomTypeId\": \"00000000-0000-0000-0000-000000000001\",\n      \"ratePlanId\": \"00000000-0000-0000-0000-000000000001\"\n    }\n  ],\n  \"idempotencyKey\": \"{{idempotencyKey}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Creates the reservation the payment requests below act on. Note the response: status is 'pending', not 'confirmed' — the room is held but the booking only becomes 'confirmed' once a payment actually captures (see holdExpiresAt in the response)."
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "(function () {",
+                      "// Randomized day offset: the four scenarios below run in the same",
+                      "// collection pass and must not contend for the same physical room on",
+                      "// the same nights (that would be a REAL 409 Conflict — no overbooking —",
+                      "// not a bug, just a test-data collision).",
+                      "const offsetDays = 30 + Math.floor(Math.random() * 300);",
+                      "const checkin = new Date(Date.now() + offsetDays*24*60*60*1000);",
+                      "const checkout = new Date(Date.now() + (offsetDays+2)*24*60*60*1000);",
+                      "const fmtDate = (d) => d.toISOString().slice(0,10);",
+                      "pm.collectionVariables.set('checkInDate', fmtDate(checkin));",
+                      "pm.collectionVariables.set('checkOutDate', fmtDate(checkout));",
+                      "pm.collectionVariables.set('idempotencyKey', 'postman-res-' + Date.now() + '-' + Math.floor(Math.random()*100000));",
+                      "})();"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "(function () {",
+                      "const resBody = pm.response.json();",
+                      "pm.collectionVariables.set('reservationId', resBody.id);",
+                      "pm.collectionVariables.set('reference', resBody.reference);",
+                      "pm.collectionVariables.set('totalAmount', resBody.totalAmount);",
+                      "pm.collectionVariables.set('guestEmail', resBody.guest.email);",
+                      "pm.test('201 Created, status pending', function () {",
+                      "  pm.expect(pm.response.code).to.eql(201);",
+                      "  pm.expect(resBody.status).to.eql('pending');",
+                      "  pm.expect(resBody.paymentStatus).to.eql('pending');",
+                      "});",
+                      "})();"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "3. Create payment — simulateOutcome=timeout",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payments"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reservationId\": \"{{reservationId}}\",\n  \"amount\": {{totalAmount}},\n  \"currencyCode\": \"MAD\",\n  \"provider\": \"card\",\n  \"idempotencyKey\": \"postman-pay-admin-{{$timestamp}}\",\n  \"guestEmail\": \"{{guestEmail}}\",\n  \"simulateOutcome\": \"timeout\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "(function () {",
+                      "const payBody = pm.response.json();",
+                      "pm.collectionVariables.set('paymentId', payBody.id);",
+                      "pm.test('201 Created, status pending', function () {",
+                      "  pm.expect(pm.response.code).to.eql(201);",
+                      "  pm.expect(payBody.status).to.eql('pending');",
+                      "});",
+                      "})();"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "4. Admin: simulate webhook — payment.failed",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/admin/payments/{{paymentId}}/simulate-webhook",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "admin",
+                    "payments",
+                    "{{paymentId}}",
+                    "simulate-webhook"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"event\": \"payment.failed\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Manual QA trigger for staff — same processing as the shared-secret webhook above, but gated by the logged-in staff's hotel access instead of a secret. Useful when you don't want to configure PAYMENT_WEBHOOK_SECRET at all."
+              }
+            },
+            {
+              "name": "5. Get payment status (expect 'failed')",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/payments/{{paymentId}}?guestEmail={{guestEmail}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "payments",
+                    "{{paymentId}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "guestEmail",
+                      "value": "{{guestEmail}}"
+                    }
+                  ]
+                },
+                "description": "Re-send this a few times a couple of seconds apart to watch status flip from 'pending' to 'captured' or 'failed' — this is exactly what the frontend's usePaymentStatus hook polls (every 2s, up to 30s) instead of ever assuming success."
+              }
+            }
+          ],
+          "description": "Same underlying processing as the secret-gated webhook, but authorized via a logged-in staff session instead — no PAYMENT_WEBHOOK_SECRET needed."
         }
       ]
     }

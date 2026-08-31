@@ -322,4 +322,13 @@ public class PricingServiceImpl implements PricingService {
 		return ratePlanRepository.findByIdIn(ids).stream()
 				.collect(Collectors.toMap(RatePlan::getId, RatePlan::getName));
 	}
+
+	@Override
+	public Map<UUID, RatePlan> ratePlansByIds(Collection<UUID> ids) {
+		if (ids == null || ids.isEmpty()) {
+			return Map.of();
+		}
+		return ratePlanRepository.findByIdIn(ids).stream()
+				.collect(Collectors.toMap(RatePlan::getId, rp -> rp));
+	}
 }

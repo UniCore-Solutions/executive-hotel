@@ -63,6 +63,8 @@ export interface BackendReservation {
     roomTypeName?: string;
     roomTypeImageUrl?: string | null;
     ratePlanName?: string | null;
+    isRefundable: boolean;
+    freeCancellationUntil?: string | null;
   }>;
   extras: Array<{
     id: string;
@@ -117,8 +119,14 @@ export const reservations = {
     return (data as MyReservationsQuery).myReservations as BackendReservation[];
   },
 
-  /** Look up a reservation by reference + email. */
-  async find(reference: string, email: string): Promise<BackendReservation | null> {
+  /**
+   * Look up a reservation by reference + email. `fresh: true` bypasses the
+   * Apollo cache entirely (`no-cache`) — required by the payment-status
+   * poller (BookingFlow → processing screen), which would otherwise keep
+   * reading a stale cached `pending` after the backend has already resolved
+   * the payment; every other caller keeps the default cache-first read.
+   */
+  async find(reference: string, email: string, opts?: { fresh?: boolean }): Promise<BackendReservation | null> {
     const input: ReservationLookupInput = { reference, email };
     const variables = { input } as ReservationLookupQueryVariables;
     const client = getApolloClient();
@@ -126,7 +134,7 @@ export const reservations = {
       const { data } = await client.query({
         query: ReservationLookupDocument,
         variables,
-        fetchPolicy: 'cache-first',
+        fetchPolicy: opts?.fresh ? 'no-cache' : 'cache-first',
       });
       return (data as ReservationLookupQuery).reservation as BackendReservation | null;
     }

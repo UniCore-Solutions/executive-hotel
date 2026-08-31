@@ -8,14 +8,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearch } from '@/context/SearchContext';
 import { useCurrency } from '@/hooks/useCurrency';
-import { useToast } from '@/context/ToastContext';
 import { useSession } from '@/context/SessionContext';
 import { useApollo } from '@/api/apollo/provider';
 import { REST_INVALIDATIONS, invalidateGraphql } from '@/api/invalidation';
 import { getStayRoom } from '@/services/catalog';
 import { getExtras } from '@/services/extras';
 import { getQuote, mapQuoteExtraLines } from '@/services/quote';
-import { charge } from '@/services/payment';
+import { startPaymentAttempt } from '@/services/payment';
 import type { Extra, PriceBreakdown } from '@/types';
 import { reservations, generateIdempotencyKey } from '@/services/reservations';
 import { fmtShort, nightsBetween, stateToParams, toISODate } from '@/lib/dates';
@@ -103,7 +102,6 @@ export default function BookingFlow({
   const router = useRouter();
   const { state, setPromo } = useSearch();
   const { fmt, currency } = useCurrency();
-  const { toast } = useToast();
   const { session } = useSession();
   const apollo = useApollo();
 
@@ -269,16 +267,41 @@ export default function BookingFlow({
 
   const wait = useRef(false);
 
-  /* One idempotency key per mounted checkout attempt, generated lazily on
-     first render and reused for every retry (double-click, decline-then-
-     retry) instead of a fresh key per submit. The backend's unique
-     constraint on reservations.idempotency_key then resolves a retried
-     submit to the SAME reservation rather than creating a duplicate. A new
-     key is only ever produced by a fresh mount (a real navigation to a new
-     booking). See docs/investigations/TASK2-TASK3-CURRENCY-AND-ATOMICITY.md. */
+  /* One idempotency key per checkout attempt for this exact room/dates,
+     generated lazily on first render and reused for every retry (double-
+     click, decline-then-retry, AND a page reload/tab-reopen) instead of a
+     fresh key per submit. The backend's unique constraint on
+     reservations.idempotency_key then resolves a retried submit to the SAME
+     reservation rather than creating a duplicate.
+     Persisted to sessionStorage — not just a useRef — because a plain
+     component-mount-scoped ref does NOT survive a reload: a guest who
+     reloads (or closes and reopens the tab) after the reservation was
+     created but before payment resolved would otherwise mint a fresh key on
+     remount and create a SECOND sold reservation for what they experience as
+     one attempt (see docs/investigations/BOOKING_PAYMENT_UX_PLAN_2026-08-31.md
+     §1's "reload gap" correction). A new key is only produced for a
+     genuinely different room/dates — a real new booking. */
+  const idemStorageKey = `bk-idem:${roomId}:${planId}:${state.checkin ? toISODate(state.checkin) : ''}:${state.checkout ? toISODate(state.checkout) : ''}`;
   const reservationIdempotencyKeyRef = useRef<string | null>(null);
   if (reservationIdempotencyKeyRef.current === null) {
-    reservationIdempotencyKeyRef.current = generateIdempotencyKey();
+    let stored: string | null = null;
+    if (typeof window !== 'undefined') {
+      try {
+        stored = window.sessionStorage.getItem(idemStorageKey);
+      } catch {
+        stored = null;
+      }
+    }
+    const key = stored ?? generateIdempotencyKey();
+    reservationIdempotencyKeyRef.current = key;
+    if (typeof window !== 'undefined') {
+      try {
+        window.sessionStorage.setItem(idemStorageKey, key);
+      } catch {
+        // Private-browsing/storage-disabled — the in-memory ref still works
+        // for this mount, it just won't survive a reload.
+      }
+    }
   }
 
   const detailsError = (id: keyof DetailsErrors) => dErrors[id] ?? '';
@@ -345,14 +368,19 @@ export default function BookingFlow({
         idempotencyKey,
       });
 
-      // Step 2: Process payment via backend. The payment idempotency key is
-      // deterministically derived from the reservation key (stable for the
-      // same reason); guestEmail is the accountless-checkout proof of
-      // possession the backend accepts in place of a signed-in session.
-      const paymentResult = await charge({
+      // Step 2: START the payment via backend — this only creates the
+      // attempt and returns 'pending'; it never tells us the outcome. The
+      // backend settles it asynchronously (a simulated provider today, a
+      // real gateway's webhook eventually) and the outcome is discovered by
+      // polling from the processing screen we redirect to below — this
+      // component never waits for, or decides, success/failure itself. The
+      // payment idempotency key is deterministically derived from the
+      // reservation key (stable for the same reason); guestEmail is the
+      // accountless-checkout proof of possession the backend accepts in
+      // place of a signed-in session.
+      await startPaymentAttempt({
         reservationId: result.reservation.id,
         amount: quote.total,
-        card: card.number,
         idempotencyKey: `${idempotencyKey}:payment`,
         guestEmail,
       });
@@ -361,23 +389,19 @@ export default function BookingFlow({
         invalidateGraphql(apollo, REST_INVALIDATIONS['reservations.create']);
       }
 
-      setPaying(false);
-
-      if (!paymentResult.ok) {
-        setDeclined(
-          `Payment declined — ${paymentResult.message} Your details are still here; try another card.`
-        );
-        wait.current = false;
-        return;
+      // Clear the reload-survival key now that the reservation exists and a
+      // payment attempt is in flight for it — a later booking of the same
+      // room/dates (e.g. after this one completes) must get a fresh key.
+      if (typeof window !== 'undefined') {
+        try {
+          window.sessionStorage.removeItem(idemStorageKey);
+        } catch {
+          // ignore
+        }
       }
 
-      toast({
-        message: `Your room is confirmed — see you at ${resolved.property.name}.`,
-        type: 'ok',
-        title: 'Booking confirmed',
-      });
       router.push(
-        `/confirmation?ref=${encodeURIComponent(result.reservation.reference)}&email=${encodeURIComponent(guestEmail)}`
+        `/confirmation?ref=${encodeURIComponent(result.reservation.reference)}&email=${encodeURIComponent(guestEmail)}&status=processing`
       );
     } catch (err) {
       setPaying(false);
@@ -525,7 +549,7 @@ export default function BookingFlow({
                       note="Billed in MAD at your bank's exchange rate."
                     />
                   ) : quoteLoading ? (
-                    <p className="text-navy/40 text-xs">Calculating price…</p>
+                    <QuoteSkeleton />
                   ) : quoteError ? (
                     <p className="text-clay text-xs" role="alert">
                       {quoteError}
@@ -799,9 +823,16 @@ export default function BookingFlow({
                     <FieldErr id="err-pname" msg={payError('pname')} />
                   </div>
                   <div className="sm:col-span-2">
-                    <Label htmlFor="p-number">
-                      Card number <Star />
-                    </Label>
+                    <div className="flex items-center justify-between gap-3">
+                      <Label htmlFor="p-number" className="mb-0">
+                        Card number <Star />
+                      </Label>
+                      <span className="text-navy/40 flex items-center gap-1.5 text-[10px] font-semibold tracking-wide">
+                        <span className="bg-gold-dark inline-block h-2.5 w-2.5 rounded-full" aria-hidden="true" />
+                        <span className="-ml-1.5 inline-block h-2.5 w-2.5 rounded-full bg-navy" aria-hidden="true" />
+                        Visa · Mastercard
+                      </span>
+                    </div>
                     <Input
                       size="sm"
                       id="p-number"
@@ -818,7 +849,21 @@ export default function BookingFlow({
                       aria-invalid={!!payError('pnumber')}
                       aria-describedby={payError('pnumber') ? 'err-pnumber' : undefined}
                     />
-                    <p className="text-navy/45 mt-1 text-[11px]">
+                    <p className="text-navy/45 mt-1 flex items-center gap-1.5 text-[11px]">
+                      <svg
+                        className="h-3 w-3 shrink-0"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="1.8"
+                          d="M8 11V7a4 4 0 1 1 8 0v4m-9 0h10a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1Z"
+                        />
+                      </svg>
                       Your payment is processed securely via the backend.
                     </p>
                     <FieldErr id="err-pnumber" msg={payError('pnumber')} />
@@ -935,6 +980,28 @@ export default function BookingFlow({
         </div>
       )}
     </>
+  );
+}
+
+/** Loading placeholder shaped like QuoteTable's rows — the price summary is
+    the most commercially important number on the page, so it gets a real
+    skeleton instead of a plain "Calculating…" line. */
+function QuoteSkeleton() {
+  return (
+    <div className="animate-pulse" aria-hidden="true" role="status" aria-label="Calculating price">
+      <div className="space-y-2.5">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="flex items-center justify-between gap-3">
+            <div className="bg-navy/10 h-3 w-24 rounded-full" />
+            <div className="bg-navy/10 h-3 w-14 rounded-full" />
+          </div>
+        ))}
+      </div>
+      <div className="bg-navy/[0.06] mt-3 flex items-baseline justify-between gap-3 rounded-2xl px-4 py-3">
+        <div className="bg-navy/10 h-3.5 w-16 rounded-full" />
+        <div className="bg-navy/10 h-5 w-20 rounded-full" />
+      </div>
+    </div>
   );
 }
 

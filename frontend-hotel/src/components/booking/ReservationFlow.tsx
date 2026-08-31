@@ -3,7 +3,7 @@
 /* My reservation — lookup by ref+email, status banner, stay details, price,
    cancellation via backend GraphQL, check-in CTA. */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/context/ToastContext';
 import { useCurrency } from '@/hooks/useCurrency';
@@ -51,17 +51,46 @@ function derivePrice(br: BackendReservation): PriceBreakdown {
   };
 }
 
-function deriveCancellation(br: BackendReservation) {
+/**
+ * Cancellation estimate for a NOT-yet-cancelled reservation. Deliberately
+ * never invents a penalty amount client-side — only the actual cancel
+ * action (backend) knows a rate plan's penalty type/value, so a plan that's
+ * refundable but past its free-cancellation window (or has no free window
+ * at all) reports 'fee_may_apply' rather than guessing $0 or a wrong number.
+ * ('settled' covers the historical case — a reservation that's already been
+ * cancelled — using the real, backend-computed figures from that point.)
+ */
+type CancellationEstimate =
+  | { status: 'settled'; fee: number; refund: number; label: string }
+  | { status: 'non_refundable'; fee: number }
+  | { status: 'free'; freeUntil?: string }
+  | { status: 'fee_may_apply' };
+
+function deriveCancellation(br: BackendReservation): CancellationEstimate {
   const c = br.cancellation;
   if (c) {
     return {
+      status: 'settled',
       fee: c.penaltyAmount,
       refund: c.refundAmount,
       label: c.isRefundable ? 'Free cancellation' : 'Cancellation fee',
-      freeUntilIso: '',
     };
   }
-  return { fee: 0, refund: derivePrice(br).total, label: 'Free cancellation', freeUntilIso: '' };
+  const line = br.roomLines[0];
+  if (!line || !line.isRefundable) {
+    // Non-refundable — the full room subtotal is forfeited regardless of
+    // timing (matches CancellationPolicy.evaluate's !isRefundable branch
+    // exactly: no plan-specific penalty-type math needed for this case).
+    return { status: 'non_refundable', fee: derivePrice(br).total };
+  }
+  const freeUntil = line.freeCancellationUntil;
+  if (freeUntil) {
+    const freeUntilDate = fromISODate(freeUntil);
+    if (freeUntilDate && new Date() < freeUntilDate) {
+      return { status: 'free', freeUntil };
+    }
+  }
+  return { status: 'fee_may_apply' };
 }
 
 export default function ReservationFlow() {
@@ -78,10 +107,17 @@ export default function ReservationFlow() {
         .toUpperCase(),
     [searchParams]
   );
+  // Same deep-link pattern ConfirmationFlow already uses (?ref=...&email=...)
+  // — when both are present the lookup runs automatically below instead of
+  // making the guest re-type what a link they clicked already carried.
+  const deepEmail = useMemo(
+    () => String(searchParams?.get('email') ?? '').trim().toLowerCase(),
+    [searchParams]
+  );
   const [status, setStatus] = useState<'lookup' | 'view'>('lookup');
   const [res, setRes] = useState<BackendReservation | null>(null);
   const [refInput, setRefInput] = useState(deepRef);
-  const [emailInput, setEmailInput] = useState('');
+  const [emailInput, setEmailInput] = useState(deepEmail);
   const [lookupMsg, setLookupMsg] = useState<{ text: string; ok: boolean | null }>({
     text: 'Enter your details below.',
     ok: null,
@@ -98,14 +134,7 @@ export default function ReservationFlow() {
   const checkingIn =
     !!res && res.status === 'confirmed' && inStayWindow(res.checkInDate, res.checkOutDate);
 
-  const doLookup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const ref = refInput.trim();
-    const email = emailInput.trim();
-    if (!ref || !email) {
-      setLookupMsg({ text: 'Please enter both your reference and email address.', ok: false });
-      return;
-    }
+  const performLookup = async (ref: string, email: string, opts?: { scroll?: boolean }) => {
     setBusy(true);
     try {
       const r = await reservations.find(ref, email);
@@ -119,7 +148,7 @@ export default function ReservationFlow() {
       setLookupMsg({ text: '', ok: null });
       setRes(r);
       setStatus('view');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (opts?.scroll) window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       // The lookup query throws NOT_FOUND rather than resolving to null (the
       // `if (!r)` branch above is unreachable for that case in practice) —
@@ -136,6 +165,27 @@ export default function ReservationFlow() {
       setBusy(false);
     }
   };
+
+  const doLookup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const ref = refInput.trim();
+    const email = emailInput.trim();
+    if (!ref || !email) {
+      setLookupMsg({ text: 'Please enter both your reference and email address.', ok: false });
+      return;
+    }
+    await performLookup(ref, email, { scroll: true });
+  };
+
+  // Deep link carries both ref + email (e.g. from the confirmation page's
+  // "Manage booking" button) — resolve it automatically, once, instead of
+  // making the guest re-enter what the link already told us.
+  const autoLookedUp = useRef(false);
+  useEffect(() => {
+    if (autoLookedUp.current || !deepRef || !deepEmail || res) return;
+    autoLookedUp.current = true;
+    performLookup(deepRef, deepEmail);
+  }, [deepRef, deepEmail, res]);
 
   const showOther = () => {
     setStatus('lookup');
@@ -184,7 +234,7 @@ export default function ReservationFlow() {
         </form>
         <p
           id="lookup-msg"
-          className={`mt-3 min-h-5 text-sm font-medium ${lookupMsg.ok === false ? 'text-clay' : lookupMsg.ok === true ? 'text-emerald-700' : 'text-navy/45'}`}
+          className={`mt-3 min-h-5 text-sm font-medium ${lookupMsg.ok === false ? 'text-clay' : lookupMsg.ok === true ? 'text-success' : 'text-navy/45'}`}
           role="status"
         >
           {lookupMsg.text}
@@ -211,7 +261,7 @@ export default function ReservationFlow() {
   const statusText = STATUS_META[res.status] || STATUS_META.confirmed!;
   const statusCls =
     res.status === 'checked_in'
-      ? 'bg-emerald-700/8 border border-emerald-700/20 text-emerald-800'
+      ? 'bg-success/8 border border-success/20 text-success-dark'
       : res.status === 'cancelled'
         ? 'bg-clay/8 border border-clay/25 text-clay'
         : 'bg-white border border-navy/10';
@@ -387,16 +437,22 @@ export default function ReservationFlow() {
             <p className="mt-2 text-sm text-white/70" id="cancel-policy-line">
               {cancelled
                 ? 'This reservation was already cancelled.'
-                : est.freeUntilIso
-                  ? `Free cancellation until ${fmt(fromISODate(est.freeUntilIso))}.`
-                  : 'Non-refundable rate — the full stay is due.'}
+                : est.status === 'free'
+                  ? est.freeUntil
+                    ? `Free cancellation until ${fmt(fromISODate(est.freeUntil))}.`
+                    : 'Free cancellation.'
+                  : est.status === 'non_refundable'
+                    ? 'Non-refundable rate — the full stay is due.'
+                    : 'A cancellation fee may apply.'}
             </p>
             <p className="mt-1 text-xs text-white/50" id="cancel-due-line">
-              {!cancelled && res.status === 'confirmed'
-                ? est.fee === 0
+              {cancelled || res.status !== 'confirmed'
+                ? ''
+                : est.status === 'free'
                   ? 'No fee applies today.'
-                  : `Cancelling today would charge ${fmtPrice(est.fee, currency)} (${est.label}).`
-                : ''}
+                  : est.status === 'non_refundable'
+                    ? `Cancelling today would charge ${fmtPrice(est.fee, currency)} (full stay).`
+                    : 'The exact amount is shown before you confirm.'}
             </p>
             <Button
               type="button"
@@ -443,12 +499,16 @@ function CancelContent({
         {res.reference} · {fmt(fromISODate(res.checkInDate))} →{' '}
         {fmt(fromISODate(res.checkOutDate))}
       </p>
-      {est.fee > 0 ? (
+      {est.status === 'non_refundable' ? (
         <div className="bg-clay/10 border-clay/25 text-clay mt-4 rounded-2xl border px-4 py-3 text-sm">
-          Cancelling now charges <strong>{fmtPrice(est.fee, currency)}</strong> ({est.label}).
+          Cancelling now charges <strong>{fmtPrice(est.fee, currency)}</strong> (full stay, non-refundable rate).
+        </div>
+      ) : est.status === 'fee_may_apply' ? (
+        <div className="bg-gold/10 border-gold/30 text-gold-dark mt-4 rounded-2xl border px-4 py-3 text-sm">
+          A cancellation fee may apply — you&apos;ll see the exact amount once you confirm.
         </div>
       ) : (
-        <div className="mt-4 rounded-2xl border border-emerald-700/20 bg-emerald-700/8 px-4 py-3 text-sm text-emerald-700">
+        <div className="mt-4 rounded-2xl border border-success/20 bg-success/8 px-4 py-3 text-sm text-success">
           Free cancellation — nothing will be charged.
         </div>
       )}

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ToastProvider } from '@/context/ToastContext';
 import { ApolloProvider } from '@/api/apollo/provider';
@@ -88,12 +88,13 @@ const fixtures = vi.hoisted(() => {
     searchState,
     stayRoom,
     createMock: vi.fn(),
-    chargeMock: vi.fn(),
+    startPaymentAttemptMock: vi.fn(),
+    pushMock: vi.fn(),
   };
 });
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: fixtures.pushMock }),
 }));
 
 vi.mock('@/hooks/useCurrency', () => ({
@@ -149,10 +150,10 @@ vi.mock('@/services/reservations', () => ({
 }));
 
 vi.mock('@/services/payment', () => ({
-  charge: (...args: unknown[]) => fixtures.chargeMock(...args),
+  startPaymentAttempt: (...args: unknown[]) => fixtures.startPaymentAttemptMock(...args),
 }));
 
-const { createMock, chargeMock } = fixtures;
+const { createMock, startPaymentAttemptMock, pushMock } = fixtures;
 
 function wrap() {
   return (
@@ -188,14 +189,22 @@ function fillCard() {
 }
 
 describe('BookingFlow — reservation idempotency key stability (Task 3)', () => {
-  it('reuses the same idempotency key across a decline-then-retry, and derives a stable payment key from it', async () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  it('reuses the same idempotency key across a synchronous-failure retry, and derives a stable payment key from it', async () => {
     createMock.mockResolvedValue({
       reservation: { id: 'res-1', reference: 'RC-TEST01' },
       created: true,
     });
-    chargeMock
-      .mockResolvedValueOnce({ ok: false, message: 'Card declined by issuer.' })
-      .mockResolvedValueOnce({ ok: true, message: 'Payment authorised' });
+    // A synchronous failure (network/validation) is the only case BookingFlow
+    // itself still surfaces as a declined banner — the async simulated
+    // outcome (success/decline) is discovered later on the processing screen,
+    // never in this form (see BOOKING_PAYMENT_UX_PLAN §5).
+    startPaymentAttemptMock
+      .mockRejectedValueOnce(new Error('Network error — please check your connection'))
+      .mockResolvedValueOnce({ paymentId: 'pay-1' });
 
     render(wrap());
     await fillDetailsAndAdvance();
@@ -203,12 +212,12 @@ describe('BookingFlow — reservation idempotency key stability (Task 3)', () =>
 
     fireEvent.click(screen.getByText('Confirm & pay'));
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(chargeMock).toHaveBeenCalledTimes(1));
-    await screen.findByText(/Payment declined/);
+    await waitFor(() => expect(startPaymentAttemptMock).toHaveBeenCalledTimes(1));
+    await screen.findByText(/Network error/);
 
     fireEvent.click(screen.getByText('Confirm & pay'));
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(chargeMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(startPaymentAttemptMock).toHaveBeenCalledTimes(2));
 
     const firstReservationKey = (createMock.mock.calls[0]![0] as { idempotencyKey: string })
       .idempotencyKey;
@@ -216,16 +225,58 @@ describe('BookingFlow — reservation idempotency key stability (Task 3)', () =>
       .idempotencyKey;
     expect(secondReservationKey).toBe(firstReservationKey);
 
-    const firstPaymentKey = (chargeMock.mock.calls[0]![0] as { idempotencyKey: string })
+    const firstPaymentKey = (startPaymentAttemptMock.mock.calls[0]![0] as { idempotencyKey: string })
       .idempotencyKey;
-    const secondPaymentKey = (chargeMock.mock.calls[1]![0] as { idempotencyKey: string })
+    const secondPaymentKey = (startPaymentAttemptMock.mock.calls[1]![0] as { idempotencyKey: string })
       .idempotencyKey;
     expect(firstPaymentKey).toBe(secondPaymentKey);
     expect(firstPaymentKey).toBe(`${firstReservationKey}:payment`);
 
-    // charge() also receives the guest email as accountless-checkout proof.
-    expect((chargeMock.mock.calls[0]![0] as { guestEmail?: string }).guestEmail).toBe(
+    // startPaymentAttempt() also receives the guest email as accountless-checkout proof.
+    expect((startPaymentAttemptMock.mock.calls[0]![0] as { guestEmail?: string }).guestEmail).toBe(
       'amine@example.com'
     );
+
+    // Never calls a capture endpoint directly — the backend settles asynchronously.
+    await waitFor(() =>
+      expect(pushMock).toHaveBeenCalledWith(
+        expect.stringContaining('/confirmation?ref=RC-TEST01&email=amine%40example.com&status=processing')
+      )
+    );
+  });
+
+  it('persists the idempotency key to sessionStorage so a reload before payment resolves does not double-book', async () => {
+    createMock.mockResolvedValue({
+      reservation: { id: 'res-1', reference: 'RC-TEST01' },
+      created: true,
+    });
+    // Deliberately never resolves — this reproduces the exact gap the
+    // sessionStorage persistence exists for: a reload happening WHILE the
+    // payment attempt is still in flight (before success/failure and before
+    // the successful-attempt cleanup below would otherwise clear the key).
+    startPaymentAttemptMock.mockReturnValue(new Promise(() => {}));
+
+    const { unmount } = render(wrap());
+    await fillDetailsAndAdvance();
+    fillCard();
+    fireEvent.click(screen.getByText('Confirm & pay'));
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(startPaymentAttemptMock).toHaveBeenCalledTimes(1));
+    const keyBeforeReload = (createMock.mock.calls[0]![0] as { idempotencyKey: string }).idempotencyKey;
+
+    // Simulate a reload: unmount and mount a fresh instance (a real reload
+    // creates a brand-new component tree, exactly like this does) — the
+    // stored key must still be there since the in-flight attempt above never
+    // reached the success cleanup.
+    unmount();
+    startPaymentAttemptMock.mockResolvedValue({ paymentId: 'pay-1' });
+    render(wrap());
+    await fillDetailsAndAdvance();
+    fillCard();
+    fireEvent.click(screen.getByText('Confirm & pay'));
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(2));
+    const keyAfterReload = (createMock.mock.calls[1]![0] as { idempotencyKey: string }).idempotencyKey;
+
+    expect(keyAfterReload).toBe(keyBeforeReload);
   });
 });
