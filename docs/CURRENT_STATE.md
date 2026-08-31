@@ -2,6 +2,50 @@
 
 **Assessed:** 2026-08-27 · **Branch:** `feature/canonical-single-hotel`
 
+> **Update 2026-08-31 (asynchronous booking/payment — closes F-1).** Full design in
+> [`docs/investigations/BOOKING_PAYMENT_UX_PLAN_2026-08-31.md`](investigations/BOOKING_PAYMENT_UX_PLAN_2026-08-31.md),
+> baselined on [`FULL_SYSTEM_AUDIT_2026-08-31.md`](investigations/FULL_SYSTEM_AUDIT_2026-08-31.md).
+> The audit's headline finding — a reservation was `confirmed` and sold inventory before
+> payment ran, with no compensation on failure/abandonment — is fixed:
+> - **Backend (Flyway V31):** `BookingServiceImpl.create()` now assigns
+>   `ReservationStatus.pending` with a `holdExpiresAt` TTL (`app.reservations.hold-minutes`,
+>   default 15) instead of `confirmed` — activating a hold-expiry column that had existed
+>   unused in the schema since V6. A new `ReservationHoldExpiryJob` (`@Scheduled`, styled on
+>   `OutboxRelay`) releases expired holds through the existing cancellation/inventory-release
+>   path. Payment settlement is now genuinely asynchronous: `createPayment` (provider
+>   `"card"`) schedules a simulated provider callback 1.5–4s later
+>   (`app.payments.simulated-settlement-delay-*-ms`) that resolves through a new,
+>   idempotent `PaymentServiceImpl.processProviderEvent` — exercising `PaymentStatus.failed`
+>   for the first time (previously declared, never assignable). A decline leaves the
+>   reservation `pending` (room still held) so the guest can retry with a new payment
+>   attempt rather than losing the booking or being double-charged. A shared-secret
+>   `POST /api/v1/payments/{id}/webhook` and a staff-gated
+>   `POST /api/v1/admin/payments/{id}/simulate-webhook` exist for manual QA of
+>   success/decline/duplicate/late/unknown-payment/invalid-event/already-paid scenarios.
+>   `GET /api/v1/payments/{id}` is a new narrow status read. **181/181 backend tests green**
+>   (11 new, `PaymentSimulationIntegrationTest`), including live curl verification against
+>   the running stack (create → pending hold → async capture → confirmed; decline → retry
+>   same reservation → confirmed; timeout scenario genuinely never settles; webhook rejects
+>   a missing/wrong secret).
+> - **Frontend:** `BookingFlow.tsx` no longer calls `/capture` directly — it only starts the
+>   payment attempt, then redirects immediately to `/confirmation?...&status=processing`.
+>   A new `usePaymentStatus` hook polls the reservation's real status (`network-only`, 2s
+>   interval, 120s/60-attempt ceiling — raised from the initial 30s/15 after
+>   live testing) instead of the frontend ever assuming success.
+>   `ConfirmationFlow` gained Processing/Timeout states and a Failed state with a "Try
+>   another card" CTA to the new `/booking/retry` page (`RetryPaymentFlow.tsx`), which starts
+>   a fresh payment attempt against the **same** still-held reservation. The reservation
+>   idempotency key is now persisted to `sessionStorage` (keyed by room/plan/dates), closing
+>   the reload gap where a page reload between reservation-create and payment-settle used to
+>   mint a fresh key and sell a second unit of inventory. New `success`/`info` design tokens
+>   replace ad hoc `emerald-*` classes on the success/checked-in states; the confirmation
+>   page's timeline and stay-details cards were merged into one (fewer stacked white cards);
+>   the payment form gained a lock icon + card-brand trust line and the price summary a real
+>   skeleton loader instead of a "Calculating…" text line. Verified: `tsc`, `eslint`,
+>   **73/73 vitest**, `next build` all clean; live-verified on the running stack
+>   (`/confirmation`, `/booking/retry`, `/reservation` all 200; full images rebuilt and
+>   redeployed).
+
 > **Update 2026-08-28 (anonymous booking fixed end to end).** Accountless
 > checkout was broken in two places and is now verified live through the BFF:
 > - The `/api/rest` proxy doubled the API version prefix (`/api/rest/v1/reservations`

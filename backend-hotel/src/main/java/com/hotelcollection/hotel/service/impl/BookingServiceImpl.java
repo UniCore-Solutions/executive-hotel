@@ -85,6 +85,12 @@ public class BookingServiceImpl implements BookingService {
 	private final CancellationReasonRepository cancellationReasonRepository;
 	private final GuestProvisioningService guestProvisioning;
 
+	// Field injection (not a constructor parameter): service/impl classes are
+	// capped at 11 constructor parameters by ModuleArchitectureTest, and this
+	// class is already at that cap.
+	@org.springframework.beans.factory.annotation.Value("${app.reservations.hold-minutes:15}")
+	private long holdMinutes;
+
 	public BookingServiceImpl(ReservationRepository reservationRepository,
 			ReservationCancellationRepository cancellationRepository,
 			GuestRepository guestRepository,
@@ -186,7 +192,13 @@ public class BookingServiceImpl implements BookingService {
 		reservation.setGuest(guest);
 		CurrentUser actor = currentUser.currentUser().orElse(null);
 		reservation.setBookedByUserId(actor == null ? null : actor.userId());
-		reservation.setStatus(ReservationStatus.confirmed);
+		// Payment hold: the reservation sells inventory immediately (the
+		// per-night row lock above is what actually prevents overselling) but
+		// stays 'pending' — not 'confirmed' — until payment captures. The
+		// hold-expiry job (BookingServiceImpl#expireHold) releases it if that
+		// never happens within holdExpiresAt.
+		reservation.setStatus(ReservationStatus.pending);
+		reservation.setHoldExpiresAt(Instant.now().plus(holdMinutes, ChronoUnit.MINUTES));
 		reservation.setCheckInDate(in.checkInDate());
 		reservation.setCheckOutDate(in.checkOutDate());
 		reservation.setAdults((short) in.adults());
@@ -252,14 +264,17 @@ public class BookingServiceImpl implements BookingService {
 		ReservationStatusHistory history = new ReservationStatusHistory();
 		history.setReservationId(reservation.getId());
 		history.setFromStatus(null);
-		history.setToStatus(ReservationStatus.confirmed);
+		history.setToStatus(ReservationStatus.pending);
 		history.setChangedByUserId(actor == null ? null : actor.userId());
 		history.setChangedAt(Instant.now());
 		reservation.getStatusHistory().add(history);
 
 		reservationRepository.save(reservation);
 
-		eventPublisher.publish("booking.confirmed", 1, in.hotelId(),
+		// Not 'booking.confirmed' — the reservation is only a payment hold at
+		// this point. That event fires from markFullyPaid() once payment
+		// actually captures and the status is promoted to confirmed.
+		eventPublisher.publish("booking.created", 1, in.hotelId(),
 				"reservation:" + reservation.getReference(),
 				Map.of(
 						"reference", reservation.getReference(),
@@ -360,6 +375,13 @@ public class BookingServiceImpl implements BookingService {
 
 	@Override
 	@Transactional(readOnly = true)
+	public Reservation getByReference(String reference) {
+		return reservationRepository.findByReferenceWithLines(reference)
+				.orElseThrow(() -> DomainException.notFound("reservation not found"));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
 	public Reservation getById(UUID id) {
 		return reservationRepository.findById(id)
 				.orElseThrow(() -> DomainException.notFound("reservation not found"));
@@ -420,8 +442,49 @@ public class BookingServiceImpl implements BookingService {
 		Reservation reservation = reservationRepository.findById(reservationId)
 				.orElseThrow(() -> DomainException.notFound("reservation not found"));
 		reservation.setPaymentStatus(PaymentStatus.captured);
+		if (reservation.getStatus() == ReservationStatus.pending) {
+			ReservationStatus from = reservation.getStatus();
+			reservation.setStatus(ReservationStatus.confirmed);
+			reservation.setHoldExpiresAt(null);
+			ReservationStatusHistory history = new ReservationStatusHistory();
+			history.setReservationId(reservation.getId());
+			history.setFromStatus(from);
+			history.setToStatus(ReservationStatus.confirmed);
+			history.setChangedAt(Instant.now());
+			reservation.getStatusHistory().add(history);
+			eventPublisher.publish("booking.confirmed", 1, reservation.getHotelId(),
+					"reservation:" + reservation.getReference(),
+					Map.of("reference", reservation.getReference(), "hotelId", reservation.getHotelId(),
+							"totalAmount", reservation.getTotalAmount()),
+					null);
+		}
 		reservation.setUpdatedAt(Instant.now());
 		return reservationRepository.save(reservation);
+	}
+
+	// ---------------------------------------------------------------- hold expiry
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<UUID> findExpiredHoldIds() {
+		return reservationRepository.findExpiredHoldIds(Instant.now());
+	}
+
+	@Override
+	@Transactional
+	public void expireHold(UUID reservationId) {
+		Reservation reservation = reservationRepository.findByIdForUpdate(reservationId).orElse(null);
+		if (reservation == null || reservation.getStatus() != ReservationStatus.pending
+				|| reservation.getHoldExpiresAt() == null
+				|| reservation.getHoldExpiresAt().isAfter(Instant.now())) {
+			// Resolved concurrently since the candidate scan (captured,
+			// cancelled, or the hold was otherwise extended) — nothing to do.
+			// Re-checked under the same row lock createPayment/capture take,
+			// so this can never race a payment that lands at the same instant.
+			return;
+		}
+		doCancel(reservation, null, "payment_timeout",
+				"Automatically released — payment was not completed before the hold expired.");
 	}
 
 	// ---------------------------------------------------------------- cancel

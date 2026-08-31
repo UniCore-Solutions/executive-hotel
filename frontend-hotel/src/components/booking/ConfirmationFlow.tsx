@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/context/ToastContext';
 import { useCurrency } from '@/hooks/useCurrency';
+import { usePaymentStatus } from '@/hooks/usePaymentStatus';
 import { reservations, type BackendReservation } from '@/services/reservations';
 import { GraphqlClientError } from '@/services/graphqlClient';
 import { getExtras } from '@/services/extras';
@@ -56,7 +57,23 @@ export default function ConfirmationFlow() {
     () => String(searchParams?.get('email') ?? '').trim().toLowerCase(),
     [searchParams]
   );
+  /* BookingFlow redirects here with status=processing the instant a payment
+     attempt starts — before the backend's async simulated settlement (or a
+     real gateway's webhook) has resolved it. We never assume success:
+     usePaymentStatus polls the reservation's real paymentStatus until it
+     settles or the 2-minute ceiling is reached. */
+  const isProcessing = searchParams?.get('status') === 'processing';
   const [res, setRes] = useState<BackendReservation | null>(null);
+  const poll = usePaymentStatus(ref, emailParam, isProcessing && !res);
+
+  useEffect(() => {
+    if (poll.phase !== 'confirmed' && poll.phase !== 'failed') return;
+    // Deferred a tick: syncing another hook's settled state into local state
+    // reads as "external system changed" rather than a same-render derive,
+    // so it belongs in a callback, not the effect body directly.
+    const reservation = poll.reservation;
+    queueMicrotask(() => setRes(reservation));
+  }, [poll]);
   const [copied, setCopied] = useState('');
   const [emailInput, setEmailInput] = useState(emailParam);
   const [lookupBusy, setLookupBusy] = useState(false);
@@ -87,7 +104,10 @@ export default function ConfirmationFlow() {
   }, [res?.hotelId]);
 
   useEffect(() => {
-    if (!ref || res) return;
+    // While a payment is being polled, usePaymentStatus is the sole source
+    // of `res` — this plain one-shot lookup would otherwise race it and could
+    // set a stale still-pending snapshot after the poll already resolved.
+    if (!ref || res || isProcessing) return;
     // BookingFlow carries the guest email straight into the confirmation
     // link, so an anonymous booker's own confirmation resolves without
     // asking them to re-identify themselves seconds after paying (see
@@ -110,7 +130,7 @@ export default function ConfirmationFlow() {
         if (found) setRes(found);
       })
       .catch(() => {});
-  }, [ref, res, emailParam]);
+  }, [ref, res, emailParam, isProcessing]);
 
   useEffect(() => {
     if (!res) return;
@@ -182,6 +202,61 @@ export default function ConfirmationFlow() {
       setLookupBusy(false);
     }
   };
+
+  if (isProcessing && !res) {
+    if (poll.phase === 'timeout') {
+      return (
+        <div
+          id="payment-timeout"
+          className="border-info/30 bg-info/5 rounded-3xl border p-12 text-center"
+        >
+          <span
+            className="bg-info/15 text-info-dark mx-auto flex h-14 w-14 items-center justify-center rounded-full text-2xl"
+            aria-hidden="true"
+          >
+            ⏱
+          </span>
+          <p className="font-display text-navy mt-4 text-2xl font-semibold">
+            Still confirming your payment
+          </p>
+          <p className="text-navy/60 mx-auto mt-2 max-w-sm text-sm">
+            This is taking longer than usual. Your room is still held — we&apos;ll finish
+            confirming it shortly. You don&apos;t need to pay again.
+          </p>
+          <Button asChild className="mt-6 shadow-none">
+            <a href={`/reservation?ref=${encodeURIComponent(ref)}`}>Check my reservation</a>
+          </Button>
+        </div>
+      );
+    }
+    if (poll.phase === 'error') {
+      return (
+        <div id="payment-status-error" className="border-navy/10 rounded-3xl border bg-white p-12 text-center">
+          <p className="font-display text-navy text-2xl font-semibold">Something went wrong</p>
+          <p className="text-navy/60 mx-auto mt-2 max-w-sm text-sm">{poll.message}</p>
+          <Button asChild className="mt-6 shadow-none">
+            <a href={`/reservation?ref=${encodeURIComponent(ref)}`}>Check my reservation</a>
+          </Button>
+        </div>
+      );
+    }
+    // 'processing', or a settled outcome not yet reflected in `res` (a single
+    // render's gap before the effect above calls setRes) — same UI either way.
+    return (
+      <div id="payment-processing" className="border-navy/10 rounded-3xl border bg-white p-12 text-center">
+        <span
+          className="border-gold/30 border-t-gold mx-auto block h-12 w-12 animate-spin rounded-full border-4"
+          aria-hidden="true"
+        />
+        <p className="font-display text-navy mt-5 text-2xl font-semibold" role="status" aria-live="polite">
+          Processing your payment…
+        </p>
+        <p className="text-navy/60 mx-auto mt-2 max-w-sm text-sm">
+          Your room is held — this usually takes a few seconds. Please don&apos;t close this page.
+        </p>
+      </div>
+    );
+  }
 
   if (!res) {
     return (
@@ -300,12 +375,43 @@ export default function ConfirmationFlow() {
     }
   };
 
+  const paymentFailed = res.paymentStatus === 'failed';
+
   return (
     <div id="confirmation">
-      {/* success header */}
-      <div className="rounded-3xl border border-emerald-700/20 bg-white p-8 text-center shadow-lg shadow-emerald-900/5">
+      {/* header: success, or a payment-failed variant with a retry path —
+          the room is still held (see BOOKING_PAYMENT_UX_PLAN §2/§5) so this
+          is a recoverable state, not a dead end. */}
+      {paymentFailed ? (
+        <div
+          id="payment-failed"
+          className="border-clay/25 bg-clay/5 rounded-3xl border p-8 text-center"
+        >
+          <span
+            className="bg-clay inline-flex h-14 w-14 items-center justify-center rounded-full text-2xl text-white"
+            aria-hidden="true"
+          >
+            !
+          </span>
+          <h1 className="font-display text-navy mt-4 text-3xl font-semibold lg:text-4xl">
+            Payment didn&apos;t go through
+          </h1>
+          <p className="text-navy/60 mx-auto mt-2 max-w-md text-sm">
+            Your room is still held under reference <strong>{res.reference}</strong> — no
+            charge was made. Try another card to complete your booking.
+          </p>
+          <Button asChild className="mt-6 shadow-none" variant="destructive">
+            <a
+              href={`/booking/retry?ref=${encodeURIComponent(res.reference)}&email=${encodeURIComponent(res.guest.email ?? '')}`}
+            >
+              Try another card
+            </a>
+          </Button>
+        </div>
+      ) : (
+      <div className="rounded-3xl border border-success/20 bg-white p-8 text-center shadow-lg shadow-success/5">
         <span
-          className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-700 text-2xl text-white"
+          className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-success text-2xl text-white"
           aria-hidden="true"
         >
           ✓
@@ -332,42 +438,14 @@ export default function ConfirmationFlow() {
             className="text-navy/45 hover:text-navy"
             aria-label="Copy reference"
           >
-            {copied === 'ref' ? <span className="text-emerald-700">✓</span> : '⧉'}
+            {copied === 'ref' ? <span className="text-success">✓</span> : '⧉'}
           </Button>
         </div>
         <p className="text-navy/45 mt-3 text-xs">
           Keep this reference — you&apos;ll need it to manage your stay.
         </p>
       </div>
-
-      {/* timeline */}
-      <div className="border-navy/10 mt-6 rounded-3xl border bg-white p-6 lg:p-8">
-        <h2 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
-          Your stay at a glance
-        </h2>
-        <ol id="timeline" className="mt-5 grid gap-4 sm:grid-cols-4">
-          {[
-            ['Booking confirmed', `Today · ${res.reference}`, true],
-            ['Payment', paymentLabel, paymentDone],
-            ['Check-in', `${fmtShort(checkinD)} · 15:00`, true],
-            [
-              'Check-out',
-              `${fmtShort(checkoutD)} · 11:00 · ${n} ${n === 1 ? 'night' : 'nights'}`,
-              false,
-            ],
-          ].map(([t, sub, on]) => (
-            <li key={t as string} className="flex items-start gap-3">
-              <span
-                className={`mt-1.5 h-2.5 w-2.5 rounded-full ${on ? 'bg-gold' : 'bg-navy/20'}`}
-              />
-              <span>
-                <span className="text-navy block text-sm font-semibold">{t}</span>
-                <span className="text-navy/55 mt-0.5 block text-xs">{sub}</span>
-              </span>
-            </li>
-          ))}
-        </ol>
-      </div>
+      )}
 
       {/* actions */}
       <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -395,9 +473,41 @@ export default function ConfirmationFlow() {
         </Button>
       </div>
 
-      {/* stay details */}
+      {/* stay details — timeline lives at the top of the same card instead of
+          its own full-width one above: one document, not a stack of cards
+          for what's really a single "your stay" story. */}
       <div className="mt-8 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
         <div className="border-navy/10 rounded-3xl border bg-white p-6 lg:p-8">
+          <h2 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+            Your stay at a glance
+          </h2>
+          <ol id="timeline" className="mt-4 grid gap-4 sm:grid-cols-4">
+            {[
+              [
+                res.status === 'confirmed' ? 'Booking confirmed' : 'Booking received',
+                `Today · ${res.reference}`,
+                true,
+              ],
+              ['Payment', paymentLabel, paymentDone],
+              ['Check-in', `${fmtShort(checkinD)} · 15:00`, true],
+              [
+                'Check-out',
+                `${fmtShort(checkoutD)} · 11:00 · ${n} ${n === 1 ? 'night' : 'nights'}`,
+                false,
+              ],
+            ].map(([t, sub, on]) => (
+              <li key={t as string} className="flex items-start gap-3">
+                <span
+                  className={`mt-1.5 h-2.5 w-2.5 rounded-full ${on ? 'bg-gold' : 'bg-navy/20'}`}
+                />
+                <span>
+                  <span className="text-navy block text-sm font-semibold">{t}</span>
+                  <span className="text-navy/55 mt-0.5 block text-xs">{sub}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+          <div className="border-navy/10 mt-6 border-t pt-6">
           <div id="conf-room" className="flex items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -470,6 +580,7 @@ export default function ConfirmationFlow() {
               className="text-navy/80 mt-2 text-sm"
               id="c-contact"
             >{`${res.guest.firstName} ${res.guest.lastName} · ${res.guest.email}${res.guest.phone ? ` · ${res.guest.phone}` : ''}`}</p>
+          </div>
           </div>
         </div>
 

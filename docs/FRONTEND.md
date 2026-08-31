@@ -257,14 +257,20 @@ route change (F-8).
 
 ### P0 — blocks or corrupts a core journey
 
-**F-1 · Payment failure leaves an orphaned confirmed reservation; retry double-books.**
-`BookingFlow.tsx:296-347`. `reservations.create()` commits a **confirmed** reservation and
-sells inventory *before* `charge()` runs. On decline the UI says "try another card" and
-sets `wait.current = false`; the next submit calls `generateIdempotencyKey()` **again**
-(line 297, inside the handler), producing a *new* key → a **second** reservation and a
-second inventory decrement. Abandoning leaves a confirmed, unpaid reservation holding
-inventory forever. There is no compensating cancel and no `pending` state (the backend
-only ever assigns `confirmed` or `cancelled`).
+**F-1 · RESOLVED (2026-08-31)** — see
+[`docs/investigations/BOOKING_PAYMENT_UX_PLAN_2026-08-31.md`](investigations/BOOKING_PAYMENT_UX_PLAN_2026-08-31.md)
+and `docs/CURRENT_STATE.md`'s matching dated entry for the full design and verification.
+Summary of the fix: `BookingServiceImpl.create()` now assigns `ReservationStatus.pending`
+(not `confirmed`) with a `holdExpiresAt` TTL; a scheduled `ReservationHoldExpiryJob`
+releases inventory for holds that never capture; payment settlement is asynchronous
+(simulated provider + idempotent webhook, `PaymentServiceImpl.processProviderEvent`) with
+a genuine decline path (`PaymentStatus.failed`) that leaves the reservation `pending` for
+a same-reservation retry rather than orphaning or double-booking it; the reservation
+idempotency key is now persisted to `sessionStorage` (`BookingFlow.tsx`), closing the
+reload-mint-a-new-key gap this finding also covered. Original defect text, retained for
+history: reservation creation used to commit straight to `confirmed` and sell inventory
+before payment ran, with no compensating cancel and a reload-scoped idempotency key that
+could double-book across a reload.
 
 **F-2 · Non-MAD currency mis-denominates the reservation by ~11×.**
 Proven live: the backend performs **no FX conversion** — it echoes whatever

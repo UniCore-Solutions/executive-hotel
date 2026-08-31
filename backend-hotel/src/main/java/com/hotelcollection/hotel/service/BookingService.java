@@ -28,6 +28,15 @@ public interface BookingService {
 
 	Reservation getByReferenceAndEmail(String reference, String email);
 
+	/**
+	 * Reference-only lookup, no guest-email proof required — unlike
+	 * {@link #getByReferenceAndEmail}, this is NOT a guest-facing self-service
+	 * operation. Only for callers that are already authorized some other way
+	 * (the payment webhook's shared secret, staff auth) and just need to
+	 * resolve a reservation by its human-readable reference for convenience.
+	 */
+	Reservation getByReference(String reference);
+
 	Reservation getById(UUID id);
 
 	/**
@@ -45,6 +54,23 @@ public interface BookingService {
 	/** Proof of stay: a checked-out reservation booked by the user at the hotel. */
 	boolean hasCompletedStayAt(UUID hotelId, UUID userId);
 
-	/** Marks a reservation fully paid (called by the billing service on capture). */
+	/**
+	 * Marks a reservation fully paid (called by the billing service on
+	 * capture) and, if it is still on its payment hold ({@code pending}),
+	 * promotes it to {@code confirmed} in the same call.
+	 */
 	Reservation markFullyPaid(UUID reservationId);
+
+	/** Candidate ids for the hold-expiry job (see {@link #expireHold}). */
+	List<UUID> findExpiredHoldIds();
+
+	/**
+	 * Cancels one reservation whose payment hold has expired, releasing
+	 * inventory through the same path as a guest-initiated cancellation. A
+	 * no-op if the reservation was already resolved (paid, cancelled, or its
+	 * hold extended) by the time this runs — re-checked under a row lock, so
+	 * it never races a concurrent capture. Called by the scheduled hold-expiry
+	 * job, never directly by a controller.
+	 */
+	void expireHold(UUID reservationId);
 }

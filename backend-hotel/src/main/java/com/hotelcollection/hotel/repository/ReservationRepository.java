@@ -103,4 +103,13 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
 			group by r.hotelId
 			""")
 	List<Object[]> countActiveByHotelIds(@Param("hotelIds") java.util.Collection<UUID> hotelIds);
+
+	/** Candidate ids for the hold-expiry job — a cheap, unlocked scan; each id is
+	 * re-checked under a row lock before being cancelled (see BookingServiceImpl#expireHold). */
+	@Query("""
+			select r.id from Reservation r
+			where r.status = com.hotelcollection.hotel.entity.ReservationStatus.pending
+			  and r.holdExpiresAt < :now
+			""")
+	List<UUID> findExpiredHoldIds(@Param("now") java.time.Instant now);
 }

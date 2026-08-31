@@ -1,51 +1,37 @@
-/** Payment service — REST writes (API rule: GraphQL = READ, REST = WRITE). */
-import { capturePayment, createPayment } from '@/api/rest/endpoints';
-import type { PaymentResult } from '@/types';
+/** Payment service — REST writes (API rule: GraphQL = READ, REST = WRITE).
+    The backend is authoritative and asynchronous: creating a payment never
+    tells us the outcome, it only starts one. See usePaymentStatus for how
+    the outcome is discovered. */
+import { createPayment } from '@/api/rest/endpoints';
 
 /**
- * Charge a card for a reservation.
- * Creates a payment record and immediately captures it via the backend
- * (POST /api/v1/payments + /payments/{id}/capture).
- * The backend's PaymentService handles the actual (mock) capture logic.
+ * Starts a payment attempt for a reservation and returns immediately with
+ * {@code pending} — it does NOT wait for, or itself decide, the outcome.
+ * The backend schedules its own simulated provider settlement (or, for a
+ * real gateway, would await its webhook) and moves the payment to
+ * `captured`/`failed` on its own schedule; the caller must poll for that via
+ * `usePaymentStatus` (reservation-level) or `getPaymentStatus` (this one
+ * attempt). The frontend never marks a payment successful itself.
  *
- * `idempotencyKey` must be stable across retries of the *same* payment
- * attempt (callers derive it from the reservation's own idempotency key —
- * see BookingFlow.tsx) so a retried submit resolves to the same payment
- * instead of creating a duplicate. `guestEmail` is the proof of possession
- * required for an accountless (not-signed-in) checkout — the backend
- * accepts it in place of an authenticated owner/staff session, mirroring
- * the reference+email pattern reservation lookup/cancel already uses.
- * Transaction currency is always MAD — never the guest's display currency.
+ * `idempotencyKey` must be stable across retries of the *same* attempt
+ * (callers derive it from the reservation's own idempotency key — see
+ * BookingFlow.tsx) so a retried submit resolves to the same payment instead
+ * of creating a duplicate. `guestEmail` is the proof of possession required
+ * for an accountless (not-signed-in) checkout. Transaction currency is
+ * always MAD — never the guest's display currency.
  */
-export async function charge(input: {
+export async function startPaymentAttempt(input: {
   reservationId: string;
   amount: number;
-  card: string;
   idempotencyKey: string;
   guestEmail?: string;
-}): Promise<PaymentResult> {
-  try {
-    // Step 1: Create payment record
-    const payment = await createPayment({
-      reservationId: input.reservationId,
-      amount: input.amount,
-      provider: 'card',
-      idempotencyKey: input.idempotencyKey,
-      guestEmail: input.guestEmail,
-    });
-
-    // Step 2: Capture the payment
-    const captured = await capturePayment({
-      paymentId: payment.id,
-      guestEmail: input.guestEmail,
-    });
-
-    if (captured.status === 'captured') {
-      return { ok: true, message: 'Payment authorised' };
-    }
-    return { ok: false, message: `Payment ${captured.status}. Please try another card.` };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Payment failed';
-    return { ok: false, message: msg };
-  }
+}): Promise<{ paymentId: string }> {
+  const payment = await createPayment({
+    reservationId: input.reservationId,
+    amount: input.amount,
+    provider: 'card',
+    idempotencyKey: input.idempotencyKey,
+    guestEmail: input.guestEmail,
+  });
+  return { paymentId: payment.id };
 }

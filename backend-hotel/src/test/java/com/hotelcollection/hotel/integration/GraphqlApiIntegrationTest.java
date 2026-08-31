@@ -198,7 +198,9 @@ class GraphqlApiIntegrationTest {
 				createInput(fx, checkIn, idempotencyKey), null,
 				Map.of("Idempotency-Key", idempotencyKey));
 		assertThat(created.get("__status")).isEqualTo(201);
-		assertThat(created.get("status")).isEqualTo("confirmed");
+		// A fresh reservation is a payment hold, not yet confirmed — see
+		// docs/investigations/BOOKING_PAYMENT_UX_PLAN_2026-08-31.md.
+		assertThat(created.get("status")).isEqualTo("pending");
 		String reference = (String) created.get("reference");
 
 		Map<String, Object> lookedUp = post("""

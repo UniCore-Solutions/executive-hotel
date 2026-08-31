@@ -176,6 +176,8 @@ export type ReservationSummaryFragment = {
     roomTypeName: string;
     roomTypeImageUrl: string | null;
     ratePlanName: string | null;
+    isRefundable: boolean;
+    freeCancellationUntil: string | null;
   }>;
   extras: Array<{
     id: string;
@@ -628,6 +630,8 @@ export type MyReservationsQuery = {
       roomTypeName: string;
       roomTypeImageUrl: string | null;
       ratePlanName: string | null;
+      isRefundable: boolean;
+      freeCancellationUntil: string | null;
     }>;
     extras: Array<{
       id: string;
@@ -695,6 +699,8 @@ export type ReservationLookupQuery = {
       roomTypeName: string;
       roomTypeImageUrl: string | null;
       ratePlanName: string | null;
+      isRefundable: boolean;
+      freeCancellationUntil: string | null;
     }>;
     extras: Array<{
       id: string;
@@ -843,6 +849,8 @@ export const ReservationSummaryFragmentDoc = {
                 { kind: 'Field', name: { kind: 'Name', value: 'roomTypeName' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'roomTypeImageUrl' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'ratePlanName' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'isRefundable' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'freeCancellationUntil' } },
               ],
             },
           },
@@ -2149,6 +2157,8 @@ export const MyReservationsDocument = {
                 { kind: 'Field', name: { kind: 'Name', value: 'roomTypeName' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'roomTypeImageUrl' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'ratePlanName' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'isRefundable' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'freeCancellationUntil' } },
               ],
             },
           },
@@ -2299,6 +2309,8 @@ export const ReservationLookupDocument = {
                 { kind: 'Field', name: { kind: 'Name', value: 'roomTypeName' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'roomTypeImageUrl' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'ratePlanName' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'isRefundable' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'freeCancellationUntil' } },
               ],
             },
           },

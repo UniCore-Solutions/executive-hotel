@@ -54,6 +54,7 @@ const mockReservation: BackendReservation = {
       ratePerNight: 910,
       subtotalAmount: 1820,
       status: 'active',
+      isRefundable: true,
     },
   ],
   extras: [],

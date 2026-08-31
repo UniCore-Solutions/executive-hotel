@@ -38,6 +38,8 @@ fragment ReservationSummary on Reservation {
     roomTypeName
     roomTypeImageUrl
     ratePlanName
+    isRefundable
+    freeCancellationUntil
   }
   extras {
     id

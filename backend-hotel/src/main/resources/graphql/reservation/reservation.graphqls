@@ -67,6 +67,18 @@ type ReservationRoomLine {
 	# Resolved from the current rate catalog (roomLines persist only the
 	# rate-plan id) — the display name for confirmation/lookup views.
 	ratePlanName: String
+	# Cancellation terms of this line's rate plan, resolved from the current
+	# rate catalog (roomLines persist only the rate-plan id, not its policy).
+	# false means the full room subtotal is forfeited on cancellation,
+	# regardless of freeCancellationUntil.
+	isRefundable: Boolean!
+	# The last date free cancellation is available, or null when the rate
+	# plan is non-refundable OR refundable with no free-cancellation window
+	# at all (a penalty always applies) — in neither case is there a
+	# meaningful date to show. Never compute a cancellation FEE amount from
+	# these two fields client-side; only the actual cancel action (backend)
+	# is authoritative for the exact charge.
+	freeCancellationUntil: LocalDate
 }
 
 type ReservationExtraLine {

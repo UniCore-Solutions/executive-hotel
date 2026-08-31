@@ -1,6 +1,8 @@
 package com.hotelcollection.hotel.controller;
 
+import java.time.LocalDate;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -17,6 +19,7 @@ import com.hotelcollection.hotel.dto.reservation.ReservationLookupInput;
 import com.hotelcollection.hotel.dto.reservation.ReservationPageResult;
 import com.hotelcollection.hotel.entity.Guest;
 import com.hotelcollection.hotel.entity.Media;
+import com.hotelcollection.hotel.entity.RatePlan;
 import com.hotelcollection.hotel.entity.Reservation;
 import com.hotelcollection.hotel.entity.ReservationCancellation;
 import com.hotelcollection.hotel.entity.ReservationRoom;
@@ -98,5 +101,40 @@ public class ReservationGraphQLController {
 				lines.stream().map(ReservationRoom::getRatePlanId).collect(Collectors.toSet()));
 		return lines.stream().collect(Collectors.toMap(l -> l,
 				l -> names.get(l.getRatePlanId())));
+	}
+
+	// Cancellation terms: resolved from the current rate catalog so the
+	// guest sees the real policy instead of a client-side guess. Deliberately
+	// exposes only the two facts a display needs (refundable? free until
+	// when?) — never a computed penalty amount, which requires the plan's
+	// penalty type/value and belongs to CancellationPolicy/BookingService's
+	// actual cancel path, not a read-side resolver.
+	@BatchMapping(typeName = "ReservationRoomLine", field = "isRefundable")
+	public Map<ReservationRoom, Boolean> roomLineIsRefundable(Collection<ReservationRoom> lines) {
+		Map<UUID, RatePlan> plans = pricing.ratePlansByIds(
+				lines.stream().map(ReservationRoom::getRatePlanId).collect(Collectors.toSet()));
+		return lines.stream().collect(Collectors.toMap(l -> l, l -> {
+			RatePlan plan = plans.get(l.getRatePlanId());
+			// Plan deleted after booking: no policy left to check, so don't
+			// show a scary "non-refundable" — mirrors doCancel's own
+			// fall-through-to-penalty-free handling of the same case.
+			return plan == null || plan.isRefundable();
+		}));
+	}
+
+	@BatchMapping(typeName = "ReservationRoomLine", field = "freeCancellationUntil")
+	public Map<ReservationRoom, LocalDate> roomLineFreeCancellationUntil(Collection<ReservationRoom> lines) {
+		Map<UUID, RatePlan> plans = pricing.ratePlansByIds(
+				lines.stream().map(ReservationRoom::getRatePlanId).collect(Collectors.toSet()));
+		Map<ReservationRoom, LocalDate> result = new HashMap<>();
+		for (ReservationRoom line : lines) {
+			RatePlan plan = plans.get(line.getRatePlanId());
+			LocalDate freeUntil = null;
+			if (plan != null && plan.isRefundable() && plan.getCancellationDeadlineDays() != null) {
+				freeUntil = line.getCheckInDate().minusDays(plan.getCancellationDeadlineDays());
+			}
+			result.put(line, freeUntil);
+		}
+		return result;
 	}
 }
