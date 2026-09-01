@@ -138,20 +138,12 @@ export default function ReservationFlow() {
     setBusy(true);
     try {
       const r = await reservations.find(ref, email);
-      if (!r) {
-        setLookupMsg({
-          text: 'No reservation found for those details. Check the reference and the email used at booking.',
-          ok: false,
-        });
-        return;
-      }
       setLookupMsg({ text: '', ok: null });
       setRes(r);
       setStatus('view');
       if (opts?.scroll) window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
-      // The lookup query throws NOT_FOUND rather than resolving to null (the
-      // `if (!r)` branch above is unreachable for that case in practice) —
+      // A miss throws NOT_FOUND (reservations.find never resolves to null);
       // its message is already guest-appropriate, so surface it directly.
       if (err instanceof GraphqlClientError && err.code === 'NOT_FOUND') {
         setLookupMsg({ text: err.message, ok: false });
@@ -278,8 +270,7 @@ export default function ReservationFlow() {
             if (apollo) {
               invalidateGraphql(apollo, REST_INVALIDATIONS['reservations.cancel']);
             }
-            const updated = await reservations.find(res.reference, res.guest.email || '');
-            if (updated) setRes(updated);
+            setRes(await reservations.find(res.reference, res.guest.email || ''));
             toast({
               message: 'Your reservation has been cancelled.',
               type: 'ok',

@@ -47,12 +47,26 @@ const PAGE_NAMES = [
   'privacy', 'cancellation-policy',
 ];
 
+/* Pages whose content arrives from the backend after first paint. Axe must
+   scan the settled page: scanning a loading skeleton reports whatever that
+   skeleton happens to contain, which made these tests flaky. */
+const READY_SELECTOR: Record<string, string> = {
+  search: 'h2 a',
+  hotel: '#rooms',
+  room: '#room-name',
+  booking: '#booking-app',
+  confirmation: '#conf-ref',
+  reservation: '#view-ref',
+};
+
 test.describe('accessibility (axe wcag2a+aa)', () => {
   for (const name of PAGE_NAMES) {
     test(`${name} has no serious/critical violations`, async ({ page }) => {
       const url = (await pageUrls()).find(([n]) => n === name)![1];
       await page.goto(url);
       if (name !== 'confirmation') await dismissConsent(page);
+      const ready = READY_SELECTOR[name];
+      if (ready) await expect(page.locator(ready).first()).toBeVisible({ timeout: 20_000 });
       await settleImages(page);
       const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
       const serious = results.violations.filter(

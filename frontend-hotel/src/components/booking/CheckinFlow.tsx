@@ -29,11 +29,6 @@ export default function CheckinFlow() {
     setBusy(true);
     try {
       const r = await reservations.find(ref, email);
-      if (!r) {
-        setMsg('No reservation found for those details.');
-        setView('missing');
-        return;
-      }
       setRes(r);
       if (r.status === 'cancelled') {
         setView('missing');
@@ -46,7 +41,7 @@ export default function CheckinFlow() {
       }
       setView('unavailable');
     } catch (err) {
-      // The lookup query throws NOT_FOUND rather than resolving to null —
+      // A miss throws NOT_FOUND (reservations.find never resolves to null);
       // its message is already guest-appropriate, so surface it directly.
       if (err instanceof GraphqlClientError && err.code === 'NOT_FOUND') {
         setMsg(err.message);

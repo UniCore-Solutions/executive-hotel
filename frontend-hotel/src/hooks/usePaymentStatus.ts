@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { reservations, type BackendReservation } from '@/services/reservations';
+import { GraphqlClientError } from '@/services/graphqlClient';
 
 export const PAYMENT_POLL_INTERVAL_MS = 2000;
 export const PAYMENT_POLL_MAX_ATTEMPTS = 60; // 60 x 2s = 120s (2 min) ceiling
@@ -31,18 +32,23 @@ export function usePaymentStatus(reference: string, email: string, enabled: bool
     attempts.current = 0;
 
     const tick = async () => {
-      let outcome: BackendReservation | null | undefined;
+      let outcome: BackendReservation | undefined;
       try {
         outcome = await reservations.find(reference, email, { fresh: true });
-      } catch {
-        outcome = undefined; // transient read failure — treated like "still pending" below
+      } catch (err) {
+        if (!alive) return;
+        /* A miss is terminal — polling can never turn it into a hit, and
+           swallowing it as "transient" left the guest watching a spinner
+           until the 2-minute ceiling. Anything else (network blip, gateway
+           restart) really is transient, so keep polling. */
+        if (err instanceof GraphqlClientError && err.code === 'NOT_FOUND') {
+          setState({ phase: 'error', message: err.message });
+          return;
+        }
+        outcome = undefined;
       }
       if (!alive) return;
 
-      if (outcome === null) {
-        setState({ phase: 'error', message: 'We could not find that reservation.' });
-        return;
-      }
       if (outcome) {
         if (outcome.paymentStatus === 'captured') {
           setState({ phase: 'confirmed', reservation: outcome });

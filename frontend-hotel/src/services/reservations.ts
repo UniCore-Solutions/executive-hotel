@@ -2,7 +2,7 @@
     browser), writes via REST (API rule: GraphQL = READ, REST = WRITE/ACTION).
     The cache is evicted by src/api/invalidation.ts after every REST write,
     so cached reads never go stale. */
-import { gqlRequest } from './graphqlClient';
+import { gqlRequest, GraphqlClientError } from './graphqlClient';
 import { getApolloClient, toGraphqlClientError } from '@/api/apollo/client';
 import { cancelReservation as cancelReservationRest, createReservation as createReservationRest } from '@/api/rest/endpoints';
 import type {
@@ -97,6 +97,24 @@ export function generateIdempotencyKey(): string {
   return `bk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * Collapses the two shapes a miss could take into the one callers handle.
+ *
+ * Today the backend always errors on a miss, so this only guards the
+ * theoretical case of a bare `null` with no accompanying error — but it is
+ * what lets `find` promise a non-null reservation without a cast that could
+ * quietly become a lie.
+ */
+function requireFound(reservation: unknown): BackendReservation {
+  if (!reservation) {
+    throw new GraphqlClientError(
+      'No reservation found for those details. Check the reference and the email used at booking.',
+      'NOT_FOUND'
+    );
+  }
+  return reservation as BackendReservation;
+}
+
 /* ── CRUD ───────────────────────────────────────────────────────────── */
 
 /** Browser reads go through the Apollo cache (cache-first); REST writes
@@ -125,13 +143,24 @@ export const reservations = {
   },
 
   /**
-   * Look up a reservation by reference + email. `fresh: true` bypasses the
-   * Apollo cache entirely (`no-cache`) — required by the payment-status
-   * poller (BookingFlow → processing screen), which would otherwise keep
-   * reading a stale cached `pending` after the backend has already resolved
-   * the payment; every other caller keeps the default cache-first read.
+   * Look up a reservation by reference + email.
+   *
+   * A miss THROWS `GraphqlClientError` with `code === 'NOT_FOUND'`; it never
+   * resolves to null. The schema declares `reservation: Reservation`
+   * (nullable), but the resolver `orElseThrow`s
+   * (BookingServiceImpl#getByReferenceAndEmail), so the null it advertises is
+   * only ever the field being nulled *alongside* that error — which both
+   * transports throw on before any caller sees it. The old
+   * `BackendReservation | null` signature described the schema rather than the
+   * behaviour, and every `if (!r)` branch written against it was dead code.
+   *
+   * `fresh: true` bypasses the Apollo cache entirely (`no-cache`) — required
+   * by the payment-status poller (BookingFlow → processing screen), which
+   * would otherwise keep reading a stale cached `pending` after the backend
+   * has already resolved the payment; every other caller keeps the default
+   * cache-first read.
    */
-  async find(reference: string, email: string, opts?: { fresh?: boolean }): Promise<BackendReservation | null> {
+  async find(reference: string, email: string, opts?: { fresh?: boolean }): Promise<BackendReservation> {
     const input: ReservationLookupInput = { reference, email };
     const variables = { input } as ReservationLookupQueryVariables;
     const client = getApolloClient();
@@ -142,14 +171,14 @@ export const reservations = {
           variables,
           fetchPolicy: opts?.fresh ? 'no-cache' : 'cache-first',
         });
-        return (data as ReservationLookupQuery).reservation as BackendReservation | null;
+        return requireFound((data as ReservationLookupQuery).reservation);
       } catch (err) {
         // Apollo throws its own error type; callers branch on GraphqlClientError.
         throw toGraphqlClientError(err);
       }
     }
     const data = await gqlRequest(ReservationLookupDocument, variables);
-    return (data as ReservationLookupQuery).reservation as BackendReservation | null;
+    return requireFound((data as ReservationLookupQuery).reservation);
   },
 
   /** Create a reservation via REST (POST /api/v1/reservations). Transaction

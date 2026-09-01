@@ -116,9 +116,9 @@ export default function ConfirmationFlow() {
     if (emailParam) {
       reservations
         .find(ref, emailParam)
-        .then((found) => {
-          if (found) setRes(found);
-        })
+        .then(setRes)
+        // Best-effort prefill: the lookup form below is the recoverable path
+        // if this misses, so a failure here needs no message of its own.
         .catch(() => {});
       return;
     }
@@ -180,17 +180,11 @@ export default function ConfirmationFlow() {
     }
     setLookupBusy(true);
     try {
-      const r = await reservations.find(ref, email);
-      if (r) {
-        setRes(r);
-        setLookupMsg('');
-      } else {
-        setLookupMsg('No reservation found. Check the reference and email.');
-      }
+      setRes(await reservations.find(ref, email));
+      setLookupMsg('');
     } catch (err) {
-      // The lookup query throws NOT_FOUND rather than resolving to null (the
-      // `else` branch above is unreachable for that case in practice) — its
-      // message is already guest-appropriate, so surface it directly.
+      // A miss throws NOT_FOUND (reservations.find never resolves to null);
+      // its message is already guest-appropriate, so surface it directly.
       if (err instanceof GraphqlClientError && err.code === 'NOT_FOUND') {
         setLookupMsg(err.message);
       } else {
