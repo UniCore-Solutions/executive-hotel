@@ -1,48 +1,63 @@
 import { test, expect } from '@playwright/test';
+import { dismissConsent, attachNoPageErrors, madAmount, quoteTotal, shortDate } from './helpers';
 import {
-  dismissConsent,
-  attachNoPageErrors,
-  allAvailableCheckin,
-  plusDays,
-  madAmount,
-} from './helpers';
+  getStayWindow,
+  cheapestRoom,
+  registerAccount,
+  settlePayment,
+  trackForCleanup,
+  UI_BOOKING_FROM_DAYS,
+  type RoomType,
+} from './backend';
 
-const ROOM = 'executive-suite';
+/* Room resolution + the server-side quote are two sequential backend round
+   trips, which can exceed the default 5 s expect timeout on a cold page. */
+const QUOTE_TIMEOUT = 25_000;
 
 test.describe('booking journey', () => {
   let ci = '';
   let co = '';
+  let room: RoomType;
 
   test.beforeEach(async ({ page }) => {
     attachNoPageErrors(page);
-    ci = allAvailableCheckin();
-    co = plusDays(ci, 2);
+    // Books for real, so it works in its own date region (see backend.ts).
+    const window = await getStayWindow({ fromDays: UI_BOOKING_FROM_DAYS });
+    ci = window.checkin;
+    co = window.checkout;
+    room = cheapestRoom(window);
     await page.goto(`/search?checkin=${ci}&checkout=${co}&adults=2&children=0&rooms=1`);
     await dismissConsent(page);
   });
 
   test('room → plan → booking → payment → confirmation, prices consistent', async ({ page }) => {
-    await page.locator(`a[href*="roomId=${ROOM}"]`).first().click();
-    await expect(page).toHaveURL(/roomId=executive-suite/);
+    await page.locator(`a[href*="roomId=${room.id}"]`).first().click();
+    await expect(page).toHaveURL(new RegExp(`roomId=${room.id}`));
 
     const card = page.locator('aside[aria-label="Booking card"]');
-    await expect(card).toContainText(`${ci.slice(8, 10)}`);
+    await expect(card).toContainText(shortDate(ci));
 
-    await card.locator('label').filter({ hasText: 'Breakfast included' }).click();
-    await expect(card).toContainText('Recommended');
-
-    const roomTotal = await card.locator('text=Total').last().locator('..').innerText();
-    const roomAmount = madAmount(roomTotal);
+    // Which rate plans exist is seeded data, so book whichever plan the card
+    // has selected by default rather than naming one.
+    /* The card prices via a live server quote, so wait for a real total
+       rather than reading a still-empty node. */
+    await expect(card).toContainText('MAD', { timeout: QUOTE_TIMEOUT });
+    const roomAmount = await quoteTotal(card);
+    expect(roomAmount).not.toBeNull();
 
     await card.getByRole('button', { name: 'Select room & continue' }).click();
-    await expect(page).toHaveURL(/\/booking\?.*room=executive-suite/);
+    await expect(page).toHaveURL(new RegExp(`/booking\\?.*room=${room.id}`));
 
     const summary = page.locator('aside[aria-label="Booking summary"]');
-    await expect(summary).toContainText('Executive Suite');
-    await expect(summary).toContainText(`${co.slice(8, 10)}`);
+    await expect(summary).toContainText(room.name, { timeout: QUOTE_TIMEOUT });
+    await expect(summary).toContainText(shortDate(ci));
+    await expect(summary).toContainText(shortDate(co));
     await expect(summary).toContainText('2 nights');
 
-    const summaryTotal = madAmount(await summary.locator('#quote-host').innerText());
+    await expect(summary.locator('#quote-host')).toContainText('Total', {
+      timeout: QUOTE_TIMEOUT,
+    });
+    const summaryTotal = await quoteTotal(summary.locator('#quote-host'));
     expect(summaryTotal).toBe(roomAmount);
 
     await page.locator('#details-submit').click();
@@ -67,25 +82,32 @@ test.describe('booking journey', () => {
     expect(payTotal).toBe(roomAmount);
 
     await page.locator('#p-name').fill('ADAM BENALI');
-    await page.locator('#p-number').fill('4000000000000001');
+    await page.locator('#p-number').fill('4000000000004242');
     await page.locator('#p-exp').fill(futureExpiry());
     await page.locator('#p-cvc').fill('123');
     await page.locator('#p-terms').check();
     await page.locator('#pay-submit').click();
-    await expect(page.locator('#declined')).toBeVisible();
-    await expect(page.locator('#declined')).toContainText('declined');
 
-    await page.locator('#p-number').fill('4000000000004242');
-    await page.locator('#pay-submit').click();
+    /* Payment is asynchronous and backend-authoritative: the client only
+       STARTS an attempt and is redirected with status=processing, then polls.
+       The card number never reaches the backend, so it cannot decide the
+       outcome — the provider does. We play the provider. */
     await expect(page).toHaveURL(/\/confirmation\?ref=RC-/);
 
-    const ref = await page.locator('#conf-ref').innerText();
+    /* Take the reference from the URL, not from the page: while the payment
+       is unsettled the confirmation shows its processing state and #conf-ref
+       has not rendered yet. */
+    const ref = new URL(page.url()).searchParams.get('ref')!;
     expect(ref).toMatch(/^RC-[A-Z2-9]{6}$/);
+
+    trackForCleanup(ref, 'e2e@example.com');
+    await settlePayment(ref);
+
+    await expect(page.locator('#conf-ref')).toHaveText(ref, { timeout: QUOTE_TIMEOUT });
+
     await expect(page.locator('#conf-email-line')).toContainText('Adam Benali');
-
-    const confTotal = madAmount(await page.locator('#conf-price').innerText());
+    const confTotal = await quoteTotal(page.locator('#conf-price'));
     expect(confTotal).toBe(payTotal);
-
     await expect(page.locator('#timeline')).toContainText('Payment');
   });
 
@@ -96,20 +118,36 @@ test.describe('booking journey', () => {
     await expect(page).toHaveURL(/\/search$/);
   });
 
-  test('guest session pre-fills details form', async ({ page }) => {
-    await page.evaluate(() => {
-      localStorage.setItem(
-        'rc_session_v1',
-        JSON.stringify({ email: 'demo@hotelcollection.com', name: 'Adam Benali', at: Date.now() })
-      );
-    });
+  test('a signed-in guest has their details pre-filled', async ({ page }) => {
+    /* Sessions are httpOnly cookies issued by /api/auth/login, not the old
+       `rc_session_v1` localStorage blob — so sign in for real. */
+    const account = await registerAccount();
+    await page.goto('/account');
+    await dismissConsent(page);
+    await page.locator('#a-email').first().fill(account.email);
+    await page.locator('#a-pass').first().fill(account.password);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(
+      page.getByRole('heading', { name: `Welcome, ${account.firstName} ${account.lastName}` })
+    ).toBeVisible();
+
     await page.goto(
-      `/booking?checkin=${ci}&checkout=${co}&adults=2&children=0&rooms=1&room=${ROOM}&plan=${ROOM}::bb`
+      `/booking?checkin=${ci}&checkout=${co}&adults=2&children=0&rooms=1` +
+        `&room=${room.id}&plan=${bookingPlanId(room)}`
     );
-    await expect(page.locator('#f-first')).toHaveValue('Adam');
-    await expect(page.locator('#f-email')).toHaveValue('demo@hotelcollection.com');
+    await expect(page.locator('#f-first')).toHaveValue(account.firstName, {
+      timeout: QUOTE_TIMEOUT,
+    });
+    await expect(page.locator('#f-email')).toHaveValue(account.email);
   });
 });
+
+/** Plan id as the app builds it: `${roomTypeId}::${ratePlanCode.toLowerCase()}`
+    (catalog.ts `ratePlansForRoom`). Derived, never written down, because the
+    codes are seeded data. */
+function bookingPlanId(room: RoomType): string {
+  return `${room.id}::${room.rates[0]!.ratePlanCode.toLowerCase()}`;
+}
 
 function futureExpiry(): string {
   const d = new Date(Date.now() + 730 * 86400000);

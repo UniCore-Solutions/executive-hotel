@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { dismissConsent, attachNoPageErrors } from './helpers';
+import { getHotel } from './backend';
 
 test.describe('home', () => {
   test.beforeEach(async ({ page }) => {
@@ -9,11 +10,13 @@ test.describe('home', () => {
   });
 
   test('loads with brand, hero facts and sections', async ({ page }) => {
-    await expect(page).toHaveTitle(/Executive Boutique Hotel Rabat/);
+    const hotel = await getHotel();
+    await expect(page).toHaveTitle(new RegExp(hotel.name));
     const hero = page.locator('[data-hero]');
     await expect(hero).toBeVisible();
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect(page.locator('[data-hero-facts]')).toContainText('4.4');
+    // Rating is computed from seeded reviews; assert the shape, not a value.
+    await expect(page.locator('[data-hero-facts]')).toContainText(/\d\.\d/);
     await expect(page.locator('#rooms')).toBeVisible();
     await expect(page.locator('#experiences')).toBeVisible();
     await expect(page.locator('#offers')).toBeVisible();
@@ -46,7 +49,7 @@ test.describe('home', () => {
     }
   });
 
-  test('newsletter validates, then subscribes', async ({ page }) => {
+  test('newsletter validates, then reports it is unavailable', async ({ page }) => {
     await page.locator('#newsletter').scrollIntoViewIfNeeded();
     await expect(page.locator('#nl-submit')).toBeDisabled();
     await page.locator('#nl-consent').check();
@@ -55,7 +58,11 @@ test.describe('home', () => {
     await expect(page.locator('#nl-status')).toContainText('Enter a valid email address.');
     await page.locator('#nl-email').fill('guest@example.com');
     await page.locator('#nl-submit').click();
-    await expect(page.locator('#nl-status')).toContainText('Almost done — check your inbox');
+    // There is no newsletter backend; the service says so explicitly rather
+    // than faking a subscription (services/newsletter.ts).
+    await expect(page.locator('#nl-status')).toContainText(
+      'Newsletter sign-up is not available yet'
+    );
   });
 
   test('currency dropdown switches prices', async ({ page }) => {

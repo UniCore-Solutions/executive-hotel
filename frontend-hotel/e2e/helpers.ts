@@ -1,40 +1,35 @@
-/** Shared helpers for the e2e suite. */
+/**
+ * Shared DOM helpers for the e2e suite.
+ *
+ * Test DATA (hotel, room types, bookable dates, reservations) is discovered
+ * from the running backend — see ./backend.ts. This file holds only helpers
+ * that drive the page.
+ */
 import { expect } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
-export const ROOM_IDS = ['superior-double-or-twin', 'double-or-twin', 'executive-suite'];
+export { plusDays } from './backend';
 
-/** FNV-1a replica of lib/dates.hashStr — mirrors availabilityFor determinism. */
-export function hashStr(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
+/**
+ * The grand total from a QuoteTable inside `scope`.
+ *
+ * Matched structurally — the total is the last row of the `<dl>` — because
+ * the label is caller-supplied ("Total" in the tunnel, "Paid total" on the
+ * confirmation), and because an unanchored "Total" text match also hits the
+ * per-night rows above it.
+ */
+export async function quoteTotal(scope: Locator): Promise<string | null> {
+  const row = scope.locator('dl').last().locator('> div').last();
+  return madAmount(await row.innerText());
 }
 
-function availabilityOf(roomId: string, ciIso: string): 'soldout' | 'few' | 'available' {
-  const r = (hashStr(`${roomId}|${ciIso}`) % 10000) / 100;
-  if (r < 24) return 'soldout';
-  if (r < 42) return 'few';
-  return 'available';
-}
-
-export function iso(offsetDays: number): string {
-  const d = new Date(Date.now() + offsetDays * 86400000);
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${m}-${day}`;
-}
-
-/** First check-in (>= offsetDays ahead) where every room is available. */
-export function allAvailableCheckin(fromDays = 2): string {
-  for (let d = fromDays; d <= 60; d++) {
-    const ci = iso(d);
-    if (ROOM_IDS.every((id) => availabilityOf(id, ci) === 'available')) return ci;
-  }
-  throw new Error('no all-available window within 60 days');
+/** ISO date rendered as the app's `fmtShort` does, e.g. "Nov 1" (no
+    zero-padding) — for asserting dates shown in stay summaries. */
+export function shortDate(isoDate: string): string {
+  const SM = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const dt = new Date(y!, m! - 1, d!);
+  return `${SM[dt.getMonth()]} ${dt.getDate()}`;
 }
 
 /** Day-cell accessible name, e.g. "Aug 16, 2026". */
@@ -45,13 +40,6 @@ export function dayLabel(isoDate: string): string {
     day: 'numeric',
     year: 'numeric',
   });
-}
-
-/** iso + n days. */
-export function plusDays(isoDate: string, n: number): string {
-  const [y, m, d] = isoDate.split('-').map(Number);
-  const dt = new Date(y, m - 1, d + n);
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
 
 /** Dismiss the consent banner if it appears. */
@@ -127,7 +115,15 @@ export async function setGuests(
   await panel.locator('#guests-done').click({ force: true });
 }
 
-/** Extract the first MAD amount from a string, e.g. "Total due MAD7,312" → "MAD7,312". */
+/**
+ * Extract the first MAD amount from a string, normalised for comparison:
+ * "Total due MAD 7,312" → "MAD 7,312".
+ *
+ * `fmtPrice` renders a separator between the code and the number (a regular
+ * or non-breaking space), so the separator is matched and then collapsed —
+ * otherwise amounts from two different components never compare equal.
+ */
 export function madAmount(text: string): string | null {
-  return text.match(/MAD[\d,]+/)?.[0] ?? null;
+  const m = text.match(/MAD[\s\u00a0]*[\d,]+/);
+  return m ? m[0].replace(/[\s\u00a0]+/g, ' ') : null;
 }

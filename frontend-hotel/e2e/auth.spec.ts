@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { dismissConsent, attachNoPageErrors } from './helpers';
+import { registerAccount, seedReservation } from './backend';
 
+/**
+ * Accounts are real rows behind /api/v1/auth/*, not a `rc_users_v1`
+ * localStorage array, and `demo@hotelcollection.com` does not exist. Each
+ * test registers what it needs.
+ */
 test.describe('auth & account', () => {
   test.beforeEach(async ({ page }) => {
     attachNoPageErrors(page);
@@ -8,29 +14,36 @@ test.describe('auth & account', () => {
     await dismissConsent(page);
   });
 
-  test('signed out: login form with demo hint', async ({ page }) => {
+  test('signed out: sign-in form is offered', async ({ page }) => {
     await expect(page.getByRole('heading', { name: 'Sign in or create an account' })).toBeVisible();
-    await expect(page.getByText('demo@hotelcollection.com / demo1234')).toBeVisible();
+    await expect(page.locator('#a-email')).toBeVisible();
+    await expect(page.locator('#a-pass')).toBeVisible();
   });
 
-  test('login with demo account shows bookings, then sign out', async ({ page }) => {
-    await page.locator('#a-email').fill('demo@hotelcollection.com');
-    await page.locator('#a-pass').fill('demo1234');
+  test('sign in shows the account, then sign out', async ({ page }) => {
+    const account = await registerAccount();
+    await page.locator('#a-email').fill(account.email);
+    await page.locator('#a-pass').fill(account.password);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page.getByRole('heading', { name: 'Welcome, Adam Benali' })).toBeVisible();
+
+    await expect(
+      page.getByRole('heading', { name: `Welcome, ${account.firstName} ${account.lastName}` })
+    ).toBeVisible();
     await expect(page.locator('#bk-title')).toContainText('Your bookings');
-    await expect(page.getByText('RC-DEMO1')).toBeVisible();
-    await expect(page.locator('main')).toContainText('Confirmed');
 
     await page.getByRole('button', { name: 'Sign out' }).click();
     await expect(page.getByRole('heading', { name: 'Sign in or create an account' })).toBeVisible();
   });
 
   test('wrong credentials show exact error', async ({ page }) => {
-    await page.locator('#a-email').fill('demo@hotelcollection.com');
-    await page.locator('#a-pass').fill('wrong-password');
+    const account = await registerAccount();
+    await page.locator('#a-email').fill(account.email);
+    await page.locator('#a-pass').fill('definitely-not-the-password');
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page.getByText('Incorrect email or password.')).toBeVisible();
+    /* The BFF forwards the backend's own wording ("invalid email or
+       password") when it supplies one, and services/auth.ts only falls back
+       to "Incorrect email or password." when it does not. */
+    await expect(page.getByText(/[Ii]nvalid email or password|Incorrect email or password/)).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Sign in or create an account' })).toBeVisible();
   });
 
@@ -62,17 +75,18 @@ test.describe('auth & account', () => {
     await expect(page.getByText('Enter a valid email address.')).toBeVisible();
   });
 
-  test('bookings row renders stay details', async ({ page }) => {
-    await page.evaluate(() => {
-      const users = JSON.parse(localStorage.getItem('rc_users_v1') ?? '[]');
-      users.push({ email: 'guest@demo.com', name: 'Claire Marchetti', password: 'demo1234' });
-      localStorage.setItem('rc_users_v1', JSON.stringify(users));
-    });
-    await page.locator('#a-email').fill('guest@demo.com');
-    await page.locator('#a-pass').fill('demo1234');
+  test('bookings row renders the stay booked by that account', async ({ page }) => {
+    /* Booked through the API as the account, so the reservation links to the
+       user's guest row — which is what `myReservations` reads. */
+    const account = await registerAccount();
+    const reservation = await seedReservation({ account });
+
+    await page.locator('#a-email').fill(account.email);
+    await page.locator('#a-pass').fill(account.password);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page.getByText('RC-DEMO2')).toBeVisible();
-    await expect(page.locator('main')).toContainText('Checked in');
-    await expect(page.getByText('Superior Double or Twin')).toBeVisible();
+
+    await expect(page.getByText(reservation.reference)).toBeVisible();
+    await expect(page.locator('main')).toContainText('Confirmed');
+    await expect(page.getByText(reservation.roomTypeName).first()).toBeVisible();
   });
 });

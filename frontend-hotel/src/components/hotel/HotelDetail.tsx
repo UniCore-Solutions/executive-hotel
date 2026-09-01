@@ -397,7 +397,9 @@ export default async function HotelDetail({
                           <h3 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
                             Stay information
                           </h3>
-                          <div className="mt-4 grid grid-cols-2 gap-4">
+                          {/* <dl>, not <div>: these are <dt>/<dd> pairs and need a
+                              definition list ancestor to be valid (axe dlitem). */}
+                          <dl className="mt-4 grid grid-cols-2 gap-4">
                             {hotel.checkInTime ? (
                               <div>
                                 <dt className="text-navy/45 text-[11px] font-semibold tracking-wide uppercase">
@@ -418,7 +420,7 @@ export default async function HotelDetail({
                                 </dd>
                               </div>
                             ) : null}
-                          </div>
+                          </dl>
                         </div>
                       ) : null}
                       {hasContactInfo ? (

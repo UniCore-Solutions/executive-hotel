@@ -1,32 +1,56 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { dismissConsent, settleImages } from './helpers';
+import { getStayWindow, cheapestRoom, getSharedReservation } from './backend';
 
-const PAGES: Array<[string, string]> = [
-  ['home', '/'],
-  ['search', '/search?checkin=2026-08-16&checkout=2026-08-18&adults=2&children=0&rooms=1'],
-  ['hotel', '/hotel'],
-  ['room', '/hotel?roomId=executive-suite'],
-  [
-    'booking',
-    '/booking?checkin=2026-08-16&checkout=2026-08-18&adults=2&children=0&rooms=1&room=executive-suite&plan=executive-suite::bb',
-  ],
-  ['confirmation', '/confirmation?ref=RC-DEMO1'],
-  ['reservation', '/reservation?ref=RC-DEMO1'],
-  ['account', '/account'],
-  ['checkin', '/checkin?ref=RC-DEMO1'],
-  ['faq', '/faq'],
-  ['offers', '/offers'],
-  ['contact', '/contact'],
-  ['cookies', '/cookies'],
-  ['terms', '/terms'],
-  ['privacy', '/privacy'],
-  ['cancellation-policy', '/cancellation-policy'],
+/* URLs are built at test time: room/booking pages need real room-type UUIDs
+   and a bookable window, and the reservation-scoped pages need a reservation
+   that actually exists. */
+let urlsPromise: Promise<Array<[string, string]>> | null = null;
+
+/** Memoised: one shared reservation for the whole file, not one per test. */
+function pageUrls(): Promise<Array<[string, string]>> {
+  urlsPromise ??= buildPageUrls();
+  return urlsPromise;
+}
+
+async function buildPageUrls(): Promise<Array<[string, string]>> {
+  const window = await getStayWindow();
+  const room = cheapestRoom(window);
+  const plan = `${room.id}::${room.rates[0]!.ratePlanCode.toLowerCase()}`;
+  const stay = `checkin=${window.checkin}&checkout=${window.checkout}&adults=2&children=0&rooms=1`;
+  const res = await getSharedReservation();
+  const lookup = `ref=${encodeURIComponent(res.reference)}&email=${encodeURIComponent(res.email)}`;
+  return [
+    ['home', '/'],
+    ['search', `/search?${stay}`],
+    ['hotel', '/hotel'],
+    ['room', `/hotel?roomId=${room.id}`],
+    ['booking', `/booking?${stay}&room=${room.id}&plan=${plan}`],
+    ['confirmation', `/confirmation?${lookup}`],
+    ['reservation', `/reservation?${lookup}`],
+    ['account', '/account'],
+    ['checkin', `/checkin?${lookup}`],
+    ['faq', '/faq'],
+    ['offers', '/offers'],
+    ['contact', '/contact'],
+    ['cookies', '/cookies'],
+    ['terms', '/terms'],
+    ['privacy', '/privacy'],
+    ['cancellation-policy', '/cancellation-policy'],
+  ];
+}
+
+const PAGE_NAMES = [
+  'home', 'search', 'hotel', 'room', 'booking', 'confirmation', 'reservation',
+  'account', 'checkin', 'faq', 'offers', 'contact', 'cookies', 'terms',
+  'privacy', 'cancellation-policy',
 ];
 
 test.describe('accessibility (axe wcag2a+aa)', () => {
-  for (const [name, url] of PAGES) {
+  for (const name of PAGE_NAMES) {
     test(`${name} has no serious/critical violations`, async ({ page }) => {
+      const url = (await pageUrls()).find(([n]) => n === name)![1];
       await page.goto(url);
       if (name !== 'confirmation') await dismissConsent(page);
       await settleImages(page);

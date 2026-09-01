@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
-import { dismissConsent, attachNoPageErrors, allAvailableCheckin, plusDays } from './helpers';
+import { dismissConsent, attachNoPageErrors } from './helpers';
+import { getStayWindow, cheapestRoom, getSharedReservation } from './backend';
 
 async function noHorizontalOverflow(page: Page): Promise<boolean> {
   return page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
@@ -31,24 +32,29 @@ test.describe('responsive — mobile 390×844', () => {
   });
 
   test('mobile search sheet drives a full search', async ({ page }) => {
-    const ci = allAvailableCheckin();
-    const co = plusDays(ci, 2);
+    const { checkin: ci, checkout: co } = await getStayWindow();
     await page.locator('[data-open-sheet]').click();
     const sheet = page.locator('#search-sheet');
     await expect(sheet).toBeVisible();
     await sheet.locator('#sheet-date-trigger').click();
     await sheet.locator(`#sheet-calendar [data-day="${ci}"]`).click();
     await sheet.locator(`#sheet-calendar [data-day="${co}"]`).click();
-    await sheet.locator('#sheet-search').click();
+    /* With the calendar expanded the submit button sits ~1400px down the
+       sheet's own scroll container, outside the 844px viewport, so it never
+       becomes click-stable. Dispatch the click directly — the same approach
+       helpers.ts already uses for the calendar's day cells and confirm. */
+    await sheet.locator('#sheet-search').evaluate((el) => (el as HTMLElement).click());
     await expect(page).toHaveURL(/\/search\?.*checkin=/);
     expect(await noHorizontalOverflow(page)).toBe(true);
   });
 
   test('booking form is usable at mobile width', async ({ page }) => {
-    const ci = allAvailableCheckin();
-    const co = plusDays(ci, 2);
+    const window = await getStayWindow();
+    const room = cheapestRoom(window);
+    const plan = `${room.id}::${room.rates[0]!.ratePlanCode.toLowerCase()}`;
     await page.goto(
-      `/booking?checkin=${ci}&checkout=${co}&adults=2&children=0&rooms=1&room=executive-suite&plan=executive-suite::bb`
+      `/booking?checkin=${window.checkin}&checkout=${window.checkout}` +
+        `&adults=2&children=0&rooms=1&room=${room.id}&plan=${plan}`
     );
     await expect(page.locator('#f-email')).toBeVisible();
     await page.locator('#f-email').fill('m@example.com');
@@ -57,8 +63,11 @@ test.describe('responsive — mobile 390×844', () => {
   });
 
   test('confirmation page stacks at mobile width', async ({ page }) => {
-    await page.goto('/confirmation?ref=RC-DEMO1');
-    await expect(page.locator('#conf-ref')).toHaveText('RC-DEMO1');
+    const res = await getSharedReservation();
+    await page.goto(
+      `/confirmation?ref=${encodeURIComponent(res.reference)}&email=${encodeURIComponent(res.email)}`
+    );
+    await expect(page.locator('#conf-ref')).toHaveText(res.reference);
     expect(await noHorizontalOverflow(page)).toBe(true);
   });
 });
@@ -68,7 +77,8 @@ test.describe('responsive — tablet 768×1024', () => {
 
   test('desktop nav hidden, hamburger used; no overflow on key pages', async ({ page }) => {
     attachNoPageErrors(page);
-    for (const route of ['/', '/hotel', '/hotel?roomId=executive-suite', '/account']) {
+    const room = cheapestRoom(await getStayWindow());
+    for (const route of ['/', '/hotel', `/hotel?roomId=${room.id}`, '/account']) {
       await page.goto(route);
       await dismissConsent(page);
       await expect(page.locator('main')).toBeVisible();

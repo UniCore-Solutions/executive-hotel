@@ -527,12 +527,15 @@ export default function BookingFlow({
               </div>
               {/* Check-in and check-out are a pair, so they sit side by side
                   wherever there is room for two columns and stack below that. */}
-              <dl id="summary-stay" className="mt-4 text-sm">
-                <div className="border-navy/10 bg-paper/60 grid grid-cols-2 gap-3 rounded-2xl border p-3.5">
+              {/* Two <dl>s rather than one wrapped in extra <div>s: a <dt>/<dd>
+                  may sit at most one <div> deep inside its <dl>, and nesting
+                  them further trips axe's dlitem/definition-list rules. */}
+              <div id="summary-stay" className="mt-4 text-sm">
+                <dl className="border-navy/10 bg-paper/60 grid grid-cols-2 gap-3 rounded-2xl border p-3.5">
                   <StayDate label="Check-in" value={fmtShort(state.checkin)} />
                   <StayDate label="Check-out" value={fmtShort(state.checkout)} />
-                </div>
-                <div className="mt-3 space-y-2.5">
+                </dl>
+                <dl className="mt-3 space-y-2.5">
                 <StayRow
                   icon={STAY_ICONS.moon}
                   label="Length of stay"
@@ -558,8 +561,8 @@ export default function BookingFlow({
                   label="Estimated arrival"
                   value={details.arrival}
                 />
-                </div>
-              </dl>
+                </dl>
+              </div>
 
               <div className="border-navy/10 mt-4 border-t pt-4">
                 <p className="text-navy/45 text-xs font-semibold tracking-widest uppercase">

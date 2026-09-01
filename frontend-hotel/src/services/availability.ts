@@ -19,13 +19,30 @@ export function fitsGuests(room: Room, adults: number, children: number): boolea
   return room.capacity.adults >= (adults || 1) && room.capacity.children >= (children || 0);
 }
 
+/**
+ * Meal plan → the PLAN_OPTIONS facet key it satisfies.
+ *
+ * The facet used to be matched against the rate plan's id suffix, which is
+ * `ratePlanCode.toLowerCase()` (catalog.ts `ratePlansForRoom`). Backend codes
+ * are things like `BB_FLEX` and `SAVER`, so no plan could ever equal `bb`,
+ * `ro` or `hb` and the facet silently emptied the results. The meal plan is
+ * what the facet actually describes, so match on that.
+ */
+function mealPlanKey(mealPlan: string): string {
+  const m = mealPlan.trim().toLowerCase();
+  if (!m || m === 'room_only') return 'ro';
+  if (m === 'half_board') return 'hb';
+  if (m === 'breakfast' || m === 'bb') return 'bb';
+  return m;
+}
+
 /** Apply search-result facets (any plan of a room may satisfy a facet). */
 export function filterEntries(entries: SearchResultEntry[], f: SearchFilters): SearchResultEntry[] {
   if (!filtersActive(f)) return entries;
   return entries.filter((e) => {
     const minPrice = Math.min(...e.plans.map((p) => p.price));
     if (f.price.length && !f.price.some((k) => priceBracketMatch(k, minPrice))) return false;
-    if (f.plans.length && !e.plans.some((p) => f.plans.includes(p.id.split('::')[1]!)))
+    if (f.plans.length && !e.plans.some((p) => f.plans.includes(mealPlanKey(p.mealPlan))))
       return false;
     if (
       f.refund.length &&

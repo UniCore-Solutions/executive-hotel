@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { dismissConsent, attachNoPageErrors } from './helpers';
+import { getHotel, getStayWindow, suiteRoom, cheapestRoom } from './backend';
 
 test.describe('hotel', () => {
   test.beforeEach(async ({ page }) => {
@@ -9,9 +10,12 @@ test.describe('hotel', () => {
   });
 
   test('loads with property facts and sections', async ({ page }) => {
-    await expect(page).toHaveTitle(/Executive Boutique Hotel Rabat/);
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Executive Boutique Hotel');
-    for (const id of ['rooms', 'experiences', 'reviews']) {
+    // /hotel redirects to the canonical hotel's UUID; its name is the brand.
+    const hotel = await getHotel();
+    await expect(page).toHaveTitle(new RegExp(hotel.name));
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(hotel.name);
+    // Section ids on the backend-rendered hotel page (HotelDetail.tsx).
+    for (const id of ['amenities', 'rooms', 'faq']) {
       await expect(page.locator(`#${id}`)).toBeVisible();
     }
   });
@@ -28,24 +32,46 @@ test.describe('hotel', () => {
   });
 
   test('amenities and policies sections render', async ({ page }) => {
-    await expect(page.locator('main')).toContainText('Free Wi-Fi');
-    await expect(page.locator('main')).toContainText('Free private parking');
-    await expect(page.locator('main')).toContainText('Check-in is from 15:00');
+    // Amenity names and policy values are seeded rows, so assert the section
+    // renders populated rather than pinning particular copy.
+    await expect(page.locator('#amenities')).toContainText('Amenities & services');
+    const amenityCount = await page.locator('#amenities [class*="rounded-full"]').count();
+    expect(amenityCount).toBeGreaterThan(0);
+    await expect(page.locator('main')).toContainText('Check-in');
+    await expect(page.locator('main')).toContainText('Check-out');
   });
 
-  test('gallery and "Book" CTAs on a real room page', async ({ page }) => {
-    await page.goto('/hotel?roomId=executive-suite');
-    const gallery = page.locator('#gallery');
-    await expect(gallery).toBeVisible();
-    await page.getByRole('button', { name: 'Next photo' }).click();
-    await expect(page.locator('#gallery')).toContainText('2 / 5');
+  test('photo lightbox opens, advances and closes', async ({ page }) => {
+    // Photos are a PhotoGallery grid plus a lightbox (PhotoGallery.tsx /
+    // PhotoLightbox.tsx) — there is no inline carousel counter. The button
+    // only renders for a gallery with more than one photo, which today is
+    // true of the hotel gallery but not of a room type's single image.
+    await page.getByRole('button', { name: /View all \d+ photos/ }).first().click();
+    /* Radix sets aria-labelledby from the sr-only DialogTitle (the photo's
+       alt text), which overrides the container's aria-label — so the dialog
+       is matched by role and identified by its counter. */
+    const lightbox = page.getByRole('dialog');
+    await expect(lightbox).toBeVisible();
+    await expect(lightbox).toContainText('1 / ');
+    await lightbox.getByRole('button', { name: 'Next photo' }).click();
+    await expect(lightbox).toContainText('2 / ');
+    await lightbox.getByRole('button', { name: 'Close photo viewer' }).click();
+    await expect(lightbox).toBeHidden();
+  });
+
+  test('room view shows the room and its booking CTA', async ({ page }) => {
+    const window = await getStayWindow();
+    const room = suiteRoom(window) ?? cheapestRoom(window);
+    await page.goto(`/hotel?roomId=${room.id}`);
+    await expect(page.locator('#room-name')).toContainText(room.name);
     await expect(
       page.getByRole('button', { name: /Choose dates|Reserve room/ }).first()
     ).toBeVisible();
   });
 
   test('room page without dates shows stay strip with choose-dates flow', async ({ page }) => {
-    await page.goto('/hotel?roomId=superior-double-or-twin');
+    const room = cheapestRoom(await getStayWindow());
+    await page.goto(`/hotel?roomId=${room.id}`);
     await expect(
       page.getByText('Choose dates, guests and rooms right here', { exact: false })
     ).toBeVisible();

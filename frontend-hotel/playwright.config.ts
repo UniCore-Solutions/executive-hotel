@@ -4,6 +4,8 @@ const PORT = process.env.PORT || 3100;
 
 export default defineConfig({
   testDir: './e2e',
+  /* Seeded reservations hold real inventory; hand it back when the run ends. */
+  globalTeardown: './e2e/global-teardown.ts',
   timeout: 30_000,
   fullyParallel: false,
   workers: 1,

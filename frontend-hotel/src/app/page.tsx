@@ -255,13 +255,13 @@ export default async function HomePage() {
                       <h3 className="font-display mt-4 text-lg font-semibold">{e.name}</h3>
                       <p className="mt-1.5 text-sm text-white/60">{e.description}</p>
                       {e.location ? (
-                        <p className="mt-1 text-xs text-white/40">{e.location}</p>
+                        <p className="mt-1 text-xs text-white/70">{e.location}</p>
                       ) : null}
                       {price ? (
                         <p className="text-gold-light mt-3 text-sm font-semibold">{price}</p>
                       ) : null}
                       {e.durationMinutes ? (
-                        <p className="mt-1 text-xs text-white/40">{e.durationMinutes} min</p>
+                        <p className="mt-1 text-xs text-white/70">{e.durationMinutes} min</p>
                       ) : null}
                     </a>
                   );
@@ -285,7 +285,7 @@ export default async function HomePage() {
                         <p className="text-gold-light mt-3 text-sm font-semibold">{price}</p>
                       ) : null}
                       {e.durationMinutes ? (
-                        <p className="mt-1 text-xs text-white/40">{e.durationMinutes} min</p>
+                        <p className="mt-1 text-xs text-white/70">{e.durationMinutes} min</p>
                       ) : null}
                     </div>
                   );
