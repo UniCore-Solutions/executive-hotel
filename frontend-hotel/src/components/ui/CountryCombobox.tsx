@@ -17,6 +17,21 @@ interface CountryComboboxProps {
   showCallingCode?: boolean;
   placeholder?: string;
   className?: string;
+  /** Trigger shows flag + calling code only — for the phone field, where the
+      country name would crowd the number input. The dropdown list still shows
+      full names, so the choice stays unambiguous. */
+  codeOnly?: boolean;
+  /** Replaces the default trigger styling. Used by PhoneField, which draws one
+      border around the group and needs a borderless segment inside it. */
+  triggerClassName?: string;
+  /** Panel is anchored to the trigger by default; the phone field's trigger is
+      narrow, so it opts into a wider panel. */
+  panelClassName?: string;
+  invalid?: boolean;
+  describedBy?: string;
+  /** Accessible name for the trigger — required by the `codeOnly` variant,
+      whose trigger text is just a flag and a dial code. */
+  ariaLabel?: string;
 }
 
 const ARROW_DOWN = 'ArrowDown';
@@ -31,6 +46,12 @@ export function CountryCombobox({
   showCallingCode = false,
   placeholder = 'Search country…',
   className = '',
+  codeOnly = false,
+  triggerClassName = '',
+  panelClassName = '',
+  invalid = false,
+  describedBy,
+  ariaLabel,
 }: CountryComboboxProps) {
   const uid = useId();
   const listId = `country-list-${uid}`;
@@ -41,6 +62,8 @@ export function CountryCombobox({
   const [loadError, setLoadError] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const optionId = (i: number) => `${listId}-opt-${i}`;
 
   useEffect(() => {
     let alive = true;
@@ -82,6 +105,13 @@ export function CountryCombobox({
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
+
+  /* Keyboard navigation must not walk the highlight off-screen in a 245-entry
+     list, so the active option is scrolled into view as it moves. */
+  useEffect(() => {
+    if (!open) return;
+    listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [open, highlight]);
 
   const openPanel = () => {
     setOpen(true);
@@ -127,11 +157,20 @@ export function CountryCombobox({
         aria-expanded={open}
         aria-controls={listId}
         onClick={openPanel}
-        className="bg-paper border-navy/15 focus:ring-gold/40 flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium focus:ring-2 focus:outline-none"
+        onKeyDown={onKeyDown}
+        data-invalid={invalid || undefined}
+        aria-describedby={describedBy}
+        aria-label={ariaLabel}
+        className={
+          triggerClassName ||
+          `bg-paper border-navy/15 focus-visible:ring-gold/40 hover:border-navy/25 data-[invalid=true]:border-clay data-[invalid=true]:bg-clay/[0.04] flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none`
+        }
       >
-        <span className={selected ? 'text-navy' : 'text-navy/40'}>
+        <span className={`min-w-0 truncate ${selected ? 'text-navy' : 'text-navy/40'}`}>
           {selected
-            ? `${flagEmoji(selected.code)} ${selected.name}${showCallingCode && selected.callingCode ? ` (+${selected.callingCode})` : ''}`
+            ? codeOnly
+              ? `${flagEmoji(selected.code)}${selected.callingCode ? ` +${selected.callingCode}` : ''}`
+              : `${flagEmoji(selected.code)} ${selected.name}${showCallingCode && selected.callingCode ? ` (+${selected.callingCode})` : ''}`
             : placeholder}
         </span>
         <svg
@@ -146,7 +185,9 @@ export function CountryCombobox({
       </button>
 
       {open ? (
-        <div className="shadow-navy/10 absolute z-50 mt-1.5 w-full overflow-hidden rounded-2xl border border-navy/10 bg-white shadow-xl">
+        <div
+          className={`border-navy/10 shadow-navy/15 absolute z-50 mt-1.5 w-full min-w-[16rem] overflow-hidden rounded-2xl border bg-white shadow-xl ${panelClassName}`}
+        >
           <input
             ref={inputRef}
             type="text"
@@ -154,6 +195,7 @@ export function CountryCombobox({
             aria-expanded="true"
             aria-controls={listId}
             aria-autocomplete="list"
+            aria-activedescendant={filtered[highlight] ? optionId(highlight) : undefined}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -161,9 +203,10 @@ export function CountryCombobox({
             }}
             onKeyDown={onKeyDown}
             placeholder="Search country…"
-            className="bg-paper border-b border-navy/10 w-full px-3.5 py-2.5 text-sm focus:outline-none"
+            className="bg-paper border-navy/10 placeholder:text-navy/35 w-full border-b px-3.5 py-3 text-sm focus:outline-none"
           />
           <ul
+            ref={listRef}
             id={listId}
             role="listbox"
             aria-label="Countries"
@@ -179,11 +222,13 @@ export function CountryCombobox({
               filtered.map((c, i) => (
                 <li
                   key={c.code}
+                  id={optionId(i)}
+                  data-active={i === highlight}
                   role="option"
                   aria-selected={c.code === value}
                   onMouseEnter={() => setHighlight(i)}
                   onClick={() => pick(c.code)}
-                  className={`flex cursor-pointer items-center justify-between gap-2 px-3.5 py-2 text-sm ${
+                  className={`flex cursor-pointer items-center justify-between gap-2 px-3.5 py-2.5 text-sm ${
                     i === highlight ? 'bg-gold/[0.12]' : ''
                   } ${c.code === value ? 'text-navy font-semibold' : 'text-navy/80'}`}
                 >

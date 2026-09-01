@@ -16,11 +16,10 @@ import { getExtras } from '@/services/extras';
 import { getHotelById } from '@/services/catalog';
 import { buildIcs } from '@/lib/ics';
 import { fmt, fmtShort, fromISODate, nightsBetween } from '@/lib/dates';
-import { fmtPrice } from '@/lib/format';
 import { image, IMG_FALLBACK } from '@/services/availability';
 import { QR } from '@/components/ui/QR';
 import { QuoteTable } from '@/components/ui/QuoteTable';
-import type { Extra, PriceBreakdown } from '@/types';
+import type { Extra, PriceBreakdown, QuoteExtraLine } from '@/types';
 
 function derivePrice(br: BackendReservation): PriceBreakdown {
   const firstLine = br.roomLines[0];
@@ -308,13 +307,17 @@ export default function ConfirmationFlow() {
       : res.paymentStatus === 'failed'
         ? 'Failed'
         : 'Pending';
-  const extras = res.extras.map((x) => {
+  /* Booked extras, with the catalog's display name preferred over whatever
+     was persisted on the reservation line. Fed to QuoteTable so the price
+     summary itemizes them — the single place extras are presented here. */
+  const extraLines: QuoteExtraLine[] = res.extras.map((x) => {
     const def = extrasDefs.find((e) => e.id === x.extraId);
     return {
+      extraId: x.extraId,
       name: def?.name || x.name,
-      price: def?.price ?? x.unitPrice,
-      qty: x.quantity,
-      unit: def?.unit || 'per stay',
+      quantity: x.quantity,
+      unitPrice: def?.price ?? x.unitPrice,
+      totalPrice: x.totalPrice,
     };
   });
   const checkinD = fromISODate(res.checkInDate);
@@ -549,28 +552,10 @@ export default function ConfirmationFlow() {
               </dd>
             </div>
           </dl>
-          <div className="border-navy/10 mt-6 border-t pt-5">
-            <h2 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
-              Extras &amp; services
-            </h2>
-            {extras.length ? (
-              <ul id="conf-extras" className="text-navy/80 mt-3 space-y-2 text-sm">
-                {extras.map((x) => (
-                  <li key={x.name} className="flex items-center justify-between gap-3">
-                    <span>
-                      {x.name} × {x.qty}
-                      {x.unit === 'per person' ? ' (per person)' : ''}
-                    </span>
-                    <strong className="text-navy">{fmtPrice(x.price * x.qty, currency)}</strong>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p id="conf-no-extras" className="text-navy/50 mt-3 text-sm">
-                None booked — you can add extras before arrival.
-              </p>
-            )}
-          </div>
+          {/* Extras are itemized once, in the price summary — repeating them
+              as their own list here duplicated the same rows and the same
+              money. `extras` still resolves the catalog names that the
+              summary renders. */}
           <div className="border-navy/10 mt-6 border-t pt-5">
             <h2 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
               Contact &amp; arrival
@@ -601,6 +586,7 @@ export default function ConfirmationFlow() {
                   extrasTotal: price.extrasTotal,
                   total: price.total,
                   originalTotal: price.originalTotal,
+                  extras: extraLines,
                 }}
                 currency={currency}
                 totalLabel="Paid total"

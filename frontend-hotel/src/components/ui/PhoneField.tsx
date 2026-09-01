@@ -51,20 +51,36 @@ export function PhoneField({
     emit(digits ? formatNational(digits, country) : '');
   };
 
+  const changeCountry = (code: string) => {
+    setCountry(code);
+    // Re-format the already-typed digits under the new country.
+    const digits = display.replace(/\D/g, '');
+    setDisplay(formatNational(digits, code));
+    emit(digits ? formatNational(digits, code) : '');
+  };
+
+  /* One control, two segments: a single border and a single focus ring are
+     drawn on the group, and the segments inside are borderless so the code
+     picker and the number read as one field rather than two. The dropdown
+     panel is a child of the group, so the group must not clip overflow. */
   return (
-    <div className="flex items-stretch gap-2">
+    <div
+      className={`bg-paper flex items-stretch rounded-xl border transition-colors focus-within:ring-2 ${
+        ariaInvalid
+          ? 'border-clay bg-clay/[0.04] focus-within:ring-clay/30'
+          : 'border-navy/15 focus-within:border-navy/25 focus-within:ring-gold/40'
+      }`}
+    >
       <CountryCombobox
         value={country}
-        onChange={(code) => {
-          setCountry(code);
-          // Re-format the already-typed digits under the new country.
-          const digits = display.replace(/\D/g, '');
-          setDisplay(formatNational(digits, code));
-          emit(digits ? formatNational(digits, code) : '');
-        }}
-        showCallingCode
-        className="w-[10.5rem] shrink-0"
+        onChange={changeCountry}
+        codeOnly
+        className="shrink-0"
+        triggerClassName="text-navy flex h-full w-[6.75rem] items-center justify-between gap-1 rounded-l-xl px-3 py-2.5 text-left text-sm font-semibold focus-visible:outline-none sm:w-[7.5rem]"
+        panelClassName="min-w-[17rem]"
+        ariaLabel="Phone country code"
       />
+      <span className={`w-px shrink-0 ${ariaInvalid ? 'bg-clay/25' : 'bg-navy/12'}`} aria-hidden="true" />
       <input
         id={id}
         type="tel"
@@ -75,7 +91,7 @@ export function PhoneField({
         aria-invalid={ariaInvalid}
         aria-describedby={ariaDescribedby}
         placeholder="Phone number"
-        className="bg-paper border-navy/15 focus:ring-gold/40 w-full min-w-0 rounded-xl border px-3 py-2.5 text-sm font-medium focus:ring-2 focus:outline-none"
+        className="placeholder:text-navy/35 w-full min-w-0 rounded-r-xl bg-transparent px-3 py-2.5 text-sm font-medium focus:outline-none"
       />
     </div>
   );

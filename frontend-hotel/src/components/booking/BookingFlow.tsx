@@ -32,10 +32,10 @@ import { ARRIVAL_SLOTS, TITLES, HOLDS_SECONDS } from '@/constants/booking';
 import { Steps } from '@/components/ui/Steps';
 import { QuoteTable } from '@/components/ui/QuoteTable';
 import { PromoField } from '@/components/ui/PromoField';
-import { ExtrasPicker } from '@/components/ui/ExtrasPicker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/NativeSelect';
 import { PhoneField } from '@/components/ui/PhoneField';
 import { CountrySelect } from '@/components/ui/CountrySelect';
 import Breadcrumb from '@/components/ui/Breadcrumb';
@@ -149,7 +149,9 @@ export default function BookingFlow({
   }, [resolved]);
 
   const extraSelInitial = useMemo(() => parseExtrasParam(initialExtras), [initialExtras]);
-  const [extrasSel, setExtrasSel] = useState<ExtraSelection>(extraSelInitial);
+  /* Selection is fixed for the tunnel — it is made on the room page and
+     arrives in the `extras=` URL parameter. */
+  const [extrasSel] = useState<ExtraSelection>(extraSelInitial);
   const [step, setStep] = useState<1 | 2>(1);
   const [holdSecs, setHoldSecs] = useState(HOLDS_SECONDS);
   const [declined, setDeclined] = useState('');
@@ -510,14 +512,19 @@ export default function BookingFlow({
                       })}
                       className="text-navy/55 hover:text-navy mt-2.5 inline-flex items-center gap-1 text-[11px] font-bold tracking-widest uppercase transition-colors"
                     >
-                      Edit room or dates <span aria-hidden="true">→</span>
+                      Edit room, dates or extras <span aria-hidden="true">→</span>
                     </a>
                   </div>
                 </div>
               </div>
-              <dl id="summary-stay" className="mt-4 space-y-2.5 text-sm">
-                <StayRow icon={STAY_ICONS.cal} label="Check-in" value={fmtShort(state.checkin)} />
-                <StayRow icon={STAY_ICONS.cal} label="Check-out" value={fmtShort(state.checkout)} />
+              {/* Check-in and check-out are a pair, so they sit side by side
+                  wherever there is room for two columns and stack below that. */}
+              <dl id="summary-stay" className="mt-4 text-sm">
+                <div className="border-navy/10 bg-paper/60 grid grid-cols-2 gap-3 rounded-2xl border p-3.5">
+                  <StayDate label="Check-in" value={fmtShort(state.checkin)} />
+                  <StayDate label="Check-out" value={fmtShort(state.checkout)} />
+                </div>
+                <div className="mt-3 space-y-2.5">
                 <StayRow
                   icon={STAY_ICONS.moon}
                   label="Length of stay"
@@ -534,6 +541,7 @@ export default function BookingFlow({
                   value={`${state.rooms} ${state.rooms === 1 ? 'room' : 'rooms'}`}
                 />
                 <StayRow icon={STAY_ICONS.tag} label="Rate" value={plan!.name.toLowerCase()} />
+                </div>
               </dl>
 
               <div className="border-navy/10 mt-4 border-t pt-4">
@@ -575,23 +583,12 @@ export default function BookingFlow({
                 </div>
               </div>
 
-              <div className="border-navy/10 mt-4 border-t pt-4">
-                <p className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
-                  Extras &amp; services
-                </p>
-                <div id="extras-host" className="mt-3">
-                  <ExtrasPicker
-                    extras={extrasList}
-                    selected={extrasSel}
-                    onChange={setExtrasSel}
-                    adults={state.adults || 2}
-                    childCount={state.children || 0}
-                    compact
-                    sidebar
-                    currency={currency}
-                  />
-                </div>
-              </div>
+              {/* Extras are chosen on the room page and travel here in the
+                  `extras=` URL parameter; they are itemized by QuoteTable in
+                  the price summary above. The picker is deliberately NOT
+                  repeated in the tunnel — `extrasSel` still drives the quote
+                  and the reservation payload, and "Edit room, dates or extras"
+                  above returns to the picker with the selection intact. */}
 
               <div className="bg-paper border-navy/10 text-navy/55 mt-5 rounded-2xl border px-4 py-3 text-[11px] leading-relaxed">
                 Free cancellation on most plans · Secure payment processing
@@ -616,24 +613,19 @@ export default function BookingFlow({
                 <fieldset className="mt-6 grid gap-x-4 gap-y-5 sm:grid-cols-2">
                   <legend className="text-navy/45 col-span-full mb-1 text-xs font-semibold tracking-widest uppercase">
                     Guest information
-                  </legend>                  <div className="grid grid-cols-2 gap-3 sm:col-span-2 sm:grid-cols-[120px_1fr_1fr] sm:gap-4">
+                  </legend>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-5 sm:col-span-2 sm:grid-cols-[7.5rem_1fr_1fr]">
                     <div className="col-span-2 sm:col-span-1">
-                      <label
-                        htmlFor="f-title"
-                        className="text-navy/60 mb-1.5 block text-xs font-semibold"
-                      >
-                        Title
-                      </label>
-                      <select
+                      <Label htmlFor="f-title">Title</Label>
+                      <NativeSelect
                         id="f-title"
                         value={details.title}
                         onChange={(e) => setDetails({ ...details, title: e.target.value as Title })}
-                        className="bg-paper border-navy/15 focus:ring-gold/40 w-full rounded-xl border px-3 py-2.5 text-sm font-medium focus:ring-2 focus:outline-none"
                       >
                         {TITLES.map((t) => (
                           <option key={t}>{t}</option>
                         ))}
-                      </select>
+                      </NativeSelect>
                     </div>
                     <div>
                       <Label htmlFor="f-first">
@@ -698,6 +690,14 @@ export default function BookingFlow({
                     <FieldErr id="err-email" msg={detailsError('email')} />
                   </div>
                   <div>
+                    <Label htmlFor="f-country">Country of residence</Label>
+                    <CountrySelect
+                      id="f-country"
+                      value={details.country}
+                      onChange={(country) => setDetails({ ...details, country })}
+                    />
+                  </div>
+                  <div>
                     <Label htmlFor="f-phone">
                       Phone <Star />
                     </Label>
@@ -712,15 +712,13 @@ export default function BookingFlow({
                       ariaInvalid={!!detailsError('phone')}
                       ariaDescribedby={detailsError('phone') ? 'err-phone' : undefined}
                     />
-                    <FieldErr id="err-phone" msg={detailsError('phone')} />
-                  </div>
-                  <div>
-                    <Label htmlFor="f-country">Country</Label>
-                    <CountrySelect
-                      id="f-country"
-                      value={details.country}
-                      onChange={(country) => setDetails({ ...details, country })}
-                    />
+                    {detailsError('phone') ? (
+                      <FieldErr id="err-phone" msg={detailsError('phone')} />
+                    ) : (
+                      <p className="text-navy/45 mt-1.5 text-[11px]">
+                        For arrival updates only.
+                      </p>
+                    )}
                   </div>
                 </fieldset>
 
@@ -733,17 +731,20 @@ export default function BookingFlow({
                   </p>
                   <div className="mt-4 grid gap-x-4 gap-y-5 sm:grid-cols-2">
                     <div>
-                      <Label htmlFor="f-arrival">Arrival time</Label>
-                      <select
+                      <Label htmlFor="f-arrival">Estimated arrival time</Label>
+                      <NativeSelect
                         id="f-arrival"
                         value={details.arrival}
                         onChange={(e) => setDetails({ ...details, arrival: e.target.value })}
-                        className="bg-paper border-navy/15 focus:ring-gold/40 w-full rounded-xl border px-3 py-2.5 text-sm font-medium focus:ring-2 focus:outline-none"
+                        aria-describedby="hint-arrival"
                       >
                         {ARRIVAL_SLOTS.map((a) => (
                           <option key={a}>{a}</option>
                         ))}
-                      </select>
+                      </NativeSelect>
+                      <p id="hint-arrival" className="text-navy/45 mt-1.5 text-[11px]">
+                        Check-in opens at 15:00 — later arrivals are always welcome.
+                      </p>
                     </div>
                     <div className="sm:col-span-2">
                       <Label htmlFor="f-requests">Special requests</Label>
@@ -795,12 +796,11 @@ export default function BookingFlow({
                   </div>
                 ) : null}
 
-                <form
-                  id="pay-form"
-                  className="mt-6 grid gap-x-4 gap-y-5 sm:grid-cols-2"
-                  onSubmit={submitPayment}
-                  noValidate
-                >
+                <form id="pay-form" onSubmit={submitPayment} noValidate>
+                  <fieldset className="mt-6 grid gap-x-4 gap-y-5 sm:grid-cols-2">
+                  <legend className="text-navy/45 col-span-full mb-1 text-xs font-semibold tracking-widest uppercase">
+                    Card details
+                  </legend>
                   <div className="sm:col-span-2">
                     <Label htmlFor="p-name">
                       Name on card <Star />
@@ -940,22 +940,27 @@ export default function BookingFlow({
                       {payError('pterms')}
                     </p>
                   ) : null}
-                  <div className="border-navy/10 flex flex-col justify-between gap-3 border-t pt-2 sm:col-span-2 sm:flex-row sm:items-center">
-                    <Button type="button" id="pay-back" onClick={() => setStep(1)} variant="ghost">
-                      ← Back to details
-                    </Button>
-                    <p className="text-navy/70 text-sm">
-                      Total due{' '}
-                      <strong id="pay-total" className="font-display text-navy text-xl">
-                        {quote ? fmt(quote.total) : ''}
+                  </fieldset>
+
+                  {/* Footer mirrors the details step: same top rule, same
+                      rhythm, and on mobile the primary action is full-width
+                      and last rather than squeezed beside the total. */}
+                  <div className="border-navy/10 mt-7 border-t pt-6">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="order-2 sm:order-1">
+                      <p className="text-navy/45 text-[11px] font-semibold tracking-widest uppercase">
+                        Total due
+                      </p>
+                      <strong id="pay-total" className="font-display text-navy text-2xl">
+                        {quote ? fmt(quote.total) : '—'}
                       </strong>
-                    </p>
+                    </div>
                     <Button
                       type="submit"
                       id="pay-submit"
                       disabled={paying}
                       size="xl"
-                      className="rounded-2xl text-sm"
+                      className="order-1 w-full rounded-2xl text-sm sm:order-2 sm:w-auto"
                     >
                       <svg
                         className="h-4 w-4"
@@ -972,6 +977,12 @@ export default function BookingFlow({
                       </svg>
                       <span id="pay-label">{paying ? 'Processing…' : 'Confirm & pay'}</span>
                     </Button>
+                    </div>
+                    <div className="mt-4">
+                      <Button type="button" id="pay-back" onClick={() => setStep(1)} variant="ghost">
+                        ← Back to details
+                      </Button>
+                    </div>
                   </div>
                 </form>
               </section>
@@ -1020,6 +1031,17 @@ function StayRow({ icon, label, value }: { icon: React.ReactNode; label: string;
         <span className="truncate">{label}</span>
       </dt>
       <dd className="text-navy text-right font-semibold whitespace-nowrap">{value}</dd>
+    </div>
+  );
+}
+
+/** Check-in / check-out cell — the pair reads as a range, so the two share a
+    row and are given more weight than the rest of the stay facts. */
+function StayDate({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-navy/45 text-[10px] font-semibold tracking-widest uppercase">{label}</dt>
+      <dd className="font-display text-navy mt-1 truncate text-[15px] font-semibold">{value}</dd>
     </div>
   );
 }

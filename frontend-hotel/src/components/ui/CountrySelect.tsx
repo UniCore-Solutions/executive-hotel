@@ -13,11 +13,17 @@ export function CountrySelect({
   value,
   onChange,
   className,
+  invalid,
+  describedBy,
+  placeholder,
 }: {
   id?: string;
   value: Country | '';
   onChange: (code: Country) => void;
   className?: string;
+  invalid?: boolean;
+  describedBy?: string;
+  placeholder?: string;
 }) {
   return (
     <CountryCombobox
@@ -25,6 +31,9 @@ export function CountrySelect({
       value={value}
       onChange={(code) => onChange(code as Country)}
       className={className}
+      invalid={invalid}
+      describedBy={describedBy}
+      placeholder={placeholder ?? 'Select country…'}
     />
   );
 }
