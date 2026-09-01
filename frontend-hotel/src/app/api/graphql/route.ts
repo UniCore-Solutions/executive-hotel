@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSessionToken } from '@/lib/session';
+import { rejectCrossOrigin } from '@/lib/originCheck';
 
 const BACKEND_GRAPHQL_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:8180/graphql';
 
@@ -11,6 +12,9 @@ const BACKEND_GRAPHQL_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:81
  * server-side; the browser itself never has access to it (see lib/session.ts).
  */
 export async function POST(request: Request): Promise<NextResponse> {
+  const originRejection = rejectCrossOrigin(request);
+  if (originRejection) return originRejection;
+
   let body: string;
   try {
     body = await request.text();

@@ -376,33 +376,22 @@ public class RateAdminServiceImpl implements RateAdminService {
 	}
 
 	private CurrentUser requireStaffAccess(UUID hotelId) {
-		CurrentUser actor = currentUser.require();
-		if (!actor.hasRole("super_admin") && !actor.inHotel(hotelId)) {
-			throw DomainException.forbidden("no access to this hotel");
-		}
-		return actor;
+		return currentUser.requireHotelAccess(hotelId);
 	}
 
 	private CurrentUser requireStaffAccessForLink(UUID linkId) {
-		CurrentUser actor = currentUser.require();
 		RoomTypeRatePlan link = linkRepository.findById(linkId)
 				.orElseThrow(() -> DomainException.notFound("rate plan link not found"));
-		if (!actor.hasRole("super_admin") && !actor.inHotel(link.getHotelId())) {
-			throw DomainException.forbidden("no access to this hotel");
-		}
-		return actor;
+		return currentUser.requireHotelAccess(link.getHotelId());
 	}
 
 	private CurrentUser requirePromotionScope(Promotion promotion) {
-		CurrentUser actor = currentUser.require();
+		// A promotion with no hotelId is platform-wide, so it takes super_admin;
+		// a hotel-scoped one takes staff access at that hotel.
 		if (promotion.getHotelId() == null) {
-			if (!actor.hasRole("super_admin")) {
-				throw DomainException.forbidden("super_admin role required");
-			}
-		} else if (!actor.hasRole("super_admin") && !actor.inHotel(promotion.getHotelId())) {
-			throw DomainException.forbidden("no access to this hotel");
+			return currentUser.requireSuperAdmin();
 		}
-		return actor;
+		return currentUser.requireHotelAccess(promotion.getHotelId());
 	}
 
 	private void requireSuperAdmin(CurrentUser actor) {

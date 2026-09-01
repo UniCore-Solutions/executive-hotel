@@ -26,7 +26,6 @@ import com.hotelcollection.hotel.service.MediaQueryService;
 import com.hotelcollection.hotel.service.RateQueryService;
 import com.hotelcollection.hotel.service.ReservationAdminService;
 import com.hotelcollection.hotel.entity.Reservation;
-import com.hotelcollection.hotel.exception.DomainException;
 import com.hotelcollection.hotel.dto.PageInput;
 
 /**
@@ -133,9 +132,6 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 	}
 
 	private void requireStaffAccess(UUID hotelId) {
-		CurrentUser actor = currentUser.require();
-		if (!actor.hasRole("super_admin") && !actor.inHotel(hotelId)) {
-			throw DomainException.forbidden("no access to this hotel");
-		}
+		currentUser.requireHotelAccess(hotelId);
 	}
 }

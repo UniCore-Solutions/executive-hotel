@@ -7,10 +7,10 @@ app:
   security:
     jwt-secret: ${JWT_SECRET:test-only-strong-secret-3f9a2c7e1b8d4f6a9c0e2d5b8a1f3c7e}
     jwt-ttl-minutes: ${JWT_TTL_MINUTES:60}
-    # The suite performs >20 registrations per minute from one test IP, so the
-    # per-IP auth rate limit is off by default; AuthRateLimitIntegrationTest
-    # enables it explicitly.
-    auth-rate-limit-enabled: false
+    # The suite performs far more registrations/bookings per minute from one
+    # test IP than the anonymous budgets allow, so the per-IP rate limit is off
+    # by default; RateLimitIntegrationTest enables it explicitly.
+    rate-limit-enabled: false
   media:
     storage-path: ${MEDIA_STORAGE_PATH:./target/test-data/media}
     base-url: http://localhost:8180
@@ -30,6 +30,11 @@ app:
     # uses that provider, so this has no effect on them.
     simulated-settlement-delay-min-ms: 50
     simulated-settlement-delay-max-ms: 150
+    # Opt in explicitly: the main config defaults this to false (prod refuses
+    # to start with it on — see PaymentSafetyConfig). The suite exercises the
+    # simulator directly, e.g.
+    # PaymentSimulationIntegrationTest#cardPaymentAutoSettlesAndPromotesReservationToConfirmed.
+    auto-settle-enabled: true
     webhook-secret: test-only-webhook-secret
 spring:
   jpa:

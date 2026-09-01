@@ -31,3 +31,7 @@ logs/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local scratch export — not part of the platform
+standalone-hotel-page/
+standalone-hotel-page.zip

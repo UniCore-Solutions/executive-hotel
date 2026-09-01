@@ -29,7 +29,7 @@ describe('bookingKey', () => {
   it('clearDone resets finished flag', () => {
     const item = 'room:y::bb:2026-01-01:2026-01-03';
     bookingKey.begin(item);
-    bookingKey.finish('RC-Y');
+    bookingKey.finish();
     bookingKey.clearDone();
     expect(bookingKey.get().finished).toBe(false);
   });

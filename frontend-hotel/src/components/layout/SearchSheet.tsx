@@ -74,6 +74,13 @@ export default function SearchSheet() {
       clearTimeout(t);
       document.body.style.overflow = '';
     };
+    // state.promo is read only to seed promoInput at the moment the sheet
+    // opens (open-transition snapshot). Adding it here would re-run the
+    // open/close animation (body scroll lock, slide state) every time the
+    // promo changes elsewhere — e.g. right after submit() calls setPromo,
+    // while the sheet is already closing — which is not the intended
+    // behaviour.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sheetOpen]);
 
   useEffect(() => {

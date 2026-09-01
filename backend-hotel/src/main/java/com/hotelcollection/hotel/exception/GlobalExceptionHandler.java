@@ -63,11 +63,43 @@ public class GlobalExceptionHandler {
 				.body(ApiError.of(ErrorCode.FORBIDDEN, "access denied", request));
 	}
 
+	/**
+	 * Bean-validation failures report <em>which</em> field failed.
+	 *
+	 * <p>A flat "invalid request" is useless to the caller: the guest booking form
+	 * cannot tell the user what to correct, and it is a regression against the
+	 * hand-rolled checks this replaced, which said things like
+	 * "guest.firstName is required". The constraint messages on the DTOs are
+	 * written to read exactly that way, so joining them preserves the old
+	 * behaviour. Only the declared messages are exposed — never the rejected
+	 * value, which could echo user input back.
+	 */
 	@ExceptionHandler({ MethodArgumentNotValidException.class, BindException.class,
 			ConstraintViolationException.class })
 	public ResponseEntity<ApiError> beanValidation(Exception ex, HttpServletRequest request) {
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-				.body(ApiError.of(ErrorCode.VALIDATION, "invalid request", request));
+				.body(ApiError.of(ErrorCode.VALIDATION, validationMessage(ex), request));
+	}
+
+	private String validationMessage(Exception ex) {
+		java.util.stream.Stream<String> messages;
+		if (ex instanceof MethodArgumentNotValidException manv) {
+			messages = manv.getBindingResult().getAllErrors().stream()
+					.map(org.springframework.context.support.DefaultMessageSourceResolvable::getDefaultMessage);
+		} else if (ex instanceof BindException be) {
+			messages = be.getBindingResult().getAllErrors().stream()
+					.map(org.springframework.context.support.DefaultMessageSourceResolvable::getDefaultMessage);
+		} else if (ex instanceof ConstraintViolationException cve) {
+			messages = cve.getConstraintViolations().stream()
+					.map(jakarta.validation.ConstraintViolation::getMessage);
+		} else {
+			return "invalid request";
+		}
+		String joined = messages.filter(m -> m != null && !m.isBlank())
+				.distinct()
+				.sorted()
+				.collect(java.util.stream.Collectors.joining("; "));
+		return joined.isBlank() ? "invalid request" : joined;
 	}
 
 	@ExceptionHandler({ HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class,

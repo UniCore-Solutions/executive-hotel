@@ -166,11 +166,7 @@ public class AvailabilityAdminServiceImpl implements AvailabilityAdminService {
 	}
 
 	private CurrentUser requireStaffAccess(UUID hotelId) {
-		CurrentUser actor = currentUser.require();
-		if (!actor.hasRole("super_admin") && !actor.inHotel(hotelId)) {
-			throw DomainException.forbidden("no access to this hotel");
-		}
-		return actor;
+		return currentUser.requireHotelAccess(hotelId);
 	}
 
 	private int nonNegative(int value, String field) {

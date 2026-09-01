@@ -159,12 +159,12 @@ public class ReviewServiceImpl implements ReviewService {
 		if (status == null) {
 			throw DomainException.validation("status is required");
 		}
-		CurrentUser actor = currentUser.require();
+		// Authentication is asserted before the lookup so an anonymous caller
+		// still gets 401 (not 404) for a review that does not exist.
+		currentUser.require();
 		Review review = reviewRepository.findById(reviewId)
 				.orElseThrow(() -> DomainException.notFound("review not found"));
-		if (!actor.hasRole("super_admin") && !actor.inHotel(review.getHotelId())) {
-			throw DomainException.forbidden("no access to this hotel");
-		}
+		CurrentUser actor = currentUser.requireHotelAccess(review.getHotelId());
 		review.setModerationStatus(status);
 		review.setResponseText(response);
 		review.setRespondedAt(Instant.now());
@@ -177,10 +177,7 @@ public class ReviewServiceImpl implements ReviewService {
 	@Override
 	@Transactional(readOnly = true)
 	public Page<Review> adminReviews(UUID hotelId, ReviewModerationStatus status, PageInput page) {
-		CurrentUser actor = currentUser.require();
-		if (!actor.hasRole("super_admin") && !actor.inHotel(hotelId)) {
-			throw DomainException.forbidden("no access to this hotel");
-		}
+		currentUser.requireHotelAccess(hotelId);
 		int p = page == null || page.page() == null ? 0 : Math.max(page.page(), 0);
 		int s = page == null || page.size() == null ? 20 : Math.min(Math.max(page.size(), 1), 100);
 		return reviewRepository.findByHotelIdWithOptionalStatus(hotelId, status, PageRequest.of(p, s));

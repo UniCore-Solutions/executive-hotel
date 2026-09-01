@@ -30,7 +30,6 @@ import com.hotelcollection.hotel.repository.RoomTypeRatePlanRepository;
 import com.hotelcollection.hotel.mapper.RateMapper;
 import com.hotelcollection.hotel.security.CurrentUser;
 import com.hotelcollection.hotel.security.CurrentUserAccessor;
-import com.hotelcollection.hotel.exception.DomainException;
 
 /**
  * Rate read use cases: active offers (booking window), rate plans, min-price
@@ -156,10 +155,6 @@ public class RateQueryServiceImpl implements RateQueryService {
 	}
 
 	private CurrentUser requireStaffAccess(UUID hotelId) {
-		CurrentUser actor = currentUser.require();
-		if (!actor.hasRole("super_admin") && !actor.inHotel(hotelId)) {
-			throw DomainException.forbidden("no access to this hotel");
-		}
-		return actor;
+		return currentUser.requireHotelAccess(hotelId);
 	}
 }

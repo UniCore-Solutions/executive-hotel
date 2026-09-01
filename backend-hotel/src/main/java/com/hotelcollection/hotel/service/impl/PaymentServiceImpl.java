@@ -100,7 +100,7 @@ public class PaymentServiceImpl implements PaymentService {
 			TaskScheduler paymentSimulationScheduler,
 			@Value("${app.payments.simulated-settlement-delay-min-ms:1500}") long settlementDelayMinMs,
 			@Value("${app.payments.simulated-settlement-delay-max-ms:4000}") long settlementDelayMaxMs,
-			@Value("${app.payments.auto-settle-enabled:true}") boolean autoSettleEnabled,
+			@Value("${app.payments.auto-settle-enabled:false}") boolean autoSettleEnabled,
 			@org.springframework.context.annotation.Lazy PaymentService self) {
 		this.paymentRepository = paymentRepository;
 		this.booking = booking;

@@ -17,6 +17,8 @@ import com.hotelcollection.hotel.dto.reservation.CreateResult;
 import com.hotelcollection.hotel.exception.DomainException;
 import com.hotelcollection.hotel.service.BookingService;
 
+import jakarta.validation.Valid;
+
 /**
  * Guest reservation endpoints. The {@code Idempotency-Key} header maps to the
  * existing idempotency_key column; a replayed key returns the original
@@ -35,14 +37,13 @@ public class ReservationRestController {
 	@PostMapping
 	public ResponseEntity<Reservation> create(
 			@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-			@RequestBody CreateReservationInput in) {
+			@Valid @RequestBody CreateReservationInput in) {
+		// The key is a transport concern (a header, not part of the booking
+		// document), so it is checked here rather than declared on the record.
 		if (idempotencyKey == null || idempotencyKey.isBlank()) {
 			throw DomainException.validation("Idempotency-Key header is required");
 		}
-		CreateResult result = bookingService.create(new CreateReservationInput(in.hotelId(),
-				in.checkInDate(), in.checkOutDate(), in.adults(), in.children(), in.currencyCode(),
-				in.guest(), in.rooms(), in.extras(), in.promoCode(), idempotencyKey.trim(),
-				in.arrivalSlot(), in.specialRequests()));
+		CreateResult result = bookingService.create(in.withIdempotencyKey(idempotencyKey.trim()));
 		return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
 				.body(result.reservation());
 	}

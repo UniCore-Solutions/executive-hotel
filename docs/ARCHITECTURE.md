@@ -50,7 +50,7 @@
 | `repository/` | 36 Spring Data JPA repositories | reachable only from `service/..` |
 | `entity/` | 55 JPA entity/enum types, mirror the Flyway schema 1:1 | `ddl-auto: validate` fails the app on drift |
 | `dto/<domain>/` | 66 GraphQL/REST input & view **records**, grouped into 13 domain packages | — |
-| `security/` | `SecurityConfig`, `JwtService`, `JwtAuthFilter`, `AuthRateLimitFilter`, `TraceIdFilter`, `CurrentUser(Accessor)` | — |
+| `security/` | `SecurityConfig`, `JwtService`, `JwtAuthFilter`, `RateLimitFilter`, `TraceIdFilter`, `CurrentUser(Accessor)` | — |
 | `config/`, `exception/`, `mapper/`, `util/`, `storage/` | cross-cutting | — |
 
 Enforced by `src/test/java/.../architecture/ModuleArchitectureTest.java` (**5** ArchUnit
@@ -116,21 +116,81 @@ from filter-level 401/403/429 via `ErrorResponseWriter`.
 
 ## 4. Security boundaries
 
+### Where a request is actually authorized
+
+The single most important thing to understand about this backend: **the filter chain does
+not authorize admin reads.** `/graphql` is one `permitAll` URL, so the check happens
+further in, inside the service. Read this diagram before adding any admin endpoint.
+
+```mermaid
+flowchart TB
+    B["Browser<br/>(no token — never sees the JWT)"]
+
+    subgraph BFF["Next.js BFF · same origin as the page"]
+      P["/api/graphql · /api/rest/[...path]<br/>injects Bearer from httpOnly cookie"]
+    end
+
+    subgraph API["Spring Boot :8180"]
+      TF["TraceIdFilter → RateLimitFilter → JwtAuthFilter"]
+
+      subgraph CHAIN["SecurityConfig.authorizeHttpRequests"]
+        PUB["permitAll<br/>/graphql · /api/v1/auth/login|register<br/>/api/v1/reservations · /api/v1/payments/**"]
+        AUTH["authenticated<br/>all other /api/v1/**"]
+      end
+
+      CTRL["Controllers — thin, no business logic,<br/>no authorization"]
+      SVC["service/ interfaces → service/impl/"]
+      GUARD{{"CurrentUserAccessor<br/>requireHotelAccess · requireSuperAdmin · requireStaff"}}
+      REPO["repository/ → PostgreSQL"]
+    end
+
+    B --> P --> TF --> CHAIN
+    PUB --> CTRL
+    AUTH --> CTRL
+    CTRL --> SVC
+    SVC --> GUARD
+    GUARD -->|"super_admin, or staff at this hotel"| REPO
+    GUARD -->|"otherwise"| X["403 DomainException.forbidden<br/>(an IDOR is 403, never a 200)"]
+
+    style GUARD fill:#fde68a,stroke:#b45309,stroke-width:3px,color:#111
+    style PUB fill:#fecaca,stroke:#b91c1c,color:#111
+    style X fill:#fecaca,stroke:#b91c1c,color:#111
+```
+
+**The yellow box is the real security boundary.** Everything above it is reachable by an
+anonymous caller.
+
 - **Stateless.** `SessionCreationPolicy.STATELESS`, CSRF disabled, bearer-token only.
 - **`/graphql` is `permitAll` at the filter chain.** Authorization is enforced *inside*
-  application services via `CurrentUserAccessor.require()` + `actor.hasRole("super_admin")
-  || actor.inHotel(hotelId)` — an IDOR yields `403`, not `200`. This is deliberate
-  (documented in `SecurityConfig`) but means **every new admin resolver must add its own
-  scope check** — there is no declarative guard to fall back on.
+  application services via `CurrentUserAccessor.requireHotelAccess(hotelId)` (or
+  `requireSuperAdmin()` / `requireStaff()`) — an IDOR yields `403`, not `200`. This is
+  deliberate and documented in `SecurityConfig`.
+  **This is enforced by the build, not by convention:** the ArchUnit rule
+  `ADMIN_GRAPHQL_READS_ARE_AUTHORIZED` follows every `@QueryMapping` on
+  `AdminGraphQLController` into its service interface, on to the implementation, and
+  through that implementation's private helpers. A resolver whose service never reaches a
+  `CurrentUserAccessor` call **fails `mvn test`**.
 - **JWT**: HS256, claims `sub · email · roles · hotels · type=access`, TTL from
   `JWT_TTL_MINUTES` (60). `JwtService` refuses to construct if `JWT_SECRET` is missing,
   `< 32 bytes`, or equals the historic in-repo default → the app fails fast at startup.
 - **Passwords**: BCrypt strength 12.
-- **Rate limiting**: `AuthRateLimitFilter` in front of the auth endpoints.
+- **Rate limiting**: `RateLimitFilter` covers the whole *anonymous* surface, per client IP
+  and per policy (a burst on one endpoint cannot consume another's budget):
+  auth login/register 20/min, `/api/v1/reservations` **5/min**, `/api/v1/payments` 10/min.
+  The reservation budget is the tight one on purpose — every create sells a physical room
+  unit and holds it for `app.reservations.hold-minutes`, so an unthrottled endpoint let a
+  script deny the property's entire inventory. Trips are logged at `WARN`.
+- **Payments are simulated.** `app.payments.auto-settle-enabled` defaults to `false` and
+  the application **refuses to start with it enabled under the `prod` profile**
+  (`config/PaymentSafetyConfig`) — it would otherwise confirm reservations with no money
+  movement. The webhook fails closed on a blank secret and compares in constant time.
+- **GraphQL cost is bounded** for anonymous callers: depth ≤ 15 and complexity ≤ 1000
+  (`config/GraphqlConfig`). Introspection and GraphiQL are off outside `dev`.
 - **RBAC is role-name based.** The `permissions` / `role_permissions` tables exist and
   are **empty**, and the `Permission` entity has **no repository and no usages** — dead.
-- **CORS**: origins from `CORS_ALLOWED_ORIGINS` (default `*`); methods GET/POST/OPTIONS;
-  headers `Authorization`, `Content-Type`; credentials never allowed.
+- **CORS**: origins from `CORS_ALLOWED_ORIGINS` (default `*`; the prod overlay requires it
+  to be set explicitly); headers `Authorization`, `Content-Type`, `Idempotency-Key`;
+  credentials never allowed.
 
 ### The two clients authenticate the same way (BFF + httpOnly cookie)
 
@@ -158,8 +218,11 @@ Textbook transactional outbox, correctly built:
 - `KafkaOutboxPublisher` sends synchronously with a 10 s `get()` per envelope.
 - Topic = `hotelcollection.<eventType>.v<version>`.
 
-**Event types published (exhaustive): `booking.confirmed`, `booking.cancelled`,
-`payment.created`, `payment.captured`.**
+**Event types published (exhaustive, verified against `eventPublisher.publish` call sites
+2026-08-31): `booking.created`, `booking.confirmed`, `booking.cancelled`,
+`payment.created`, `payment.captured`, `payment.failed`.**
+`booking.created` fires when the reservation is taken as a *payment hold*;
+`booking.confirmed` only later, from `markFullyPaid`, once payment actually captures.
 
 **There is not a single `@KafkaListener` in the repository**, and `event_consumption`
 (the idempotent-consumer table) has never been written. Kafka is nonetheless a

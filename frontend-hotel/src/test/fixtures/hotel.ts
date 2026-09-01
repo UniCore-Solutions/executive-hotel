@@ -1,14 +1,15 @@
-/** Static hotel data — faithful port of hotel-html/src/data.js (verified 1:1). */
-import type { Property, Offer, Extra, Reservation, Guest } from '@/types';
+/**
+ * Test-only fixture data — NOT used by production code.
+ *
+ * Kept here (split out of the former `src/data/index.ts`) only because
+ * `pricing.test.ts` and `availability.test.ts` exercise their pure functions
+ * against a realistic property/offer shape. Note the image URLs are
+ * hotlinked third-party CDN links (booking.com, tripcdn, unsplash) — fine
+ * for tests, never for production rendering.
+ */
+import type { Property, Offer } from '@/types';
 
-const img = (id: string, w = 1200) =>
-  /^https?:\/\//.test(id)
-    ? id
-    : `https://images.unsplash.com/${id}?q=80&w=${w}&auto=format&fit=crop`;
-
-export const IMG_FALLBACK = img('photo-1489493585363-d69421e0edd3', 1200);
-
-export const BK = {
+const BK = {
   roomTwoBedsDesk:
     'https://cf.bstatic.com/xdata/images/hotel/max1024x768/572979699.jpg?k=2d66343c58755b8db3dde1f0604ee1e1891e6bbb61d7d015d98a309417c39e41&o=',
   roomBedDeskTv:
@@ -441,66 +442,7 @@ export const PROPERTY: Property = {
   ],
 };
 
-const DEMO_RESERVATIONS: Reservation[] = [
-  {
-    ref: 'RC-DEMO1',
-    email: 'demo@hotelcollection.com',
-    status: 'confirmed',
-    checkedIn: false,
-    createdAt: '2026-07-21',
-    guest: {
-      title: 'Mr',
-      firstName: 'Adam',
-      lastName: 'Benali',
-      email: 'demo@hotelcollection.com',
-      phone: '+212 6 61 23 45 67',
-      country: 'Morocco',
-      arrival: '18:00',
-      requests: 'High floor if possible',
-    },
-    hotelId: 'executive-boutique-rabat',
-    roomId: 'executive-suite',
-    planId: 'executive-suite::hb',
-    checkin: '2026-09-12',
-    checkout: '2026-09-16',
-    adults: 2,
-    children: 0,
-    rooms: 1,
-    extras: [{ id: 'airport-shuttle', qty: 1 }],
-    promo: '',
-    price: { originalTotal: 6944, discount: 0, total: 6944, currency: 'MAD' },
-  },
-  {
-    ref: 'RC-DEMO2',
-    email: 'guest@demo.com',
-    status: 'confirmed',
-    checkedIn: true,
-    createdAt: '2026-05-02',
-    guest: {
-      title: 'Ms',
-      firstName: 'Claire',
-      lastName: 'Marchetti',
-      email: 'guest@demo.com',
-      phone: '+33 6 12 34 56 78',
-      country: 'France',
-      arrival: '15:30',
-      requests: '',
-    },
-    hotelId: 'executive-boutique-rabat',
-    roomId: 'superior-double-or-twin',
-    planId: 'superior-double-or-twin::bb',
-    checkin: '2026-07-04',
-    checkout: '2026-07-08',
-    adults: 2,
-    children: 1,
-    rooms: 1,
-    extras: [],
-    promo: 'SUMMER2026',
-    price: { originalTotal: 3987, discount: 356, total: 3631, currency: 'MAD' },
-  },
-];
-
-const OFFERS: Offer[] = [
+export const OFFERS: Offer[] = [
   {
     id: 'summer2026',
     code: 'SUMMER2026',
@@ -583,59 +525,3 @@ const OFFERS: Offer[] = [
     ],
   },
 ];
-
-const EXTRAS: Extra[] = [
-  {
-    id: 'airport-shuttle',
-    name: 'Airport shuttle',
-    desc: 'Paid shuttle to Rabat-Salé Airport (12 km), arranged at reception.',
-    price: 250,
-    unit: 'per stay',
-    icon: 'car',
-  },
-  {
-    id: 'late-checkout',
-    name: 'Late check-out (14:00)',
-    desc: 'Keep the room until 14:00 on departure day, subject to availability.',
-    price: 300,
-    unit: 'per stay',
-    icon: 'calendar',
-  },
-  {
-    id: 'baby-cot',
-    name: 'Baby cot',
-    desc: 'Cot with bedding, arranged in your room before arrival.',
-    price: 150,
-    unit: 'per stay',
-    icon: 'bed',
-  },
-  {
-    id: 'meeting-room',
-    name: 'Meeting room hire',
-    desc: 'Desk space with fax and photocopying for your stay.',
-    price: 400,
-    unit: 'per day',
-    icon: 'shield',
-  },
-  {
-    id: 'laundry-service',
-    name: 'Laundry & dry cleaning',
-    desc: 'Clothing cleaned and pressed during your stay.',
-    price: 50,
-    unit: 'per item',
-    icon: 'drop',
-  },
-];
-
-export const DATA = {
-  PROPERTY,
-  PROPERTIES: [PROPERTY],
-  OFFERS,
-  EXTRAS,
-  DEMO_RESERVATIONS,
-};
-
-export { OFFERS, EXTRAS, DEMO_RESERVATIONS };
-export type { Guest, Reservation };
-export { img };
-export default DATA;

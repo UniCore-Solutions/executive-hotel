@@ -2,6 +2,7 @@ package com.hotelcollection.hotel.security;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -42,6 +43,36 @@ public class CurrentUserAccessor {
 				|| actor.roles().stream().anyMatch(STAFF_ROLES::contains);
 		if (!staff) {
 			throw DomainException.forbidden("staff role required");
+		}
+		return actor;
+	}
+
+	/**
+	 * Requires the caller to be staff <em>at this hotel</em>, or platform-level
+	 * {@code super_admin}. This is the platform's core authorization check:
+	 * {@code /graphql} is {@code permitAll} at the filter chain (ADR-007), so
+	 * admin reads and writes are guarded here, inside the service layer, rather
+	 * than declaratively — an IDOR must surface as 403, never as a 200 carrying
+	 * another hotel's data.
+	 *
+	 * <p>Every admin-reachable service method must call this (or
+	 * {@link #requireSuperAdmin()} / {@link #requireStaff()}); the
+	 * {@code ADMIN_SERVICES_ENFORCE_AUTHORIZATION} ArchUnit rule fails the build
+	 * if one does not.
+	 */
+	public CurrentUser requireHotelAccess(UUID hotelId) {
+		CurrentUser actor = require();
+		if (!actor.hasRole("super_admin") && !actor.inHotel(hotelId)) {
+			throw DomainException.forbidden("no access to this hotel");
+		}
+		return actor;
+	}
+
+	/** Requires platform-level {@code super_admin} (cross-hotel operations). */
+	public CurrentUser requireSuperAdmin() {
+		CurrentUser actor = require();
+		if (!actor.hasRole("super_admin")) {
+			throw DomainException.forbidden("super_admin role required");
 		}
 		return actor;
 	}

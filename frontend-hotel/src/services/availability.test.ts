@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { demandFor, filterEntries, fitsGuests } from '@/services/availability';
 import { emptyFilters } from '@/lib/filters';
-import { PROPERTY } from '@/data';
+import { PROPERTY } from '@/test/fixtures/hotel';
 
 describe('fitsGuests', () => {
   it('matches capacity rules', () => {

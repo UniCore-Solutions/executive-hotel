@@ -158,11 +158,6 @@ input CancelReservationInput {
 	reasonNote: String
 }
 
-type ReservationResult {
-	reservation: Reservation!
-	created: Boolean!
-}
-
 type AdminGuestPage {
 	total: Int!
 	page: Int!

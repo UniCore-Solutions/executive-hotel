@@ -1,5 +1,4 @@
 package com.hotelcollection.hotel.controller;
-import com.hotelcollection.hotel.security.AuthRateLimitFilter;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,7 +15,7 @@ import com.hotelcollection.hotel.security.CurrentUser;
 import com.hotelcollection.hotel.security.CurrentUserAccessor;
 import com.hotelcollection.hotel.service.AuthService;
 
-/** Public identity endpoints. Rate-limited (see AuthRateLimitFilter). */
+/** Public identity endpoints. Rate-limited (see RateLimitFilter). */
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthRestController {

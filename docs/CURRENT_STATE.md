@@ -1,5 +1,23 @@
 # CURRENT_STATE
 
+> ## Verified baseline — 2026-09-01, branch `refactor/architecture-cleanup`
+>
+> | | Result |
+> |---|---|
+> | Backend (`mvn test` in `maven:3.9-eclipse-temurin-21`) | **202 tests, 0 failures, 7/7 ArchUnit rules** |
+> | Guest frontend | `tsc` clean · **0** eslint errors (1 warning, generated file) · **85/85** vitest · `next build` clean |
+> | Live guest journey | search → quote → book → hold → pay → confirm → look up → cancel, **passing** both directly and through the BFF |
+>
+> **The numbers in the dated "Update" blocks below are historical** — each was true
+> when written and is kept as a changelog. Do not read them as current state. For what
+> is fixed, still open, and deliberately deferred, see
+> [`investigations/PROJECT_CLEANUP_AUDIT_2026-08-31.md`](investigations/PROJECT_CLEANUP_AUDIT_2026-08-31.md)
+> §0, which distinguishes verified-by-execution from asserted.
+>
+> **Known shape problem with this file:** it is a changelog wearing a state document's
+> name. Restructuring it (current state at the top, history moved to a changelog) is
+> logged as an open task, not done.
+
 **Assessed:** 2026-08-27 · **Branch:** `feature/canonical-single-hotel`
 
 > **Update 2026-08-31 (asynchronous booking/payment — closes F-1).** Full design in

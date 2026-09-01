@@ -170,7 +170,6 @@ export default function ConfirmationFlow() {
     return () => {
       if (el.parentNode) el.parentNode.removeChild(el);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [res, hotelMeta]);
 
   const doLookup = async (e: React.FormEvent) => {
