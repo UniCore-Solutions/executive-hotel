@@ -1,10 +1,12 @@
 'use client';
 
-/** Searchable country selector — options come from the backend `countries`
-    query (code + name + calling code, V24/V28), never a hardcoded client
-    list. Flags are emoji derived from the ISO code. The option set is the
-    same ISO 3166-1 reference the guests.country_code FK validates against,
-    so every code this component can produce is valid against the database. */
+/** Country-of-residence selector — the `country` variant of CountryCombobox,
+    narrowed to react-phone-number-input's ISO `Country` union so call sites
+    stay type-safe about the code they store. Options come from the backend
+    `countries` query (V24/V28), the same ISO 3166-1 reference the
+    guests.country_code FK validates against, so every code this can produce
+    is valid against the database. Shows country NAMES, never dial codes —
+    the dial code belongs to PhoneField. */
 import type { Country } from 'react-phone-number-input';
 import { CountryCombobox } from './CountryCombobox';
 
@@ -13,27 +15,19 @@ export function CountrySelect({
   value,
   onChange,
   className,
-  invalid,
-  describedBy,
-  placeholder,
 }: {
   id?: string;
   value: Country | '';
   onChange: (code: Country) => void;
   className?: string;
-  invalid?: boolean;
-  describedBy?: string;
-  placeholder?: string;
 }) {
   return (
     <CountryCombobox
       id={id}
+      variant="country"
       value={value}
       onChange={(code) => onChange(code as Country)}
       className={className}
-      invalid={invalid}
-      describedBy={describedBy}
-      placeholder={placeholder ?? 'Select country…'}
     />
   );
 }

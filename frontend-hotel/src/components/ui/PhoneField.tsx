@@ -74,10 +74,9 @@ export function PhoneField({
       <CountryCombobox
         value={country}
         onChange={changeCountry}
-        codeOnly
+        variant="phone"
         className="shrink-0"
         triggerClassName="text-navy flex h-full w-[6.75rem] items-center justify-between gap-1 rounded-l-xl px-3 py-2.5 text-left text-sm font-semibold focus-visible:outline-none sm:w-[7.5rem]"
-        panelClassName="min-w-[17rem]"
         ariaLabel="Phone country code"
       />
       <span className={`w-px shrink-0 ${ariaInvalid ? 'bg-clay/25' : 'bg-navy/12'}`} aria-hidden="true" />

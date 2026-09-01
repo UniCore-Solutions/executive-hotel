@@ -21,8 +21,22 @@ export function flagEmoji(code: string): string {
     .replace(/[A-Z]/g, (c) => String.fromCodePoint(127397 + c.charCodeAt(0)));
 }
 
-export function countryLabel(c: { code: string; name: string; callingCode?: string | null }): string {
-  return `${flagEmoji(c.code)} ${c.name}${c.callingCode ? ` (+${c.callingCode})` : ''}`;
+/** Country identity, e.g. "🇲🇦 Morocco". Use wherever the country itself is
+    the subject — country of residence, nationality, address. */
+export function countryLabel(c: CountryRef): string {
+  return `${flagEmoji(c.code)} ${c.name}`;
+}
+
+/** Country plus its dial code, e.g. "🇲🇦 Morocco (+212)". Only for the phone
+    picker, where the dial code is the reason the guest is choosing. */
+export function countryDialLabel(c: CountryRef): string {
+  return c.callingCode ? `${countryLabel(c)} (+${c.callingCode})` : countryLabel(c);
+}
+
+/** Dial code alone alongside the flag, e.g. "🇲🇦 +212" — the phone field's
+    trigger, where a full country name would crowd the number input. */
+export function countryDialCode(c: CountryRef): string {
+  return c.callingCode ? `${flagEmoji(c.code)} +${c.callingCode}` : flagEmoji(c.code);
 }
 
 let cache: CountryRef[] | null = null;
@@ -38,9 +52,4 @@ export async function getCountries(): Promise<CountryRef[]> {
     callingCode: c.callingCode,
   }));
   return cache;
-}
-
-/** Calling code of one country (e.g. '212' for MA), or undefined. */
-export function callingCodeOf(countries: CountryRef[], code: string): string | undefined {
-  return countries.find((c) => c.code === code)?.callingCode ?? undefined;
 }

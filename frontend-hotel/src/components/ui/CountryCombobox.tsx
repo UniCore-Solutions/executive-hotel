@@ -7,30 +7,33 @@
    option, ArrowUp/ArrowDown move through the filtered list. */
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { getCountries, flagEmoji, countryLabel, type CountryRef } from '@/services/countries';
+import {
+  getCountries,
+  countryLabel,
+  countryDialLabel,
+  countryDialCode,
+  type CountryRef,
+} from '@/services/countries';
+
+/** What the guest is actually choosing, which decides how options read:
+    - `country` — the country itself (residence, nationality). "🇲🇦 Morocco".
+    - `phone`   — a dial code. Trigger shows "🇲🇦 +212" to stay narrow beside
+                  the number input; options keep the name so the choice is
+                  unambiguous: "🇲🇦 Morocco (+212)". */
+export type CountryComboboxVariant = 'country' | 'phone';
 
 interface CountryComboboxProps {
   value: string;
   onChange: (code: string) => void;
   id?: string;
-  /** Show the calling code next to the name (phone-field variant). */
-  showCallingCode?: boolean;
+  variant?: CountryComboboxVariant;
   placeholder?: string;
   className?: string;
-  /** Trigger shows flag + calling code only — for the phone field, where the
-      country name would crowd the number input. The dropdown list still shows
-      full names, so the choice stays unambiguous. */
-  codeOnly?: boolean;
   /** Replaces the default trigger styling. Used by PhoneField, which draws one
       border around the group and needs a borderless segment inside it. */
   triggerClassName?: string;
-  /** Panel is anchored to the trigger by default; the phone field's trigger is
-      narrow, so it opts into a wider panel. */
-  panelClassName?: string;
-  invalid?: boolean;
-  describedBy?: string;
-  /** Accessible name for the trigger — required by the `codeOnly` variant,
-      whose trigger text is just a flag and a dial code. */
+  /** Accessible name for the trigger. Required by the `phone` variant, whose
+      trigger text is only a flag and a dial code. */
   ariaLabel?: string;
 }
 
@@ -43,14 +46,10 @@ export function CountryCombobox({
   value,
   onChange,
   id,
-  showCallingCode = false,
-  placeholder = 'Search country…',
+  variant = 'country',
+  placeholder = 'Select country…',
   className = '',
-  codeOnly = false,
   triggerClassName = '',
-  panelClassName = '',
-  invalid = false,
-  describedBy,
   ariaLabel,
 }: CountryComboboxProps) {
   const uid = useId();
@@ -64,6 +63,10 @@ export function CountryCombobox({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const optionId = (i: number) => `${listId}-opt-${i}`;
+
+  const isPhone = variant === 'phone';
+  const triggerLabel = isPhone ? countryDialCode : countryLabel;
+  const optionLabel = isPhone ? countryDialLabel : countryLabel;
 
   useEffect(() => {
     let alive = true;
@@ -158,20 +161,14 @@ export function CountryCombobox({
         aria-controls={listId}
         onClick={openPanel}
         onKeyDown={onKeyDown}
-        data-invalid={invalid || undefined}
-        aria-describedby={describedBy}
         aria-label={ariaLabel}
         className={
           triggerClassName ||
-          `bg-paper border-navy/15 focus-visible:ring-gold/40 hover:border-navy/25 data-[invalid=true]:border-clay data-[invalid=true]:bg-clay/[0.04] flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none`
+          `bg-paper border-navy/15 focus-visible:ring-gold/40 hover:border-navy/25 flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none`
         }
       >
         <span className={`min-w-0 truncate ${selected ? 'text-navy' : 'text-navy/40'}`}>
-          {selected
-            ? codeOnly
-              ? `${flagEmoji(selected.code)}${selected.callingCode ? ` +${selected.callingCode}` : ''}`
-              : `${flagEmoji(selected.code)} ${selected.name}${showCallingCode && selected.callingCode ? ` (+${selected.callingCode})` : ''}`
-            : placeholder}
+          {selected ? triggerLabel(selected) : placeholder}
         </span>
         <svg
           className={`text-navy/40 h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
@@ -186,7 +183,7 @@ export function CountryCombobox({
 
       {open ? (
         <div
-          className={`border-navy/10 shadow-navy/15 absolute z-50 mt-1.5 w-full min-w-[16rem] overflow-hidden rounded-2xl border bg-white shadow-xl ${panelClassName}`}
+          className="border-navy/10 shadow-navy/15 absolute z-50 mt-1.5 w-full min-w-[17rem] overflow-hidden rounded-2xl border bg-white shadow-xl"
         >
           <input
             ref={inputRef}
@@ -232,7 +229,7 @@ export function CountryCombobox({
                     i === highlight ? 'bg-gold/[0.12]' : ''
                   } ${c.code === value ? 'text-navy font-semibold' : 'text-navy/80'}`}
                 >
-                  <span className="min-w-0 truncate">{countryLabel(c)}</span>
+                  <span className="min-w-0 truncate">{optionLabel(c)}</span>
                   {c.code === value ? (
                     <svg className="text-gold-dark h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m5 12.5 4.5 4.5L19 7.5" />

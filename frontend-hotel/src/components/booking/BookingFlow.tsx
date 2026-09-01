@@ -85,6 +85,14 @@ const STAY_ICONS = {
       d="M3 6v6l10.5 10.5a2 2 0 0 0 2.8 0l7-7a2 2 0 0 0 0-2.8L12.5 3H6a3 3 0 0 0-3 3Zm13.5-.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
     />
   ),
+  clock: (
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+      d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 7.5V12l3 2"
+    />
+  ),
 };
 
 type DetailsErrors = Partial<Record<'first' | 'last' | 'email' | 'phone', string>>;
@@ -541,6 +549,15 @@ export default function BookingFlow({
                   value={`${state.rooms} ${state.rooms === 1 ? 'room' : 'rooms'}`}
                 />
                 <StayRow icon={STAY_ICONS.tag} label="Rate" value={plan!.name.toLowerCase()} />
+                {/* Echoed back so the guest can check what they picked on the
+                    details step while they are on the payment step — the
+                    reservation stores it (reservations.arrival_slot, V29) but
+                    no read path exposes it yet. */}
+                <StayRow
+                  icon={STAY_ICONS.clock}
+                  label="Estimated arrival"
+                  value={details.arrival}
+                />
                 </div>
               </dl>
 
