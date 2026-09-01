@@ -1,0 +1,39 @@
+query AdminHotelHeader($hotelId: ID!) {
+  adminHotel(hotelId: $hotelId) {
+    id
+    name
+    status
+    hotel {
+      city
+      countryCode
+    }
+  }
+}
+
+query AdminHotels($page: PageInput) {
+  adminHotels(page: $page) {
+    total
+    page
+    size
+    items {
+      id
+      name
+      brand
+      city
+      countryCode
+      status
+      starRating
+      roomTypeCount
+      activeReservations
+    }
+  }
+}
+
+query AdminAmenities {
+  adminAmenities {
+    id
+    name
+    icon
+    category
+  }
+}

@@ -1,0 +1,119 @@
+@import 'tailwindcss';
+@import './tw-animate.css';
+
+@theme {
+  --color-navy: #142639;
+  --color-navy-light: #1e3a54;
+  --color-navy-dark: #0d1c29;
+  --color-gold: #b98b3e;
+  --color-gold-light: #d9b876;
+  --color-gold-dark: #7a5622;
+  --color-clay: #a2543a;
+  --color-clay-dark: #7d3a1f;
+  --color-clay-light: #c97e5f;
+  --color-paper: #f7f4ee;
+  --color-ink: #20242c;
+  /* Semantic states, on the same warm/muted key as navy/gold/clay — matches
+     the guest site's palette rather than Tailwind's default emerald/blue. */
+  --color-success: #3c6e52;
+  --color-success-dark: #2a4f3b;
+  --color-success-light: #e2ecdf;
+  --color-info: #3a6b78;
+  --color-info-dark: #274a54;
+  --color-info-light: #dfebed;
+  --color-warn: #8a6520;
+  --color-warn-dark: #6b4d18;
+  --color-warn-light: #f5e9d2;
+
+  --font-display: var(--font-fraunces), 'Georgia', serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* shadcn/ui semantic tokens mapped to the Executive Hotel palette: the
+   primitives (Button, Input, Tabs, DropdownMenu…) inherit the brand. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  :root {
+    --background: #f7f4ee;
+    --foreground: #20242c;
+    --card: #ffffff;
+    --card-foreground: #20242c;
+    --popover: #ffffff;
+    --popover-foreground: #20242c;
+    --primary: #142639;
+    --primary-foreground: #ffffff;
+    --secondary: #1e3a54;
+    --secondary-foreground: #ffffff;
+    --muted: #efebe2;
+    --muted-foreground: #5b6472;
+    --accent: #b98b3e;
+    --accent-foreground: #ffffff;
+    --destructive: #a2543a;
+    --border: #e6e2da;
+    --input: #e6e2da;
+    --ring: #b98b3e;
+    --radius: 0.625rem;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #f7f4ee;
+  color: #20242c;
+}
+
+/* Admin density: 14px base rather than the guest site's 16px. */
+body {
+  font-size: 0.875rem;
+}
+
+::selection {
+  background: var(--color-gold-light);
+  color: var(--color-navy-dark);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

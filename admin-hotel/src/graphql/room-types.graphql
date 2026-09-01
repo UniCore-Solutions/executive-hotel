@@ -1,0 +1,46 @@
+query AdminHotelInventory($hotelId: ID!) {
+  adminHotel(hotelId: $hotelId) {
+    id
+    name
+    status
+    roomTypes {
+      id
+      hotelId
+      name
+      slug
+      description
+      maxAdults
+      maxChildren
+      totalInventory
+      bedConfiguration
+      sizeSqm
+      viewType
+      status
+      amenities {
+        id
+        name
+        icon
+        category
+      }
+      media {
+        id
+        url
+        altText
+        category
+        isPrimary
+        sortOrder
+      }
+      rooms {
+        id
+        hotelId
+        roomTypeId
+        roomNumber
+        floor
+        status
+        housekeepingStatus
+        maintenanceStatus
+        createdAt
+      }
+    }
+  }
+}
