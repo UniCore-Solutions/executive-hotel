@@ -3,7 +3,7 @@
     The cache is evicted by src/api/invalidation.ts after every REST write,
     so cached reads never go stale. */
 import { gqlRequest } from './graphqlClient';
-import { getApolloClient } from '@/api/apollo/client';
+import { getApolloClient, toGraphqlClientError } from '@/api/apollo/client';
 import { cancelReservation as cancelReservationRest, createReservation as createReservationRest } from '@/api/rest/endpoints';
 import type {
   MyReservationsQuery,
@@ -108,12 +108,17 @@ export const reservations = {
   async list(): Promise<BackendReservation[]> {
     const client = getApolloClient();
     if (client) {
-      const { data } = await client.query({
-        query: MyReservationsDocument,
-        variables: {},
-        fetchPolicy: 'cache-first',
-      });
-      return (data as MyReservationsQuery).myReservations as BackendReservation[];
+      try {
+        const { data } = await client.query({
+          query: MyReservationsDocument,
+          variables: {},
+          fetchPolicy: 'cache-first',
+        });
+        return (data as MyReservationsQuery).myReservations as BackendReservation[];
+      } catch (err) {
+        // Apollo throws its own error type; callers branch on GraphqlClientError.
+        throw toGraphqlClientError(err);
+      }
     }
     const data = await gqlRequest(MyReservationsDocument, {});
     return (data as MyReservationsQuery).myReservations as BackendReservation[];
@@ -131,12 +136,17 @@ export const reservations = {
     const variables = { input } as ReservationLookupQueryVariables;
     const client = getApolloClient();
     if (client) {
-      const { data } = await client.query({
-        query: ReservationLookupDocument,
-        variables,
-        fetchPolicy: opts?.fresh ? 'no-cache' : 'cache-first',
-      });
-      return (data as ReservationLookupQuery).reservation as BackendReservation | null;
+      try {
+        const { data } = await client.query({
+          query: ReservationLookupDocument,
+          variables,
+          fetchPolicy: opts?.fresh ? 'no-cache' : 'cache-first',
+        });
+        return (data as ReservationLookupQuery).reservation as BackendReservation | null;
+      } catch (err) {
+        // Apollo throws its own error type; callers branch on GraphqlClientError.
+        throw toGraphqlClientError(err);
+      }
     }
     const data = await gqlRequest(ReservationLookupDocument, variables);
     return (data as ReservationLookupQuery).reservation as BackendReservation | null;

@@ -31,14 +31,12 @@ test.describe('reservation management', () => {
     await page.locator('#lk-ref').fill('RC-NOPE9');
     await page.locator('#lk-email').fill('nobody@example.com');
     await page.getByRole('button', { name: 'Find my stay' }).click();
-    /* The backend returns the exact copy "No reservation found for those
-       details…" with code NOT_FOUND, and ReservationFlow means to surface it
-       — but `reservations.find` goes through Apollo, which throws ApolloError
-       rather than GraphqlClientError, so the `instanceof` check misses and the
-       guest gets the generic fallback instead. Asserted as it behaves today;
-       see the branch notes for the defect. */
+    /* The backend's own NOT_FOUND copy must reach the guest, not a generic
+       fallback: browser reads go through Apollo, whose error is normalized to
+       GraphqlClientError so ReservationFlow's `code === 'NOT_FOUND'` branch
+       fires (api/apollo/client.ts toGraphqlClientError). */
     await expect(page.locator('#lookup-msg')).toContainText(
-      /No reservation found|Something went wrong looking up your reservation/
+      'No reservation found for those details.'
     );
   });
 
@@ -87,4 +85,15 @@ test.describe('reservation management', () => {
     await expect(page.locator('#status-banner')).toContainText('Cancelled');
   });
 
+
+  /* Same NOT_FOUND branch, a different screen — check-in reads the reference
+     from the URL and asks only for the email. Both go through Apollo, so both
+     depend on the error normalization in api/apollo/client.ts. */
+  test('check-in lookup surfaces the backend NOT_FOUND message', async ({ page }) => {
+    await page.goto('/checkin?ref=RC-NOPE9');
+    await dismissConsent(page);
+    await page.locator('#ci-email').fill('nobody@example.com');
+    await page.getByRole('button', { name: 'Find my booking' }).click();
+    await expect(page.getByText('No reservation found for those details.')).toBeVisible();
+  });
 });
