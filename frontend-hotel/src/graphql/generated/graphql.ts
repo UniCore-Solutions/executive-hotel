@@ -495,6 +495,8 @@ export type StayRatesQuery = {
     currencyCode: string;
     cancellationPolicy: string | null;
     isRefundable: boolean;
+    paymentTiming: string;
+    depositPercentage: number | null;
   }>;
 };
 
@@ -784,6 +786,8 @@ export type StaySearchQuery = {
       currencyCode: string;
       cancellationPolicy: string | null;
       isRefundable: boolean;
+      paymentTiming: string;
+      depositPercentage: number | null;
     }>;
   }>;
 };
@@ -1798,6 +1802,8 @@ export const StayRatesDocument = {
                 { kind: 'Field', name: { kind: 'Name', value: 'currencyCode' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'cancellationPolicy' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'isRefundable' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'paymentTiming' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'depositPercentage' } },
               ],
             },
           },
@@ -2515,6 +2521,8 @@ export const StaySearchDocument = {
                       { kind: 'Field', name: { kind: 'Name', value: 'currencyCode' } },
                       { kind: 'Field', name: { kind: 'Name', value: 'cancellationPolicy' } },
                       { kind: 'Field', name: { kind: 'Name', value: 'isRefundable' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'paymentTiming' } },
+                      { kind: 'Field', name: { kind: 'Name', value: 'depositPercentage' } },
                     ],
                   },
                 },

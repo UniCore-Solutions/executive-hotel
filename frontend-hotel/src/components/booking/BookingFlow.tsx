@@ -36,6 +36,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/NativeSelect';
+import { PaymentTimingBadge, paymentTimingCopy } from '@/components/ui/PaymentTiming';
 import { PhoneField } from '@/components/ui/PhoneField';
 import { CountrySelect } from '@/components/ui/CountrySelect';
 import Breadcrumb from '@/components/ui/Breadcrumb';
@@ -609,6 +610,23 @@ export default function BookingFlow({
                   repeated in the tunnel — `extrasSel` still drives the quote
                   and the reservation payload, and "Edit room, dates or extras"
                   above returns to the picker with the selection intact. */}
+
+              {/* Settlement terms of the booked rate, stated where the guest
+                  is about to pay rather than only back on the room page. */}
+              <div className="border-navy/10 mt-4 border-t pt-4">
+                <p className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+                  Payment
+                </p>
+                <div className="mt-2.5">
+                  <PaymentTimingBadge
+                    timing={plan!.paymentTiming}
+                    depositPercentage={plan!.depositPercentage}
+                  />
+                  <p className="text-navy/60 mt-2 text-[11px] leading-relaxed">
+                    {paymentTimingCopy(plan!.paymentTiming, plan!.depositPercentage).detail}
+                  </p>
+                </div>
+              </div>
 
               <div className="bg-paper border-navy/10 text-navy/55 mt-5 rounded-2xl border px-4 py-3 text-[11px] leading-relaxed">
                 Free cancellation on most plans · Secure payment processing

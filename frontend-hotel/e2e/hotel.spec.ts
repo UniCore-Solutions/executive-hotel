@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { dismissConsent, attachNoPageErrors } from './helpers';
-import { getHotel, getStayWindow, suiteRoom, cheapestRoom } from './backend';
+import { getHotel, getStayWindow, suiteRoom, cheapestRoom, payAtPropertyRoom } from './backend';
 
 test.describe('hotel', () => {
   test.beforeEach(async ({ page }) => {
@@ -81,5 +81,34 @@ test.describe('hotel', () => {
     await expect(dialog).toContainText('Select your dates');
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).toBeHidden();
+  });
+
+  /* Payment timing is a rate-plan property the guest must be able to see
+     before choosing. With one plan per room type the card drops the radio
+     chooser and states the terms instead. */
+  test('a pay-at-property room states that the stay is settled at the hotel', async ({ page }) => {
+    const window = await getStayWindow();
+    const room = payAtPropertyRoom(window);
+    test.skip(!room, 'no pay-at-property rate configured');
+
+    await page.goto(`/hotel?roomId=${room!.id}`);
+    const card = page.locator('aside[aria-label="Booking card"]');
+    await expect(card).toContainText('Your rate');
+    await expect(card).not.toContainText('Select rate');
+    await expect(card.getByText('Pay at the hotel')).toBeVisible();
+    await expect(card).toContainText('Nothing is charged now');
+  });
+
+  test('a prepaid room says the full amount is charged at booking', async ({ page }) => {
+    const window = await getStayWindow();
+    const room = window.rooms.find((r) =>
+      r.rates.every((x) => x.paymentTiming === 'prepay_full')
+    );
+    test.skip(!room, 'no prepay_full rate configured');
+
+    await page.goto(`/hotel?roomId=${room!.id}`);
+    const card = page.locator('aside[aria-label="Booking card"]');
+    await expect(card.getByText('Pay now')).toBeVisible();
+    await expect(card).toContainText('charged when you confirm');
   });
 });

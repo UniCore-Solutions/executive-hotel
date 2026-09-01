@@ -22,6 +22,7 @@ import type {
   Offer,
   Property,
   RatePlan,
+  PaymentTiming,
   Review,
   Room,
   SearchResultEntry,
@@ -179,6 +180,14 @@ export function mapAvailabilityStatus(status: BackendAvailability['status']): Av
 
 type BackendRate = StayRatesQuery['rates'][number];
 
+/** Narrows the backend's `payment_timing` string to the union the UI switches
+    on. The column is CHECK-constrained to these three values, so an unknown
+    one means the contract drifted — fall back to the safest reading, that the
+    guest pays now, rather than promising a settlement we cannot honour. */
+function normalizePaymentTiming(value: string | null | undefined): PaymentTiming {
+  return value === 'pay_at_property' || value === 'prepay_deposit' ? value : 'prepay_full';
+}
+
 export function ratePlansForRoom(roomId: string, rates: BackendRate[]): RatePlan[] {
   return rates
     .filter((r) => r.roomTypeId === roomId)
@@ -191,6 +200,8 @@ export function ratePlansForRoom(roomId: string, rates: BackendRate[]): RatePlan
       cancellationPolicy: r.cancellationPolicy ?? '',
       benefits: [],
       freeCancellation: r.isRefundable,
+      paymentTiming: normalizePaymentTiming(r.paymentTiming),
+      depositPercentage: r.depositPercentage ?? undefined,
     }));
 }
 

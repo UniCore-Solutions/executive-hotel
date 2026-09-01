@@ -124,7 +124,8 @@ public class PricingServiceImpl implements PricingService {
 			}
 			options.add(new RoomRateOption(link.getId(), link.getRoomTypeId(), plan.getId(),
 					plan.getCode(), plan.getName(), plan.getMealPlan(), price.getPriceAmount(),
-					link.getCurrencyCode(), plan.getCancellationPolicy(), plan.isRefundable()));
+					link.getCurrencyCode(), plan.getCancellationPolicy(), plan.isRefundable(),
+					plan.getPaymentTiming(), plan.getDepositPercentage()));
 		}
 		return options;
 	}

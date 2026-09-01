@@ -36,6 +36,7 @@ describe('filterEntries', () => {
         cancellationPolicy: room.cancellationPolicy,
         benefits: [],
         freeCancellation: true,
+        paymentTiming: 'prepay_full' as const,
       },
     ],
     demand: 0,

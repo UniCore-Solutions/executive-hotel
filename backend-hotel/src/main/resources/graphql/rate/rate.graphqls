@@ -48,6 +48,13 @@ type RoomRateOption {
 	currencyCode: String!
 	cancellationPolicy: String
 	isRefundable: Boolean!
+	# Settlement terms of this rate plan: pay_at_property | prepay_full |
+	# prepay_deposit. Lets the guest see whether the stay is paid now or at
+	# the property before choosing a rate.
+	paymentTiming: String!
+	# Only meaningful for prepay_deposit — the share of the total taken at
+	# booking, as a percentage.
+	depositPercentage: Float
 }
 
 input QuoteInput {

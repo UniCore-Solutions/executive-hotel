@@ -142,27 +142,28 @@ WHERE rt.id = '00000000-0000-0000-0000-000000000003';
 -- rate plans + prices (canonical hotel only)
 -- ---------------------------------------------------------------------------
 
+-- One rate plan per room type. Terms are identical apart from payment
+-- timing: Garden Twin settles at the property, the other two prepay at
+-- booking, so exactly one room type is pay-at-property.
 INSERT INTO rate_plans (id, hotel_id, name, code, currency_code, meal_plan, cancellation_policy,
                         payment_policy, is_refundable, cancellation_deadline_days,
                         cancellation_penalty_type, cancellation_penalty_value,
                         payment_timing, deposit_percentage, min_stay, max_stay, occupancy_rules, status) VALUES
-    ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','Bed & Breakfast Flex','BB_FLEX','MAD','breakfast','Free cancellation up to 2 days before arrival; after that the first night is charged.','Pay at the property',TRUE,2,'first_night',NULL,'pay_at_property',NULL,1,NULL,'Maximum 2 adults + 1 child per Deluxe Sea View room','active'),
-    ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','Non-Refundable Saver','SAVER','MAD',NULL,'Non-refundable; full stay charged on cancellation.','Full prepayment at booking',FALSE,NULL,'full_stay',NULL,'prepay_full',NULL,NULL,NULL,NULL,'active');
+    ('00000000-0000-0000-0000-000000000011','00000000-0000-0000-0000-000000000001','Deluxe Sea View — Bed & Breakfast','DELUXE_BB','MAD','breakfast','Free cancellation up to 2 days before arrival; after that the first night is charged.','Full prepayment at booking',TRUE,2,'first_night',NULL,'prepay_full',NULL,1,NULL,'Maximum 2 adults + 1 child per Deluxe Sea View room','active'),
+    ('00000000-0000-0000-0000-000000000012','00000000-0000-0000-0000-000000000001','Family Suite — Bed & Breakfast','FAMILY_BB','MAD','breakfast','Free cancellation up to 2 days before arrival; after that the first night is charged.','Full prepayment at booking',TRUE,2,'first_night',NULL,'prepay_full',NULL,1,NULL,NULL,'active'),
+    ('00000000-0000-0000-0000-000000000013','00000000-0000-0000-0000-000000000001','Garden Twin — Bed & Breakfast','GARDEN_BB','MAD','breakfast','Free cancellation up to 2 days before arrival; after that the first night is charged.','Pay at the property on arrival',TRUE,2,'first_night',NULL,'pay_at_property',NULL,1,NULL,NULL,'active');
 
 
 INSERT INTO room_type_rate_plans (id, hotel_id, room_type_id, rate_plan_id, currency_code) VALUES
-    ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','MAD'), ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','MAD'),
-    ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000001','MAD'), ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000002','MAD'),
-    ('00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001','MAD'), ('00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000002','MAD');
+    ('00000000-0000-0000-0000-000000000021','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000011','MAD'),
+    ('00000000-0000-0000-0000-000000000022','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000012','MAD'),
+    ('00000000-0000-0000-0000-000000000023','00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000013','MAD');
 
 
 INSERT INTO rate_plan_prices (id, room_type_rate_plan_id, currency_code, valid_from, valid_to, price_amount) VALUES
-    ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','MAD','2026-01-01','2027-12-31',2077),
-    ('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000002','MAD','2026-01-01','2027-12-31',1813),
-    ('00000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000003','MAD','2026-01-01','2027-12-31',2638),
-    ('00000000-0000-0000-0000-000000000004','00000000-0000-0000-0000-000000000004','MAD','2026-01-01','2027-12-31',2308),
-    ('00000000-0000-0000-0000-000000000005','00000000-0000-0000-0000-000000000005','MAD','2026-01-01','2027-12-31',1649),
-    ('00000000-0000-0000-0000-000000000006','00000000-0000-0000-0000-000000000006','MAD','2026-01-01','2027-12-31',1407);
+    ('00000000-0000-0000-0000-000000000021','00000000-0000-0000-0000-000000000021','MAD','2026-01-01','2027-12-31',2077),
+    ('00000000-0000-0000-0000-000000000022','00000000-0000-0000-0000-000000000022','MAD','2026-01-01','2027-12-31',2638),
+    ('00000000-0000-0000-0000-000000000023','00000000-0000-0000-0000-000000000023','MAD','2026-01-01','2027-12-31',1649);
 
 
 -- ---------------------------------------------------------------------------

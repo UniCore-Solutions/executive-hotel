@@ -38,6 +38,7 @@ const plan: RatePlan = {
   cancellationPolicy: '',
   benefits: [],
   freeCancellation: true,
+  paymentTiming: 'prepay_full',
 };
 
 function baseArgs(overrides: Partial<UseQuoteArgs> = {}): UseQuoteArgs {

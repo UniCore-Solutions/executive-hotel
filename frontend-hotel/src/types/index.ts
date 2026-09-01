@@ -30,6 +30,9 @@ export interface Room {
 
 export type PlanSuffix = 'bb' | 'ro' | 'hb';
 
+/** When the stay is settled — the rate plan's `payment_timing`. */
+export type PaymentTiming = 'pay_at_property' | 'prepay_full' | 'prepay_deposit';
+
 export interface RatePlan {
   id: string;
   backendRatePlanId: string;
@@ -39,6 +42,11 @@ export interface RatePlan {
   cancellationPolicy: string;
   benefits: string[];
   freeCancellation: boolean;
+  /** Settlement terms. Display only today — booking still charges in full
+      regardless (see docs/investigations/ROOM_TYPE_PAYMENT_CONFIG_2026-09-01.md). */
+  paymentTiming: PaymentTiming;
+  /** Share of the total taken at booking; only set for `prepay_deposit`. */
+  depositPercentage?: number;
 }
 
 export type Discount =

@@ -108,5 +108,7 @@ query StayRates($input: RatesInput!) {
     currencyCode
     cancellationPolicy
     isRefundable
+    paymentTiming
+    depositPercentage
   }
 }

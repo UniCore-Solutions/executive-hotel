@@ -112,7 +112,7 @@ const STAY_SEARCH = `
       status
       capacityFits
       roomType { id name slug pricePerNight }
-      rates { ratePlanId ratePlanCode mealPlan pricePerNight }
+      rates { ratePlanId ratePlanCode mealPlan pricePerNight paymentTiming }
     }
   }`;
 
@@ -251,6 +251,11 @@ export const UI_BOOKING_FROM_DAYS = 90;
 /** Cheapest bookable room in a window — the default subject for room tests. */
 export function cheapestRoom(w: StayWindow): RoomType {
   return w.rooms[0]!;
+}
+
+/** The room type sold on a pay-at-property rate, if the hotel offers one. */
+export function payAtPropertyRoom(w: StayWindow): RoomType | undefined {
+  return w.rooms.find((r) => r.rates.some((x) => x.paymentTiming === 'pay_at_property'));
 }
 
 /** A room whose name marks it a suite, for the category facet. */

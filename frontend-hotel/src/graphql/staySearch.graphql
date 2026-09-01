@@ -17,6 +17,8 @@ query StaySearch($input: StaySearchInput!) {
       currencyCode
       cancellationPolicy
       isRefundable
+      paymentTiming
+      depositPercentage
     }
   }
 }

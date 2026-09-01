@@ -31,6 +31,7 @@ import { ExtrasPicker } from '@/components/ui/ExtrasPicker';
 import { PromoField } from '@/components/ui/PromoField';
 import { QuoteTable } from '@/components/ui/QuoteTable';
 import { Badge } from '@/components/ui/Badge';
+import { PaymentTimingBadge, paymentTimingCopy } from '@/components/ui/PaymentTiming';
 import { Button } from '@/components/ui/button';
 import { PhotoGallery } from '@/components/ui/PhotoGallery';
 import { ReadMore } from '@/components/ui/ReadMore';
@@ -916,6 +917,46 @@ export default function RoomDetails({
               </div>
             ) : null}
 
+            {/* One rate plan is not a choice, so it is presented as the
+                room's terms rather than as a chooser: no radio, no "Select
+                rate", and room to spell out when the stay is paid for. */}
+            {plans.length === 1 ? (
+              (() => {
+                const p = plans[0]!;
+                const timing = paymentTimingCopy(p.paymentTiming, p.depositPercentage);
+                return (
+                  <div className="mt-3.5">
+                    <p className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+                      Your rate
+                    </p>
+                    <div className="border-navy/12 bg-navy/[0.02] mt-2 rounded-2xl border p-3.5">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <p className="text-navy min-w-0 text-sm font-semibold">
+                          {p.mealPlan || p.name}
+                        </p>
+                        <p className="font-display text-navy font-semibold whitespace-nowrap">
+                          {fmt(p.price)}
+                          <span className="text-navy/45 text-xs font-normal"> /night</span>
+                        </p>
+                      </div>
+                      <p className="text-navy/50 mt-0.5 text-[11px]">{p.name}</p>
+                      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                        <Badge variant={p.freeCancellation ? 'plan' : 'soldout'}>
+                          {p.freeCancellation ? 'Free cancellation' : 'Non-refundable'}
+                        </Badge>
+                        <PaymentTimingBadge
+                          timing={p.paymentTiming}
+                          depositPercentage={p.depositPercentage}
+                        />
+                      </div>
+                      <p className="text-navy/60 mt-2.5 text-[11px] leading-relaxed">
+                        {timing.detail}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
             <div className="mt-3.5">
               <p className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
                 Select rate
@@ -967,6 +1008,7 @@ export default function RoomDetails({
                 })}
               </div>
             </div>
+            )}
 
             <div className="mt-3.5">
               <p className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
