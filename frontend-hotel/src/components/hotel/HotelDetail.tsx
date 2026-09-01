@@ -552,7 +552,16 @@ export default async function HotelDetail({
                 dates, taxes &amp; fees included.
               </p>
               <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {rooms.map(({ room, availability, plans }) => {
+                {rooms.map(({ room, availability, plans, fits }) => {
+                  // Sold-out and too-small rooms stay on the page — a guest who
+                  // cannot see the suite exists has no reason to try other
+                  // dates. Bookability gates the CTA, not the listing.
+                  const bookable = availability !== 'soldout' && fits;
+                  const blockedReason = bookable
+                    ? ''
+                    : availability === 'soldout'
+                      ? 'Sold out for your dates'
+                      : `Sleeps ${room.capacity.adults} adults — too small for your party`;
                   const price =
                     plans.length > 0
                       ? Math.min(...plans.map((p) => p.price))
@@ -578,12 +587,14 @@ export default async function HotelDetail({
                           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                         />
                         <span className="absolute top-3 left-3">
-                          <Badge variant={availability}>
-                            {availability === 'available'
-                              ? 'Available'
-                              : availability === 'few'
-                                ? 'Few rooms left'
-                                : 'Sold out'}
+                          <Badge variant={bookable ? availability : 'soldout'} solid>
+                            {availability === 'soldout'
+                              ? 'Sold out'
+                              : !fits
+                                ? 'Too small for your party'
+                                : availability === 'few'
+                                  ? 'Few rooms left'
+                                  : 'Available'}
                           </Badge>
                         </span>
                       </Link>
@@ -621,11 +632,20 @@ export default async function HotelDetail({
                           <Link
                             href={roomHref}
                             scroll={false}
-                            className="bg-navy hover:bg-navy-light shadow-navy/15 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold tracking-widest text-white uppercase shadow-lg transition-colors"
+                            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold tracking-widest uppercase transition-colors ${
+                              bookable
+                                ? 'bg-navy hover:bg-navy-light shadow-navy/15 text-white shadow-lg'
+                                : 'text-navy border-navy/20 hover:border-navy/50 border bg-white'
+                            }`}
                           >
                             View room
                           </Link>
                         </div>
+                        {bookable ? null : (
+                          <p className="text-clay text-[11px] font-semibold">
+                            {blockedReason} · try other dates
+                          </p>
+                        )}
                       </div>
                     </article>
                   );

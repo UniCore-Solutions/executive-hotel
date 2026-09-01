@@ -38,6 +38,12 @@ import type { PromoResult, SearchResultEntry } from '@/types';
 
 type SortMode = 'recommended' | 'price-asc' | 'price-desc';
 
+/** A room the guest can actually reserve for this stay. Everything else is
+    still shown, with the reason it cannot be booked. */
+function isBookable(e: SearchResultEntry): boolean {
+  return e.availability !== 'soldout' && e.fits;
+}
+
 const SKELETON = Array.from({ length: 4 }, (_, i) => (
   <div key={i} className="border-navy/10 overflow-hidden rounded-3xl border bg-white">
     <Skeleton className="aspect-[4/3] rounded-none" />
@@ -172,6 +178,9 @@ export default function SearchResults() {
 
   const filtered = useMemo(() => filterEntries(entries ?? [], filters), [entries, filters]);
 
+  /* Sold-out rooms and rooms too small for the party are listed, not hidden —
+     but they never outrank a room the guest can actually book, in any sort
+     mode. */
   const sorted = useMemo(() => {
     const list = filtered.slice();
     if (mode === 'price-asc')
@@ -192,8 +201,11 @@ export default function SearchResults() {
             ? -1
             : 1
       );
+    list.sort((a, b) => Number(isBookable(b)) - Number(isBookable(a)));
     return list;
   }, [filtered, mode]);
+
+  const bookableCount = useMemo(() => sorted.filter(isBookable).length, [sorted]);
 
   const amenityOptionsForResults = useMemo(
     () => amenityOptions((entries ?? []).map((e) => e.room)),
@@ -313,7 +325,7 @@ export default function SearchResults() {
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <p className="text-navy/60 text-sm" aria-live="polite">
           {ready && !emptyMsg
-            ? `${sorted.length} ${sorted.length === 1 ? 'room' : 'rooms'} available · ${nights} ${nights === 1 ? 'night' : 'nights'}`
+            ? `${bookableCount} of ${sorted.length} ${sorted.length === 1 ? 'room' : 'rooms'} available · ${nights} ${nights === 1 ? 'night' : 'nights'}`
             : ''}
         </p>
         <div className="flex flex-wrap items-center gap-2">
@@ -429,7 +441,13 @@ export default function SearchResults() {
         {ready && !emptyMsg && !filteredEmpty
           ? sorted.map((e) => {
               const { room, availability, plans } = e;
-              const fromPrice = Math.min(...plans.map((p) => p.price));
+              const bookable = isBookable(e);
+              const blockedReason = !bookable
+                ? availability === 'soldout'
+                  ? 'Sold out for your dates'
+                  : `Sleeps ${room.capacity.adults} adults — too small for your party`
+                : '';
+              const fromPrice = plans.length ? Math.min(...plans.map((p) => p.price)) : 0;
               const minPlan = plans.find((p) => p.price === fromPrice) ?? plans[0]!;
               const promoOk =
                 state.promo && promoAnalysis.any
@@ -456,12 +474,14 @@ export default function SearchResults() {
                       className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                     <span className="absolute top-3 left-3">
-                      <Badge variant={availability}>
-                        {availability === 'available'
-                          ? 'Available'
-                          : availability === 'few'
-                            ? 'Few rooms left'
-                            : 'Sold out'}
+                      <Badge variant={bookable ? availability : 'soldout'} solid>
+                        {availability === 'soldout'
+                          ? 'Sold out'
+                          : !e.fits
+                            ? 'Too small for your party'
+                            : availability === 'few'
+                              ? 'Few rooms left'
+                              : 'Available'}
                       </Badge>
                     </span>
                   </a>
@@ -505,13 +525,19 @@ export default function SearchResults() {
                       </p>
                       <a
                         href={href}
-                        className="bg-navy hover:bg-navy-light shadow-navy/15 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold tracking-widest text-white uppercase shadow-lg transition-colors"
+                        className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold tracking-widest uppercase transition-colors ${
+                          bookable
+                            ? 'bg-navy hover:bg-navy-light shadow-navy/15 text-white shadow-lg'
+                            : 'text-navy border-navy/20 hover:border-navy/50 border bg-white'
+                        }`}
                       >
                         View room
                       </a>
                     </div>
-                    <p className="text-navy/40 text-[11px]">
-                      Free cancellation on most plans · No payment needed to check
+                    <p className={bookable ? 'text-navy/40 text-[11px]' : 'text-clay text-[11px] font-semibold'}>
+                      {bookable
+                        ? 'Free cancellation on most plans · No payment needed to check'
+                        : `${blockedReason} · try other dates`}
                     </p>
                   </div>
                 </article>

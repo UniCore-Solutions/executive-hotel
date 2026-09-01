@@ -1127,7 +1127,7 @@ export default function RoomDetails({
                       className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                     <span className="absolute top-3 left-3">
-                      <Badge variant={x.availability}>
+                      <Badge variant={x.availability} solid>
                         {x.availability === 'available'
                           ? 'Available'
                           : x.availability === 'few'

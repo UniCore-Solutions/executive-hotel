@@ -40,6 +40,7 @@ describe('filterEntries', () => {
       },
     ],
     demand: 0,
+    fits: true,
   }));
 
   it('returns the set unchanged when no facets are active', () => {

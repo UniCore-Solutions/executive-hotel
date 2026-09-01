@@ -286,6 +286,9 @@ export interface SearchResultEntry {
   availability: Availability;
   plans: RatePlan[];
   demand: number;
+  /** Room capacity covers the requested party. Sold-out and too-small rooms
+      are listed in search results, so this gates the CTA, not the listing. */
+  fits: boolean;
   /** Backend mode: owning hotel, for linking to /hotel/[hotelId]?roomId=… */
   hotelId?: string;
   hotelName?: string;

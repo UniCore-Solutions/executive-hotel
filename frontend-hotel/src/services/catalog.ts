@@ -259,16 +259,19 @@ async function staySearchRows(
   return staySearch;
 }
 
+/** Every active room type of the hotel, sold-out and too-small ones included.
+    Search shows them rather than hiding them — a guest who cannot see that the
+    suite exists but is taken for these dates has no reason to change dates.
+    Bookability is carried on the entry (`availability`, `fits`) for the UI to
+    render and to block the CTA, never by dropping the row. */
 function mapStayRows(rows: StaySearchQuery['staySearch']) {
   return rows
-    .filter(
-      (row) =>
-        row.status !== 'soldout' && row.capacityFits && row.roomType.status === 'active'
-    )
+    .filter((row) => row.roomType.status === 'active')
     .map((row) => ({
       room: mapRoomTypeToRoom(row.roomType),
       availability: mapAvailabilityStatus(row.status),
       plans: ratePlansForRoom(row.roomType.id, row.rates),
+      fits: row.capacityFits ?? false,
       hotelId: row.hotelId,
       hotelName: row.hotelName,
     }));
@@ -294,7 +297,7 @@ export async function getStay(
   Array<{ room: Room; availability: Availability; plans: RatePlan[]; fits: boolean }> | null
 > {
   const rows = await staySearchRows(hotelId, params);
-  return mapStayRows(rows).map((e) => ({ ...e, fits: true }));
+  return mapStayRows(rows);
 }
 
 /** Room detail with availability + plans + siblings — two round trips:

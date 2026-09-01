@@ -3,9 +3,20 @@ import { HTMLAttributes } from 'react';
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: 'available' | 'few' | 'soldout' | 'plan' | 'promo' | 'gold' | 'navy';
+  /** Filled treatment for badges laid over a photo, where the default tinted
+      background washes out against a bright image. Inline chips in running
+      text keep the tinted default — `soldout` also styles "Non-refundable"
+      and the policy chips, which must not shout. */
+  solid?: boolean;
 }
 
-export function Badge({ children, variant = 'available', className = '', ...props }: BadgeProps) {
+export function Badge({
+  children,
+  variant = 'available',
+  solid = false,
+  className = '',
+  ...props
+}: BadgeProps) {
   const variants = {
     available: 'bg-emerald-700/10 text-emerald-800 border-emerald-700/20',
     few: 'bg-gold/10 text-gold-dark border-gold/20',
@@ -15,9 +26,20 @@ export function Badge({ children, variant = 'available', className = '', ...prop
     gold: 'bg-gold/10 text-gold-dark border-gold/20',
     navy: 'bg-navy/10 text-navy border-navy/20',
   };
+  const solidVariants = {
+    available: 'bg-emerald-700 border-emerald-700 text-white',
+    few: 'bg-gold-dark border-gold-dark text-white',
+    soldout: 'bg-clay-dark border-clay-dark text-white',
+    plan: 'bg-navy border-navy text-white',
+    promo: 'bg-gold-dark border-gold-dark text-white',
+    gold: 'bg-gold-dark border-gold-dark text-white',
+    navy: 'bg-navy border-navy text-white',
+  };
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase ${variants[variant]} ${className}`}
+      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase ${
+        solid ? `${solidVariants[variant]} shadow-sm` : variants[variant]
+      } ${className}`}
       {...props}
     >
       {children}
