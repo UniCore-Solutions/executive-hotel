@@ -24,11 +24,17 @@ import com.hotelcollection.hotel.util.Validation;
 /**
  * Availability read model (C9): single inventory source. A room type is
  * available for a stay when every night of the stay has at least
- * {@code rooms} free units (the requested number of rooms); "few" when
- * the tightest night has at most 2 free units AND the type has more than
- * 2 physical rooms in total — a small room type (e.g. a 2-room suite) is
- * never labelled "few rooms left" at full availability, only "available"
- * or "sold out".
+ * {@code rooms} free units (the requested number of rooms); "few" when the
+ * tightest night has at most 2 free units AND some inventory has already
+ * gone ({@code minFree < total}).
+ *
+ * <p>The scarcity rule keys off units actually sold, not the size of the
+ * room type. An untouched type is always "available" — a 2-room suite with
+ * both units free is not "few rooms left" — but once one of those two sells,
+ * the remaining unit is genuinely scarce and is labelled as such. An earlier
+ * {@code total > 2} guard suppressed the label entirely for types with two
+ * or fewer units, so their last free unit was indistinguishable from full
+ * availability.
  */
 @Service
 public class AvailabilityServiceImpl implements AvailabilityService {
@@ -45,7 +51,10 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 	@Override
 	@Transactional(readOnly = true)
 	public List<RoomAvailability> check(AvailabilityInput in) {
-		if (in.checkOutDate().isBefore(in.checkInDate())) {
+		// Must be strictly after: a zero-night stay (checkOut == checkIn) would
+		// leave the night loop below with nothing to inspect, so every room type
+		// would fall through as "available" even when fully sold out.
+		if (!in.checkOutDate().isAfter(in.checkInDate())) {
 			throw DomainException.validation("checkOutDate must be after checkInDate");
 		}
 		Validation.requirePositive(in.rooms(), "rooms");
@@ -81,7 +90,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 			AvailabilityStatus status;
 			if (minFree < in.rooms()) {
 				status = AvailabilityStatus.soldout;
-			} else if (minFree <= 2 && total > 2) {
+			} else if (minFree <= 2 && minFree < total) {
 				status = AvailabilityStatus.few;
 			} else {
 				status = AvailabilityStatus.available;

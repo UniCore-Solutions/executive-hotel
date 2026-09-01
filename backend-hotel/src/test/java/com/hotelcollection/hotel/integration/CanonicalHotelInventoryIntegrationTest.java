@@ -244,7 +244,8 @@ class CanonicalHotelInventoryIntegrationTest {
 	@Test
 	void smallRoomTypeIsNeverLabelledFewAtFullAvailability() {
 		// a 2-room type at full availability is "available", not "few rooms
-		// left" — the label only makes sense for larger inventories
+		// left" — an untouched room type is never scarce, however small it is.
+		// Once one of the two sells, the remaining unit does read as "few".
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel("2 rooms", 2);
 		LocalDate checkIn = LocalDate.now().plusDays(11);
 		RoomAvailability full = availabilityOf(fx, checkIn, 2, 1);
@@ -252,11 +253,13 @@ class CanonicalHotelInventoryIntegrationTest {
 		assertThat(full.status())
 				.isEqualTo(com.hotelcollection.hotel.dto.availability.AvailabilityStatus.available);
 
-		// one of two booked → 1 free, still not "few" (2-room type)
+		// one of two booked → 1 free, and that last unit IS scarce: the label
+		// keys off units actually sold, not the size of the room type, so a
+		// nearly-full 2-room type no longer looks identical to an empty one.
 		booking.create(input(fx, "small-1-" + System.nanoTime(), checkIn, 2, EMAIL));
 		assertThat(availabilityOf(fx, checkIn, 2, 1).free()).isEqualTo(1);
 		assertThat(availabilityOf(fx, checkIn, 2, 1).status())
-				.isEqualTo(com.hotelcollection.hotel.dto.availability.AvailabilityStatus.available);
+				.isEqualTo(com.hotelcollection.hotel.dto.availability.AvailabilityStatus.few);
 
 		// both booked → sold out
 		booking.create(input(fx, "small-2-" + System.nanoTime(), checkIn, 2, EMAIL2));

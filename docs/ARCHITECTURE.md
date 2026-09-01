@@ -301,8 +301,13 @@ Hotel  (one active — Executive Hotel, Lisbon)
 - Availability = `total_inventory − (rooms_sold + out_of_order + blocked)` per night,
   minimum across the requested nights (sparse rows, V12: a night with no row is fully
   available). `RoomAvailability.free` exposes the remaining units. The `few` label
-  requires ≤ 2 free units **and** a room type larger than 2 rooms — a 2-room type at
-  full availability is simply `available`, never "few rooms left".
+  requires ≤ 2 free units **and** at least one unit already sold (`free < total_inventory`)
+  — an untouched room type is `available` however small it is, but once a 2-room type
+  sells one of its two, the remaining unit reads as "few rooms left". The label keys off
+  units actually sold, not the size of the room type.
+- `checkOutDate` must be strictly after `checkInDate`. A zero-night stay is rejected as
+  `VALIDATION`, not evaluated — with no nights to inspect the minimum-free calculation
+  would report every room type as `available`, sold out or not.
 
 ### Reservations consume inventory for exact dates
 
