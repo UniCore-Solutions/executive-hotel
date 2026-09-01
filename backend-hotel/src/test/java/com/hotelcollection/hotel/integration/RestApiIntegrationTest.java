@@ -304,4 +304,71 @@ class RestApiIntegrationTest {
 		assertThat(objectMapper.readTree(denied.body()).get("code").asText())
 				.isEqualTo("FORBIDDEN");
 	}
+
+	/**
+	 * Bean validation at the REST edge. {@code spring-boot-starter-validation} was
+	 * a declared dependency with a wired {@code MethodArgumentNotValidException}
+	 * handler and zero annotations anywhere in the codebase — every check was
+	 * hand-rolled inside services. These assert the declarative path now runs,
+	 * rejects before any service/inventory work, and reports through the standard
+	 * ApiError envelope.
+	 */
+	@Test
+	void malformedBookingIsRejectedByBeanValidationWithTheStandardEnvelope() throws Exception {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		Map<String, Object> guest = Map.of("firstName", "A", "lastName", "B",
+				"email", "valid@example.com");
+
+		// no rooms at all
+		HttpResponse<String> noRooms = postWithKey("/api/v1/reservations",
+				bookingBody(fx, guest, List.of()), "val-norooms-" + System.nanoTime(), null);
+		assertThat(noRooms.statusCode()).isEqualTo(400);
+		assertThat(objectMapper.readTree(noRooms.body()).get("code").asText())
+				.isEqualTo("VALIDATION");
+
+		// adults must be positive
+		Map<String, Object> zeroAdults = new java.util.HashMap<>(
+				bookingBody(fx, guest, List.of(Map.of("roomTypeId", fx.roomType().getId().toString(),
+						"ratePlanId", fx.ratePlan().getId().toString()))));
+		zeroAdults.put("adults", 0);
+		HttpResponse<String> adults = postWithKey("/api/v1/reservations", zeroAdults,
+				"val-adults-" + System.nanoTime(), null);
+		assertThat(adults.statusCode()).isEqualTo(400);
+		assertThat(objectMapper.readTree(adults.body()).get("code").asText()).isEqualTo("VALIDATION");
+	}
+
+	/**
+	 * Regression guard: {@code String.valueOf((UUID) null)} yields the string
+	 * "null", which is not blank, so the old hand-rolled guard let a null
+	 * roomTypeId through to fail later as a confusing lookup miss.
+	 */
+	@Test
+	void nullRoomTypeIdIsRejectedRatherThanStringifiedToTheWordNull() throws Exception {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		Map<String, Object> room = new java.util.HashMap<>();
+		room.put("roomTypeId", null);
+		room.put("ratePlanId", fx.ratePlan().getId().toString());
+		Map<String, Object> body = bookingBody(fx,
+				Map.of("firstName", "A", "lastName", "B", "email", "valid@example.com"),
+				List.of(room));
+
+		HttpResponse<String> res = postWithKey("/api/v1/reservations", body,
+				"val-nullroom-" + System.nanoTime(), null);
+		assertThat(res.statusCode()).isEqualTo(400);
+		assertThat(objectMapper.readTree(res.body()).get("code").asText()).isEqualTo("VALIDATION");
+	}
+
+	private Map<String, Object> bookingBody(TestFixtures.HotelFixture fx,
+			Map<String, Object> guest, List<?> rooms) {
+		Map<String, Object> body = new java.util.HashMap<>();
+		body.put("hotelId", fx.hotelId().toString());
+		body.put("checkInDate", LocalDate.now().plusDays(20).toString());
+		body.put("checkOutDate", LocalDate.now().plusDays(22).toString());
+		body.put("adults", 2);
+		body.put("children", 0);
+		body.put("currencyCode", "MAD");
+		body.put("guest", guest);
+		body.put("rooms", rooms);
+		return body;
+	}
 }

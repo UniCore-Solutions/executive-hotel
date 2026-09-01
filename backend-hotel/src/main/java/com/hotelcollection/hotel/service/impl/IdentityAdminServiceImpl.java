@@ -210,11 +210,7 @@ public class IdentityAdminServiceImpl implements IdentityAdminService {
 	}
 
 	private CurrentUser requireSuperAdmin() {
-		CurrentUser actor = currentUser.require();
-		if (!actor.hasRole("super_admin")) {
-			throw DomainException.forbidden("super_admin role required");
-		}
-		return actor;
+		return currentUser.requireSuperAdmin();
 	}
 
 	private String required(String value, String field) {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSessionToken } from '@/lib/session';
+import { rejectCrossOrigin } from '@/lib/originCheck';
 
 const BACKEND_REST_URL =
   (process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:8180/graphql').replace(
@@ -18,6 +19,9 @@ export async function handler(
   request: Request,
   { params }: { params: Promise<{ path: string[] }> }
 ): Promise<NextResponse> {
+  const originRejection = rejectCrossOrigin(request);
+  if (originRejection) return originRejection;
+
   const { path } = await params;
   const url = new URL(request.url);
   // The REST client mirrors the backend's versioned paths
@@ -39,14 +43,39 @@ export async function handler(
   const headers: Record<string, string> = {};
   request.headers.forEach((value, key) => {
     const k = key.toLowerCase();
-    if (!['host', 'connection', 'content-length', 'transfer-encoding', 'accept-encoding'].includes(k)) {
+    // Hop-by-hop/transport headers are never forwarded. Neither are
+    // x-forwarded-for / x-real-ip: the backend keys its per-IP rate-limit
+    // budgets on those, so forwarding a client-supplied value would let a
+    // caller mint a fresh budget per request just by varying a header
+    // (verified — it defeated the limiter completely). Only a hop that
+    // actually observes the connection may assert them.
+    if (
+      ![
+        'host',
+        'connection',
+        'content-length',
+        'transfer-encoding',
+        'accept-encoding',
+        'x-forwarded-for',
+        'x-real-ip',
+      ].includes(k)
+    ) {
       headers[key] = value;
     }
   });
   if (token) headers['authorization'] = `Bearer ${token}`;
 
+  const method = request.method.toUpperCase();
   let body: BodyInit | undefined;
-  if (contentType.includes('multipart/form-data')) {
+  if (method === 'GET' || method === 'HEAD') {
+    // `fetch` throws "Request with GET/HEAD method cannot have body" if a body
+    // is supplied at all — and `request.text()` yields '' rather than
+    // undefined, which still counts. Every GET through this proxy used to 500
+    // because of it (e.g. GET /api/rest/v1/payments/{id}, the payment-status
+    // read). Reads mostly go through the GraphQL proxy, which is why it went
+    // unnoticed.
+    body = undefined;
+  } else if (contentType.includes('multipart/form-data')) {
     // Pass the FormData through — fetch sets the multipart boundary itself,
     // so no content-type is forwarded (the backend parses it normally).
     body = await request.formData();

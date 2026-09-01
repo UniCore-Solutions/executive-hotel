@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.hotelcollection.hotel.security.CurrentUserAccessor;
-import com.hotelcollection.hotel.security.CurrentUser;
 import com.hotelcollection.hotel.dto.reservation.AdminGuestPage;
 import com.hotelcollection.hotel.dto.reservation.AdminGuestView;
 import com.hotelcollection.hotel.service.ReservationAdminService;
@@ -23,7 +22,6 @@ import com.hotelcollection.hotel.entity.Reservation;
 import com.hotelcollection.hotel.entity.ReservationStatus;
 import com.hotelcollection.hotel.repository.GuestRepository;
 import com.hotelcollection.hotel.repository.ReservationRepository;
-import com.hotelcollection.hotel.exception.DomainException;
 import com.hotelcollection.hotel.dto.PageInput;
 import com.hotelcollection.hotel.entity.Hotel;
 import com.hotelcollection.hotel.entity.PaymentStatus;
@@ -49,10 +47,7 @@ public class ReservationAdminServiceImpl implements ReservationAdminService {
 	@Override
 	@Transactional(readOnly = true)
 	public AdminGuestPage guests(UUID hotelId, String query, PageInput page) {
-		CurrentUser actor = currentUser.require();
-		if (!actor.hasRole("super_admin") && !actor.inHotel(hotelId)) {
-			throw DomainException.forbidden("no access to this hotel");
-		}
+		currentUser.requireHotelAccess(hotelId);
 		int p = page == null || page.page() == null ? 0 : Math.max(page.page(), 0);
 		int s = page == null || page.size() == null ? 20 : Math.min(Math.max(page.size(), 1), 100);
 		String trimmed = query == null || query.isBlank() ? null : query.trim();

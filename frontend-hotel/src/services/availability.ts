@@ -1,7 +1,7 @@
 /** Availability utilities — shared helpers for search filtering and sorting.
     All mock data functions have been removed; availability data now comes
     exclusively from the backend via catalog.ts. */
-import { img, IMG_FALLBACK } from '@/data';
+import { img, IMG_FALLBACK } from '@/lib/images';
 import type { Room, SearchResultEntry } from '@/types';
 import { fromISODate, hashStr, startOfDay } from '@/lib/dates';
 import { filtersActive, priceBracketMatch } from '@/lib/filters';

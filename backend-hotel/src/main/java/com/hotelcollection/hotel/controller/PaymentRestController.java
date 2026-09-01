@@ -1,4 +1,6 @@
 package com.hotelcollection.hotel.controller;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.UUID;
 import com.hotelcollection.hotel.entity.Guest;
 
@@ -94,7 +96,12 @@ public class PaymentRestController {
 	}
 
 	private void requireWebhookSecret(String secret) {
-		if (webhookSecret.isBlank() || secret == null || !webhookSecret.equals(secret)) {
+		// Fails closed: a blank configured secret rejects every call. The
+		// comparison is constant-time so a caller cannot recover the secret
+		// byte-by-byte from response timing.
+		if (webhookSecret.isBlank() || secret == null
+				|| !MessageDigest.isEqual(webhookSecret.getBytes(StandardCharsets.UTF_8),
+						secret.getBytes(StandardCharsets.UTF_8))) {
 			throw DomainException.forbidden("invalid or missing webhook secret");
 		}
 	}

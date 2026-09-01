@@ -1,10 +1,10 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import { setOffersSource, validatePromo } from '@/services/pricing';
-import { DATA } from '@/data';
+import { OFFERS } from '@/test/fixtures/hotel';
 import type { PromoCtx } from '@/services/pricing';
 
 beforeAll(() => {
-  setOffersSource(DATA.OFFERS);
+  setOffersSource(OFFERS);
 });
 
 const ctx = (planId: string, nights = 4, checkin: Date | null = ci): PromoCtx => ({

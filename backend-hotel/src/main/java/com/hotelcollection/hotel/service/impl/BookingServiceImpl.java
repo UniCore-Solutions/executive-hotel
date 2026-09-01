@@ -73,6 +73,9 @@ import com.hotelcollection.hotel.dto.rate.QuoteLine;
 @Service
 public class BookingServiceImpl implements BookingService {
 
+	private static final org.slf4j.Logger log =
+			org.slf4j.LoggerFactory.getLogger(BookingServiceImpl.class);
+
 	private final ReservationRepository reservationRepository;
 	private final ReservationCancellationRepository cancellationRepository;
 	private final GuestRepository guestRepository;
@@ -112,6 +115,16 @@ public class BookingServiceImpl implements BookingService {
 		this.guestProvisioning = guestProvisioning;
 	}
 
+	/**
+	 * Creates a reservation as a <em>payment hold</em>: inventory is sold
+	 * immediately (that is what prevents overselling) but the reservation stays
+	 * {@code pending} until payment captures, and {@link #expireHold} releases
+	 * it if that never happens.
+	 *
+	 * <p>The steps below are ordered deliberately — validate and price before
+	 * touching inventory, take inventory before creating the guest, and persist
+	 * only once the row lock has succeeded.
+	 */
 	@Override
 	@Transactional
 	public CreateResult create(CreateReservationInput in) {
@@ -124,14 +137,52 @@ public class BookingServiceImpl implements BookingService {
 		}
 
 		validateInput(in);
+		requireBookableHotel(in.hotelId());
+		requirePartyFitsRoomTypes(in);
 
-		Hotel hotel = catalog.getHotel(in.hotelId());
+		Quote quote = priceStay(in);
+		List<ReservationRoom> lines = roomLinesFrom(quote, in);
+		sellInventory(in, lines);
+
+		Guest guest = findOrCreateGuest(in.guest());
+		CurrentUser actor = currentUser.currentUser().orElse(null);
+		Reservation reservation = buildReservation(in, quote, guest, actor);
+
+		// Save first so the identity id exists; then attach children (their
+		// reservation_id columns are plain fields, not mapped relationships).
+		try {
+			reservationRepository.save(reservation);
+		} catch (DataIntegrityViolationException ex) {
+			// idempotency key raced with a concurrent create — return the winner
+			Optional<Reservation> winner = reservationRepository.findByIdempotencyKey(in.idempotencyKey());
+			if (winner.isPresent()) {
+				return new CreateResult(winner.get(), false);
+			}
+			throw ex;
+		}
+
+		attachRoomLines(reservation, lines);
+		attachExtrasAndCharges(reservation, quote, in);
+		attachInitialStatusHistory(reservation, actor);
+		reservationRepository.save(reservation);
+
+		publishBookingCreated(reservation, in, quote, guest, lines, actor);
+		log.info("reservation created as payment hold: reference={} hotelId={} rooms={} "
+						+ "total={} {} holdExpiresAt={}",
+				reservation.getReference(), in.hotelId(), lines.size(), quote.totalAmount(),
+				in.currencyCode(), reservation.getHoldExpiresAt());
+		return new CreateResult(reservation, true);
+	}
+
+	private void requireBookableHotel(UUID hotelId) {
+		Hotel hotel = catalog.getHotel(hotelId);
 		if (!"active".equals(hotel.getStatus())) {
 			throw DomainException.conflict("hotel is not bookable");
 		}
-		int nights = (int) ChronoUnit.DAYS.between(in.checkInDate(), in.checkOutDate());
+	}
 
-		// ---- room capacity (room type level) ----
+	/** Party size is checked against the room type's declared maximums. */
+	private void requirePartyFitsRoomTypes(CreateReservationInput in) {
 		Map<UUID, RoomType> byId = catalog.roomTypesByIds(
 				in.rooms().stream().map(RoomInput::roomTypeId).toList());
 		for (RoomInput room : in.rooms()) {
@@ -144,16 +195,20 @@ public class BookingServiceImpl implements BookingService {
 						+ " cannot accommodate the party size");
 			}
 		}
+	}
 
-		// ---- server-side pricing snapshot (never trusts client totals) ----
-		Quote quote = pricing.quote(new QuoteInput(in.hotelId(), in.checkInDate(),
+	/** Server-side pricing snapshot — client totals are never trusted. */
+	private Quote priceStay(CreateReservationInput in) {
+		return pricing.quote(new QuoteInput(in.hotelId(), in.checkInDate(),
 				in.checkOutDate(), in.adults(), in.children(), in.currencyCode(),
 				in.rooms().stream().map(r -> new QuoteLineInput(r.roomTypeId(), r.ratePlanId())).toList(),
 				in.extras() == null ? List.of() : in.extras().stream()
 						.map(e -> new com.hotelcollection.hotel.dto.rate.QuoteExtraInput(e.extraId(),
 								e.quantity())).toList(),
 				in.promoCode()));
+	}
 
+	private List<ReservationRoom> roomLinesFrom(Quote quote, CreateReservationInput in) {
 		List<ReservationRoom> lines = new ArrayList<>();
 		for (com.hotelcollection.hotel.dto.rate.QuoteLine line : quote.lines()) {
 			ReservationRoom rl = new ReservationRoom();
@@ -168,18 +223,21 @@ public class BookingServiceImpl implements BookingService {
 			rl.setStatus("active");
 			lines.add(rl);
 		}
+		return lines;
+	}
 
-		// ---- availability: lock + sell per night ----
+	/** Locks the per-night availability rows and sells one unit per room line. */
+	private void sellInventory(CreateReservationInput in, List<ReservationRoom> lines) {
+		int nights = (int) ChronoUnit.DAYS.between(in.checkInDate(), in.checkOutDate());
 		inventory.lockAndSell(in.hotelId(),
 				lines.stream()
 						.map(l -> new InventoryService.InventoryRequirement(l.getRoomTypeId(), 1))
 						.toList(),
 				in.checkInDate(), nights);
+	}
 
-		// ---- guest ----
-		Guest guest = findOrCreateGuest(in.guest());
-
-		// ---- aggregate ----
+	private Reservation buildReservation(CreateReservationInput in, Quote quote, Guest guest,
+			CurrentUser actor) {
 		Reservation reservation = new Reservation();
 		reservation.setReference(uniqueReference());
 		reservation.setIdempotencyKey(in.idempotencyKey());
@@ -190,13 +248,11 @@ public class BookingServiceImpl implements BookingService {
 		// entity is not loaded, so populate it explicitly or the GraphQL
 		// guest field resolves to null (schema: Reservation.guest is non-null).
 		reservation.setGuest(guest);
-		CurrentUser actor = currentUser.currentUser().orElse(null);
 		reservation.setBookedByUserId(actor == null ? null : actor.userId());
-		// Payment hold: the reservation sells inventory immediately (the
-		// per-night row lock above is what actually prevents overselling) but
-		// stays 'pending' — not 'confirmed' — until payment captures. The
-		// hold-expiry job (BookingServiceImpl#expireHold) releases it if that
-		// never happens within holdExpiresAt.
+		// Payment hold: inventory is already sold (the per-night row lock in
+		// sellInventory is what actually prevents overselling) but the
+		// reservation stays 'pending' — not 'confirmed' — until payment
+		// captures. The hold-expiry job releases it if that never happens.
 		reservation.setStatus(ReservationStatus.pending);
 		reservation.setHoldExpiresAt(Instant.now().plus(holdMinutes, ChronoUnit.MINUTES));
 		reservation.setCheckInDate(in.checkInDate());
@@ -216,26 +272,19 @@ public class BookingServiceImpl implements BookingService {
 		reservation.setSpecialRequests(blankToNull(in.specialRequests()));
 		reservation.setCreatedAt(Instant.now());
 		reservation.setUpdatedAt(Instant.now());
+		return reservation;
+	}
 
-		// Save first so the identity id exists; then attach children (their
-		// reservation_id columns are plain fields, not mapped relationships).
-		try {
-			reservationRepository.save(reservation);
-		} catch (DataIntegrityViolationException ex) {
-			// idempotency key raced with a concurrent create — return the winner
-			Optional<Reservation> winner = reservationRepository.findByIdempotencyKey(in.idempotencyKey());
-			if (winner.isPresent()) {
-				return new CreateResult(winner.get(), false);
-			}
-			throw ex;
-		}
-
+	private void attachRoomLines(Reservation reservation, List<ReservationRoom> lines) {
 		lines.forEach(l -> {
 			l.setReservationId(reservation.getId());
 			reservation.getRoomLines().add(l);
 		});
+	}
 
-		// extras + charges: exactly the lines the quote priced (snapshots)
+	/** Extras and charges: exactly the lines the quote priced (snapshots). */
+	private void attachExtrasAndCharges(Reservation reservation, Quote quote,
+			CreateReservationInput in) {
 		for (var extra : quote.extras()) {
 			ReservationExtra re = new ReservationExtra();
 			re.setReservationId(reservation.getId());
@@ -260,7 +309,9 @@ public class BookingServiceImpl implements BookingService {
 			rc.setCreatedAt(Instant.now());
 			reservation.getCharges().add(rc);
 		}
+	}
 
+	private void attachInitialStatusHistory(Reservation reservation, CurrentUser actor) {
 		ReservationStatusHistory history = new ReservationStatusHistory();
 		history.setReservationId(reservation.getId());
 		history.setFromStatus(null);
@@ -268,12 +319,15 @@ public class BookingServiceImpl implements BookingService {
 		history.setChangedByUserId(actor == null ? null : actor.userId());
 		history.setChangedAt(Instant.now());
 		reservation.getStatusHistory().add(history);
+	}
 
-		reservationRepository.save(reservation);
-
-		// Not 'booking.confirmed' — the reservation is only a payment hold at
-		// this point. That event fires from markFullyPaid() once payment
-		// actually captures and the status is promoted to confirmed.
+	/**
+	 * Not {@code booking.confirmed} — the reservation is only a payment hold at
+	 * this point. That event fires from {@link #markFullyPaid} once payment
+	 * actually captures and the status is promoted to confirmed.
+	 */
+	private void publishBookingCreated(Reservation reservation, CreateReservationInput in,
+			Quote quote, Guest guest, List<ReservationRoom> lines, CurrentUser actor) {
 		eventPublisher.publish("booking.created", 1, in.hotelId(),
 				"reservation:" + reservation.getReference(),
 				Map.of(
@@ -292,7 +346,6 @@ public class BookingServiceImpl implements BookingService {
 								"nights", l.getNights(),
 								"ratePerNight", l.getRatePerNight())).toList()),
 				actor == null ? null : "user:" + actor.userId());
-		return new CreateResult(reservation, true);
 	}
 
 	private void validateInput(CreateReservationInput in) {
@@ -306,8 +359,15 @@ public class BookingServiceImpl implements BookingService {
 			throw DomainException.validation("at least one room is required");
 		}
 		for (RoomInput room : in.rooms()) {
-			Validation.requireNotBlank(String.valueOf(room.roomTypeId()), "roomTypeId");
-			Validation.requireNotBlank(String.valueOf(room.ratePlanId()), "ratePlanId");
+			// Not String.valueOf(...): that renders a null UUID as the string
+			// "null", which is not blank, so a null id slipped straight through
+			// this guard and failed later as a confusing lookup miss.
+			if (room.roomTypeId() == null) {
+				throw DomainException.validation("roomTypeId is required");
+			}
+			if (room.ratePlanId() == null) {
+				throw DomainException.validation("ratePlanId is required");
+			}
 		}
 		if (in.extras() != null) {
 			for (ExtraInput extra : in.extras()) {

@@ -453,19 +453,11 @@ public class CatalogAdminServiceImpl implements CatalogAdminService {
 	}
 
 	private CurrentUser requireStaffAccess(UUID hotelId) {
-		CurrentUser actor = currentUser.require();
-		if (!actor.hasRole("super_admin") && !actor.inHotel(hotelId)) {
-			throw DomainException.forbidden("no access to this hotel");
-		}
-		return actor;
+		return currentUser.requireHotelAccess(hotelId);
 	}
 
 	private CurrentUser requireSuperAdmin() {
-		CurrentUser actor = currentUser.require();
-		if (!actor.hasRole("super_admin")) {
-			throw DomainException.forbidden("super_admin role required");
-		}
-		return actor;
+		return currentUser.requireSuperAdmin();
 	}
 
 	private String required(String value, String field) {

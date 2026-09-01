@@ -16,8 +16,6 @@ import com.hotelcollection.hotel.entity.Payment;
 import com.hotelcollection.hotel.repository.InvoiceRepository;
 import com.hotelcollection.hotel.repository.PaymentRepository;
 import com.hotelcollection.hotel.security.CurrentUserAccessor;
-import com.hotelcollection.hotel.security.CurrentUser;
-import com.hotelcollection.hotel.exception.DomainException;
 import com.hotelcollection.hotel.dto.PageInput;
 
 /** Back-office billing reads (staff scoping enforced internally). */
@@ -70,9 +68,6 @@ public class BillingAdminServiceImpl implements BillingAdminService {
 	}
 
 	private void requireStaffAccess(UUID hotelId) {
-		CurrentUser actor = currentUser.require();
-		if (!actor.hasRole("super_admin") && !actor.inHotel(hotelId)) {
-			throw DomainException.forbidden("no access to this hotel");
-		}
+		currentUser.requireHotelAccess(hotelId);
 	}
 }

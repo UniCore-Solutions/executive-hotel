@@ -35,15 +35,18 @@ import com.hotelcollection.hotel.exception.ErrorResponseWriter;
 @EnableMethodSecurity
 public class SecurityConfig {
 
+	private static final org.slf4j.Logger log =
+			org.slf4j.LoggerFactory.getLogger(SecurityConfig.class);
+
 	private final JwtAuthFilter jwtAuthFilter;
-	private final AuthRateLimitFilter authRateLimitFilter;
+	private final RateLimitFilter rateLimitFilter;
 	private final TraceIdFilter traceIdFilter;
 	private final ErrorResponseWriter errorWriter;
 
-	public SecurityConfig(JwtAuthFilter jwtAuthFilter, AuthRateLimitFilter authRateLimitFilter,
+	public SecurityConfig(JwtAuthFilter jwtAuthFilter, RateLimitFilter rateLimitFilter,
 			TraceIdFilter traceIdFilter, ErrorResponseWriter errorWriter) {
 		this.jwtAuthFilter = jwtAuthFilter;
-		this.authRateLimitFilter = authRateLimitFilter;
+		this.rateLimitFilter = rateLimitFilter;
 		this.traceIdFilter = traceIdFilter;
 		this.errorWriter = errorWriter;
 	}
@@ -58,12 +61,22 @@ public class SecurityConfig {
 				.cors(cors -> cors.configurationSource(corsConfigurationSource))
 				.sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.exceptionHandling(ex -> ex
-						.authenticationEntryPoint((request, response, authException) ->
-								errorWriter.write(request, response, ErrorCode.UNAUTHORIZED,
-										"authentication required"))
-						.accessDeniedHandler((request, response, accessDeniedException) ->
-								errorWriter.write(request, response, ErrorCode.FORBIDDEN,
-										"access denied")))
+						.authenticationEntryPoint((request, response, authException) -> {
+							// Security-relevant and previously unlogged: without this
+							// a credential-stuffing run leaves no trace at all. Never
+							// log credentials — method and path only (trace id comes
+							// from the MDC via TraceIdFilter).
+							log.warn("unauthenticated request rejected: method={} path={}",
+									request.getMethod(), request.getRequestURI());
+							errorWriter.write(request, response, ErrorCode.UNAUTHORIZED,
+									"authentication required");
+						})
+						.accessDeniedHandler((request, response, accessDeniedException) -> {
+							log.warn("access denied: method={} path={}",
+									request.getMethod(), request.getRequestURI());
+							errorWriter.write(request, response, ErrorCode.FORBIDDEN,
+									"access denied");
+						}))
 				.headers(headers -> {
 					headers.addHeaderWriter(new XFrameOptionsHeaderWriter(
 									XFrameOptionsHeaderWriter.XFrameOptionsMode.DENY))
@@ -104,7 +117,7 @@ public class SecurityConfig {
 						.requestMatchers("/api/v1/**").authenticated()
 						.anyRequest().denyAll())
 				.addFilterBefore(traceIdFilter, UsernamePasswordAuthenticationFilter.class)
-				.addFilterBefore(authRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+				.addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
 				.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 		return http.build();
 	}
@@ -126,7 +139,11 @@ public class SecurityConfig {
 				.filter(s -> !s.isBlank())
 				.toList());
 		cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-		cfg.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+		// Idempotency-Key is required by POST /api/v1/reservations. Today the
+		// guest site reaches the backend through its own server-side BFF proxy
+		// (no CORS involved), but omitting it here silently breaks any direct
+		// browser->backend call.
+		cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key"));
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 		source.registerCorsConfiguration("/**", cfg);
 		return source;

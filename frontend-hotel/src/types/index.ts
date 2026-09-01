@@ -151,7 +151,6 @@ export interface Reservation {
   extras: Array<{ id: string; qty: number }>;
   promo: string;
   price?: Partial<PriceBreakdown>;
-  demo?: boolean;
   /** Denormalized display names captured at booking time (backend room ids
       cannot be resolved against the static fixture). */
   hotelName?: string;

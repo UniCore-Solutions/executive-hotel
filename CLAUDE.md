@@ -56,9 +56,11 @@ Invoke with the Skill tool when the task matches:
   modular monolith that was never built. `ADR-009-layered-architecture.md` (currently
   untracked) is correct.
 - `backend-hotel/docs/archive/**` — explicitly historical.
-- Root `AUDIT_REPORT.md`, `CURRENT_STATE_AUDIT.md`, `FULL_AUDIT_REPORT.md`,
-  `INTEGRATION_CHANGELOG.md` — snapshots from earlier commits; several findings are
-  already fixed. Useful for *intent*, not for *state*.
+- `docs/archive/**` — the five former root-level reports (`AUDIT_REPORT.md`,
+  `CURRENT_STATE_AUDIT.md`, `FULL_AUDIT_REPORT.md`, `INTEGRATION_CHANGELOG.md`,
+  `SESSION_HANDOFF.md`). Moved out of the repository root because they read like current
+  documentation and are not. Snapshots from earlier commits; several findings are already
+  fixed. Useful for *intent*, never for *state*.
 - `database/collection-schema*.sql` — Oracle-dialect legacy, never executed.
 
 ## Facts that are easy to get wrong
@@ -67,11 +69,25 @@ Invoke with the Skill tool when the task matches:
   hexagonal. An ArchUnit rule bans `api/application/domain/adapter` packages.
 - Cross-domain calls go through `service/` **interfaces** — never `service/impl/` or
   another domain's repository. Controllers must touch neither.
-- `/graphql` is `permitAll` at the filter chain. **Every admin resolver must do its own
-  `hasRole("super_admin") || inHotel(hotelId)` check.** There is no declarative guard.
 - Money is **MAD**. Other currencies are display-only FX.
 - Backend port is **8180**, Postgres host port **5433**. Not the defaults.
-- `mvn` is not installed — use `./mvnw`.
+- **There is no JDK on this machine** (`java` is not on PATH), so `./mvnw` cannot run
+  either — it fails with "JAVA_HOME is not defined correctly". Run the backend build in a
+  container:
+  ```bash
+  cd backend-hotel && docker run --rm -v "$PWD":/w -v "$HOME/.m2":/root/.m2 -w /w \
+    --network host -e TESTCONTAINERS_HOST_OVERRIDE=localhost \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    maven:3.9-eclipse-temurin-21 mvn -B test
+  ```
+- `/graphql` is `permitAll`, so **admin authorization lives in the services**, via
+  `CurrentUserAccessor.requireHotelAccess(hotelId)` / `requireSuperAdmin()`. This is no
+  longer a convention you must remember: the `ADMIN_GRAPHQL_READS_ARE_AUTHORIZED` ArchUnit
+  rule follows every admin resolver into its service and fails the build if no guard is
+  reachable.
+- The payment provider is **simulated**. `app.payments.auto-settle-enabled` defaults to
+  **false** and the app **refuses to start with it enabled under the `prod` profile**
+  (`config/PaymentSafetyConfig`). Dev/QA opt in via `PAYMENT_AUTO_SETTLE_ENABLED=true`.
 - The back-office is **profile-gated off** in Docker; start it with
   `docker compose --profile backoffice up -d backoffice` or run `npm run dev` in it.
 - There is **no gRPC**, **no email/SMS**, **no payment provider**, and **no Kafka consumer**
@@ -108,10 +124,13 @@ or a table. Follow the call through to the implementation.
 - **Do not commit or push unless asked.** The working tree currently holds ~2 200 lines
   of uncommitted, in-progress integration work — read CURRENT_STATE §Stopping point
   before editing anything it touches, and do not revert or "clean up" those changes.
-- Verify before declaring done: backend `./mvnw test`; frontends `npm run typecheck &&
-  npm run lint && npm test`; or `./scripts/test.sh` for all of it.
-  **Note `./mvnw test` is currently red on 2 ArchUnit rules** (KNOWN_ISSUES §T1) — if you
-  see those two failures, they predate you; any *other* failure is yours.
+- Verify before declaring done: backend tests in the Maven container (above); frontends
+  `npm run typecheck && npm run lint && npm test`.
+  **The backend suite is fully green — 202 tests, 0 failures, all 7 ArchUnit rules**
+  (verified 2026-09-01). Guest frontend: `tsc` clean, 0 eslint errors, 85/85 vitest.
+  There are no known-failing tests: any failure you see is yours. (An earlier version of
+  this file claimed 2 red ArchUnit rules; that was stale and taught contributors to ignore
+  a real signal.)
 - Schema changes are Flyway-only. Never `ddl-auto: update`; entities must match the
   migrations or the app refuses to start.
 - Secrets come from `.env`, which is gitignored. Never hardcode `JWT_SECRET` or passwords.

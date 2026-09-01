@@ -195,7 +195,7 @@ export const bookingKey = {
     return BK_KEY;
   },
 
-  finish(_ref: string): void {
+  finish(): void {
     BK_KEY.finished = true;
   },
 

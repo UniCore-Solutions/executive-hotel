@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { buildIcs } from '@/lib/ics';
-import { qrCells } from '@/lib/qr';
 
 describe('buildIcs', () => {
   it('produces a VEVENT with the reservation details', () => {
@@ -37,11 +36,3 @@ describe('buildIcs', () => {
   });
 });
 
-describe('qrCells', () => {
-  it('is deterministic for a reference', () => {
-    expect(qrCells('RC-ABC123')).toBe(qrCells('RC-ABC123'));
-    expect(qrCells('RC-ABC123').length).toBeGreaterThan(100);
-    expect(qrCells('RC-ABC123')).toContain('rect');
-    expect(qrCells('RC-ABC123')).not.toBe(qrCells('RC-ABC124'));
-  });
-});

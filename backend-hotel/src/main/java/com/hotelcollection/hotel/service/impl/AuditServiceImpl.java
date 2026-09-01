@@ -17,7 +17,6 @@ import com.hotelcollection.hotel.entity.AuditLog;
 import com.hotelcollection.hotel.repository.AuditLogRepository;
 import com.hotelcollection.hotel.service.IdentityAdminService;
 import com.hotelcollection.hotel.security.CurrentUser;
-import com.hotelcollection.hotel.exception.DomainException;
 import com.hotelcollection.hotel.dto.PageInput;
 import com.hotelcollection.hotel.security.CurrentUserAccessor;
 
@@ -59,10 +58,7 @@ public class AuditServiceImpl implements AuditService {
 	@Override
 	@Transactional(readOnly = true)
 	public AuditLogPageResult auditLogs(PageInput page) {
-		CurrentUser actor = currentUser.require();
-		if (!actor.hasRole("super_admin")) {
-			throw DomainException.forbidden("super_admin role required");
-		}
+		currentUser.requireSuperAdmin();
 		int p = page == null || page.page() == null ? 0 : Math.max(page.page(), 0);
 		int s = page == null || page.size() == null ? 20 : Math.min(Math.max(page.size(), 1), 100);
 		Page<AuditLog> result = auditLogRepository.findAllByOrderByCreatedAtDesc(

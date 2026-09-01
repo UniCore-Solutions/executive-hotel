@@ -23,10 +23,7 @@ import {
 import { image, IMG_FALLBACK } from '@/services/availability';
 import { getStayRoom, refreshRoomStay } from '@/services/catalog';
 import { GraphqlClientError } from '@/services/graphqlClient';
-import { getExtras } from '@/services/extras';
-import { ensurePricingSources } from '@/services/pricingHydration';
 import { recordRoomView } from '@/services/activity';
-import { getQuote, mapQuoteExtraLines } from '@/services/quote';
 import { bookingURL, hotelRoomURL, roomURL } from '@/lib/links';
 import Calendar from '@/components/search/Calendar';
 import Breadcrumb from '@/components/ui/Breadcrumb';
@@ -37,10 +34,9 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/button';
 import { PhotoGallery } from '@/components/ui/PhotoGallery';
 import { ReadMore } from '@/components/ui/ReadMore';
-import { parseExtrasParam, type ExtraSelection } from '@/lib/extras';
-import type { Availability, Extra, PriceBreakdown, RatePlan, Room, StayRoomResult } from '@/types';
-
-type ExtrasSel = ExtraSelection;
+import { useExtrasSelection } from '@/hooks/useExtrasSelection';
+import { useQuote } from '@/hooks/useQuote';
+import type { Availability, RatePlan, Room, StayRoomResult } from '@/types';
 
 /* Inline icon paths (24×24 stroke) matched to verified amenity names (room.js). */
 const ICON: Record<string, string> = {
@@ -170,12 +166,11 @@ export default function RoomDetails({
   /* initialPlan is a snapshot (the URL rewrites itself on this page; the hotel
      gate re-renders with the synced plan, which must not change the badge). */
   const [initialPlanOnce] = useState(initialPlan);
-  const [extrasSel, setExtrasSel] = useState<ExtrasSel>(() => parseExtrasParam(initialExtras));
-  // Real backend extras load async (see the hotelId-keyed effect below); an
-  // empty list until then means a fixture slug id (e.g. "airport-shuttle")
-  // can never leak into a quote request (see Task 8 in
+  // Real backend extras load async (inside useExtrasSelection, keyed on
+  // hotelId); an empty list until then means a fixture slug id (e.g.
+  // "airport-shuttle") can never leak into a quote request (see Task 8 in
   // docs/investigations/TASK2-TASK3-CURRENCY-AND-ATOMICITY.md).
-  const [extrasList, setExtrasList] = useState<Extra[]>([]);
+  const { extrasSel, setExtrasSel, extrasList } = useExtrasSelection(hotelId, initialExtras);
   const [dialog, setDialog] = useState<null | 'dates' | 'guests'>(null);
   const [guestTouched, setGuestTouched] = useState(false);
   const [availForCheckin, setAvailForCheckin] = useState('');
@@ -289,17 +284,6 @@ export default function RoomDetails({
     refreshStay();
   }, [state.checkin, state.checkout, state.adults, state.children, state.rooms, refreshStay]);
 
-  /* Backend extras catalog + pricing sources (promos) once the hotel is known. */
-  useEffect(() => {
-    if (!hotelId) return;
-    let alive = true;
-    getExtras(hotelId).then((list) => alive && setExtrasList(list));
-    ensurePricingSources();
-    return () => {
-      alive = false;
-    };
-  }, [hotelId]);
-
   /* Keep the URL query in sync (plan / extras / stay) — reference updateQuoteURL.
      Preserves the roomId param so the hotel page keeps the room selected. */
   useEffect(() => {
@@ -314,78 +298,27 @@ export default function RoomDetails({
     history.replaceState(null, '', `${window.location.pathname}?${p.toString()}`);
   }, [loaded, state, roomId, selectedPlanId, extrasSel]);
 
-  /* Dialog: Escape cancels, body scroll locked. */
   /* Server-priced quote — the booking card uses the same backend engine as the
      booking page, so room and checkout totals always agree. The local
      fixture-based engine (`pricing/compute`) has been retired. */
-  const [quoteState, setQuoteState] = useState<{
-    quote: PriceBreakdown | null;
-    loading: boolean;
-    error: string;
-  }>({ quote: null, loading: false, error: '' });
-  const quoteReqId = useRef(0);
-
-  useEffect(() => {
-    if (!plan || !hasDates || !state.checkin || !state.checkout || !room) return;
-    const reqId = ++quoteReqId.current;
-    getQuote({
-      hotelId: room.hotelId ?? hotelId ?? '',
-      checkInDate: state.checkin,
-      checkOutDate: state.checkout,
-      adults: state.adults || 2,
-      children: state.children || 0,
-      rooms: [{ roomTypeId: room.id, ratePlanId: plan.backendRatePlanId }],
-      extras: extrasSel.map((x) => ({ extraId: x.id, quantity: x.qty })),
-      promoCode: state.promo || undefined,
-    })
-      .then((result) => {
-        if (reqId !== quoteReqId.current) return;
-        if (result.raw.valid) {
-          setQuoteState({
-            quote: { ...result.quote, extras: mapQuoteExtraLines(result.raw.extras, extrasList) },
-            loading: false,
-            error: '',
-          });
-        } else {
-          setQuoteState({
-            quote: null,
-            loading: false,
-            error: result.raw.message || 'Invalid request — adjust dates or extras.',
-          });
-        }
-      })
-      .catch((err) => {
-        if (reqId !== quoteReqId.current) return;
-        // VALIDATION/CONFLICT here mean the request itself is wrong (e.g. no
-        // price configured for these dates) — retrying won't help, so the
-        // backend's specific message is more useful than a generic one.
-        const message =
-          err instanceof GraphqlClientError && (err.code === 'VALIDATION' || err.code === 'CONFLICT')
-            ? err.message
-            : 'Could not calculate price — please try again.';
-        setQuoteState({ quote: null, loading: false, error: message });
-      });
-  }, [
-    plan,
-    hasDates,
-    state.checkin,
-    state.checkout,
-    state.adults,
-    state.children,
-    state.rooms,
-    state.promo,
-    extrasSel,
-    extrasList,
+  const {
+    quote,
+    quoteError,
+    loading: quoteLoading,
+  } = useQuote({
     room,
     hotelId,
-  ]);
-
-  /* When there are no dates there is deliberately NO price placeholder: a
-     server quote is the only legitimate total, and a locally-computed
-     number (even "per night × nights") would look like a real price. The
-     booking card shows an explicit "select dates" state instead. */
-  const quote: PriceBreakdown | null = hasDates ? quoteState.quote : null;
-  const quoteError = hasDates ? quoteState.error : '';
+    plan,
+    hasDates,
+    checkin: state.checkin,
+    checkout: state.checkout,
+    adults: state.adults,
+    children: state.children,
+    rooms: state.rooms,
+    promo: state.promo,
+    extrasSel,
+    extrasList,
+  });
 
   /* ---------- dialogs ---------- */
 
@@ -1086,7 +1019,7 @@ export default function RoomDetails({
                   Choose your dates to see the exact price for this room — taxes &amp; fees are
                   included in the total.
                 </div>
-              ) : quoteState.loading ? (
+              ) : quoteLoading ? (
                 <p className="text-navy/50 py-2 text-sm">Calculating price…</p>
               ) : quoteError ? (
                 <p className="text-clay-dark py-2 text-sm" role="alert">

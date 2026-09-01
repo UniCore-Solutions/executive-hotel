@@ -94,6 +94,8 @@ services:
       RESERVATION_HOLD_EXPIRY_INTERVAL_MS: ${RESERVATION_HOLD_EXPIRY_INTERVAL_MS:-60000}
       PAYMENT_SIMULATED_DELAY_MIN_MS: ${PAYMENT_SIMULATED_DELAY_MIN_MS:-1500}
       PAYMENT_SIMULATED_DELAY_MAX_MS: ${PAYMENT_SIMULATED_DELAY_MAX_MS:-4000}
+      # Dev convenience only — the backend defaults this to false and rejects
+      # it under the prod profile (docker-compose.prod.yml sets that profile).
       PAYMENT_AUTO_SETTLE_ENABLED: ${PAYMENT_AUTO_SETTLE_ENABLED:-true}
       PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:-}
       JAVA_TOOL_OPTIONS: ${JVM_OPTS:-}
