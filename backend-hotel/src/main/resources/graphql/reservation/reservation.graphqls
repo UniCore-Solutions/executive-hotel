@@ -79,6 +79,11 @@ type ReservationRoomLine {
 	# these two fields client-side; only the actual cancel action (backend)
 	# is authoritative for the exact charge.
 	freeCancellationUntil: LocalDate
+	# Settlement terms of this line's rate plan (pay_at_property | prepay_full
+	# | prepay_deposit), resolved from the current rate catalog. A
+	# pay-at-property stay sits at paymentStatus 'pending' by design — nothing
+	# is owed online — so displays need this to tell the two apart.
+	paymentTiming: String!
 }
 
 type ReservationExtraLine {

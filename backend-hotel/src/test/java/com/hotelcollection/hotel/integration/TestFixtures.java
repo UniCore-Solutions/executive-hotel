@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import com.hotelcollection.hotel.entity.Hotel;
 import com.hotelcollection.hotel.entity.RoomType;
 import com.hotelcollection.hotel.entity.CancellationPenaltyType;
+import com.hotelcollection.hotel.util.PaymentTerms;
 import com.hotelcollection.hotel.entity.RatePlan;
 import com.hotelcollection.hotel.entity.RatePlanPrice;
 import com.hotelcollection.hotel.entity.RoomTypeRatePlan;
@@ -128,7 +129,11 @@ public class TestFixtures {
 		plan.setRefundable(true);
 		plan.setCancellationDeadlineDays((short) 2);
 		plan.setCancellationPenaltyType(CancellationPenaltyType.first_night);
-		plan.setPaymentTiming("pay_at_property");
+		/* Prepaid by default: the shared fixture backs the payment, hold-expiry
+		   and booking-lifecycle tests, which all assume a reservation that
+		   waits on a capture. A pay-at-property plan is confirmed outright and
+		   carries no hold, so tests that want that opt in explicitly. */
+		plan.setPaymentTiming(PaymentTerms.PREPAY_FULL);
 		plan.setStatus("active");
 		plan.setCreatedAt(Instant.now());
 		plan.setUpdatedAt(Instant.now());

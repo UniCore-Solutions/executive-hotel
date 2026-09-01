@@ -65,6 +65,7 @@ export interface BackendReservation {
     ratePlanName?: string | null;
     isRefundable: boolean;
     freeCancellationUntil?: string | null;
+    paymentTiming?: string | null;
   }>;
   extras: Array<{
     id: string;

@@ -20,6 +20,7 @@ import com.hotelcollection.hotel.dto.reservation.ReservationPageResult;
 import com.hotelcollection.hotel.entity.Guest;
 import com.hotelcollection.hotel.entity.Media;
 import com.hotelcollection.hotel.entity.RatePlan;
+import com.hotelcollection.hotel.util.PaymentTerms;
 import com.hotelcollection.hotel.entity.Reservation;
 import com.hotelcollection.hotel.entity.ReservationCancellation;
 import com.hotelcollection.hotel.entity.ReservationRoom;
@@ -119,6 +120,24 @@ public class ReservationGraphQLController {
 			// show a scary "non-refundable" — mirrors doCancel's own
 			// fall-through-to-penalty-free handling of the same case.
 			return plan == null || plan.isRefundable();
+		}));
+	}
+
+	/**
+	 * Settlement terms of this line's rate plan, resolved from the current rate
+	 * catalog the same way the cancellation fields are — room lines persist
+	 * only the rate-plan id. Lets the confirmation say "due at the property"
+	 * instead of reporting a payment that is pending forever by design.
+	 */
+	@BatchMapping(typeName = "ReservationRoomLine", field = "paymentTiming")
+	public Map<ReservationRoom, String> roomLinePaymentTiming(Collection<ReservationRoom> lines) {
+		Map<UUID, RatePlan> plans = pricing.ratePlansByIds(
+				lines.stream().map(ReservationRoom::getRatePlanId).collect(Collectors.toSet()));
+		return lines.stream().collect(Collectors.toMap(l -> l, l -> {
+			RatePlan plan = plans.get(l.getRatePlanId());
+			// Plan deleted after booking: fall back to the prepaid reading,
+			// matching PaymentTerms' own treatment of an unknown value.
+			return plan == null ? PaymentTerms.PREPAY_FULL : plan.getPaymentTiming();
 		}));
 	}
 

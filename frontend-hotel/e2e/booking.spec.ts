@@ -3,6 +3,8 @@ import { dismissConsent, attachNoPageErrors, madAmount, quoteTotal, shortDate } 
 import {
   getStayWindow,
   cheapestRoom,
+  payAtPropertyRoom,
+  prepaidRoom,
   registerAccount,
   settlePayment,
   trackForCleanup,
@@ -25,7 +27,10 @@ test.describe('booking journey', () => {
     const window = await getStayWindow({ fromDays: UI_BOOKING_FROM_DAYS });
     ci = window.checkin;
     co = window.checkout;
-    room = cheapestRoom(window);
+    /* This journey walks the card/payment path, so it needs a rate that is
+       actually charged at booking — the cheapest room may well be sold on a
+       pay-at-property rate, which has no card step at all. */
+    room = prepaidRoom(window) ?? cheapestRoom(window);
     await page.goto(`/search?checkin=${ci}&checkout=${co}&adults=2&children=0&rooms=1`);
     await dismissConsent(page);
   });
@@ -139,6 +144,45 @@ test.describe('booking journey', () => {
       timeout: QUOTE_TIMEOUT,
     });
     await expect(page.locator('#f-email')).toHaveValue(account.email);
+  });
+
+  /* A pay-at-property rate takes nothing at booking: no card is asked for,
+     the reservation is confirmed outright, and — because it carries no
+     payment hold — the expiry job never cancels it. */
+  test('a pay-at-property rate confirms without taking a card', async ({ page }) => {
+    const window = await getStayWindow({ fromDays: UI_BOOKING_FROM_DAYS });
+    const papRoom = payAtPropertyRoom(window);
+    test.skip(!papRoom, 'no pay-at-property rate configured');
+    const plan = `${papRoom!.id}::${papRoom!.rates[0]!.ratePlanCode.toLowerCase()}`;
+
+    await page.goto(
+      `/booking?checkin=${window.checkin}&checkout=${window.checkout}` +
+        `&adults=2&children=0&rooms=1&room=${papRoom!.id}&plan=${plan}`
+    );
+    await dismissConsent(page);
+
+    await page.locator('#f-first').fill('Nadia');
+    await page.locator('#f-last').fill('Cherkaoui');
+    await page.locator('#f-email').fill('pap-e2e@example.com');
+    await page.locator('#f-phone').fill('+212 6 61 23 45 67');
+    await page.locator('#details-submit').click();
+
+    // No card form at all — asking for one would contradict the rate.
+    await expect(page.locator('#pay-at-property')).toBeVisible({ timeout: QUOTE_TIMEOUT });
+    await expect(page.locator('#p-number')).toHaveCount(0);
+    await expect(page.locator('#pay-label')).toHaveText('Confirm booking');
+
+    await page.locator('#p-terms').check();
+    await page.locator('#pay-submit').click();
+
+    // Straight to a settled confirmation: no status=processing, no polling.
+    await expect(page).toHaveURL(/\/confirmation\?ref=RC-/);
+    await expect(page).not.toHaveURL(/status=processing/);
+    const ref = new URL(page.url()).searchParams.get('ref')!;
+    trackForCleanup(ref, 'pap-e2e@example.com');
+
+    await expect(page.locator('#conf-ref')).toHaveText(ref, { timeout: QUOTE_TIMEOUT });
+    await expect(page.locator('#conf-price')).toContainText('Nothing charged');
   });
 });
 

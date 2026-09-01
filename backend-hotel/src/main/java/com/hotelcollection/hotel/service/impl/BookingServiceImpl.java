@@ -167,10 +167,11 @@ public class BookingServiceImpl implements BookingService {
 		reservationRepository.save(reservation);
 
 		publishBookingCreated(reservation, in, quote, guest, lines, actor);
-		log.info("reservation created as payment hold: reference={} hotelId={} rooms={} "
-						+ "total={} {} holdExpiresAt={}",
+		log.info("reservation created: reference={} hotelId={} rooms={} total={} {} "
+						+ "dueNow={} timing={} status={} holdExpiresAt={}",
 				reservation.getReference(), in.hotelId(), lines.size(), quote.totalAmount(),
-				in.currencyCode(), reservation.getHoldExpiresAt());
+				in.currencyCode(), quote.amountDueNow(), quote.paymentTiming(),
+				reservation.getStatus(), reservation.getHoldExpiresAt());
 		return new CreateResult(reservation, true);
 	}
 
@@ -249,12 +250,22 @@ public class BookingServiceImpl implements BookingService {
 		// guest field resolves to null (schema: Reservation.guest is non-null).
 		reservation.setGuest(guest);
 		reservation.setBookedByUserId(actor == null ? null : actor.userId());
-		// Payment hold: inventory is already sold (the per-night row lock in
-		// sellInventory is what actually prevents overselling) but the
-		// reservation stays 'pending' — not 'confirmed' — until payment
-		// captures. The hold-expiry job releases it if that never happens.
-		reservation.setStatus(ReservationStatus.pending);
-		reservation.setHoldExpiresAt(Instant.now().plus(holdMinutes, ChronoUnit.MINUTES));
+		/* Payment hold: inventory is already sold (the per-night row lock in
+		   sellInventory is what actually prevents overselling) but the
+		   reservation stays 'pending' — not 'confirmed' — until payment
+		   captures. The hold-expiry job releases it if that never happens.
+
+		   A pay-at-property booking has nothing to wait for: there is no
+		   payment to capture, so it is confirmed immediately and carries NO
+		   hold. That absence is what keeps it safe from the expiry job, whose
+		   query is `status = pending AND holdExpiresAt < now` — a null hold
+		   never matches. Giving it a hold would auto-cancel every such booking
+		   ~15 minutes after it was made. */
+		boolean dueAtProperty = quote.amountDueNow().compareTo(MoneyUtil.ZERO) == 0;
+		reservation.setStatus(dueAtProperty ? ReservationStatus.confirmed : ReservationStatus.pending);
+		reservation.setHoldExpiresAt(dueAtProperty
+				? null
+				: Instant.now().plus(holdMinutes, ChronoUnit.MINUTES));
 		reservation.setCheckInDate(in.checkInDate());
 		reservation.setCheckOutDate(in.checkOutDate());
 		reservation.setAdults((short) in.adults());
@@ -315,7 +326,9 @@ public class BookingServiceImpl implements BookingService {
 		ReservationStatusHistory history = new ReservationStatusHistory();
 		history.setReservationId(reservation.getId());
 		history.setFromStatus(null);
-		history.setToStatus(ReservationStatus.pending);
+		// The reservation is already at its opening status here — 'confirmed'
+		// for a pay-at-property booking, 'pending' for one awaiting payment.
+		history.setToStatus(reservation.getStatus());
 		history.setChangedByUserId(actor == null ? null : actor.userId());
 		history.setChangedAt(Instant.now());
 		reservation.getStatusHistory().add(history);

@@ -1,7 +1,11 @@
 # Rate plan data + hold-expiry — pre-implementation investigation
 
-**Date:** 2026-09-01 · **Status:** investigation only, nothing implemented ·
+**Date:** 2026-09-01 · **Status:** IMPLEMENTED — see §6 ·
 **Follows:** `ROOM_TYPE_PAYMENT_CONFIG_2026-09-01.md`
+
+> **Superseded in part.** The blocking risk this document identified (§2.2) has
+> been fixed and `payment_timing` is now honoured end to end. §§1–5 are kept as
+> the record of what was found and why; §6 states what actually shipped.
 
 Queried against the **live database** (`hotel-platform-postgres`, stack up,
 backend healthy), not inferred from migrations.
@@ -235,3 +239,58 @@ never after.**
    reservations as separate work items.
 
 Nothing above has been implemented.
+
+---
+
+## 6. What shipped
+
+`payment_timing` is now read by the booking path, not just stored.
+
+**The hold fix (the blocker in §2.2).** `BookingServiceImpl.buildReservation`
+sets a payment hold only when money is actually due at booking:
+
+```java
+boolean dueAtProperty = quote.amountDueNow().compareTo(MoneyUtil.ZERO) == 0;
+reservation.setStatus(dueAtProperty ? confirmed : pending);
+reservation.setHoldExpiresAt(dueAtProperty ? null : now + holdMinutes);
+```
+
+The expiry job needed **no change**: its predicate is
+`status = pending AND holdExpiresAt < now`, and a null hold can never match.
+A pay-at-property booking is therefore confirmed outright and invisible to the
+reaper — verified live, a booking survived ~10 minutes of 60-second job cycles,
+and by `PaymentSimulationIntegrationTest#payAtPropertyBookingIsConfirmedWithout
+AHoldAndSurvivesTheExpiryJob`.
+
+**Amount due.** `util/PaymentTerms` derives it from the rate plan:
+`pay_at_property → 0`, `prepay_full → total`,
+`prepay_deposit → percent(total, depositPercentage)`. The quote carries
+`paymentTiming` and `amountDueNow`, so the client displays what it is told
+rather than recomputing money.
+
+**Mixed carts are rejected** (§5 decision 1): `PaymentTerms.timingOf` throws
+`VALIDATION` when one booking's room lines disagree about payment timing.
+
+**Resting state** (§5 decision 4): `status = confirmed`,
+`paymentStatus = pending`, no new enum value and no migration. The guest-facing
+distinction comes from the rate plan instead — `ReservationRoomLine.paymentTiming`
+is resolved from the rate catalog, so the confirmation says "Due at the hotel"
+rather than reporting a payment that is pending by design.
+
+**Guest flow.** With nothing due, the tunnel asks for no card, starts no payment
+attempt, and lands on a settled confirmation (no `status=processing`, no
+polling).
+
+### Still open
+
+- **The column default is `pay_at_property`** (`V4__pricing_promotions.sql:32`).
+  Now that the value is honoured, a rate plan created without setting it
+  confirms bookings that are never charged. This already bit the test fixtures,
+  which had to be made explicit. Consider defaulting to `prepay_full` — the
+  conservative reading — in a follow-up migration.
+- **Refunds still assume the full total was collected**
+  (`BookingServiceImpl:refundAmount = total − penalty`). Cancelling a
+  pay-at-property booking therefore reports a refund of money never taken. This
+  is now reachable and should be fixed next.
+- `prepay_deposit` is implemented in the pricing path but no active rate plan
+  uses it, so it is untested against a real booking.

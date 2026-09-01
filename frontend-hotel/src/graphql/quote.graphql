@@ -6,6 +6,8 @@ query Quote($input: QuoteInput!) {
     taxAmount
     feeAmount
     totalAmount
+    paymentTiming
+    amountDueNow
     originalTotal
     valid
     message

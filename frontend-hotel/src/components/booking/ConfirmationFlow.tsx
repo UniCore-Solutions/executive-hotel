@@ -294,9 +294,17 @@ export default function ConfirmationFlow() {
   const price = derivePrice(res);
   /* Payment timeline + summary reflect the real payment status from the
      backend (pending/authorized/captured/failed), never a hardcoded state. */
+  /* A pay-at-property stay sits at paymentStatus 'pending' permanently and
+     by design — nothing is owed online. Reporting that as a pending payment
+     reads as "we are still trying to charge you", so the rate's own terms
+     decide the wording. */
+  const settlesAtProperty = res.roomLines.every(
+    (l) => l.paymentTiming === 'pay_at_property'
+  );
   const paymentDone = res.paymentStatus === 'captured';
-  const paymentLabel =
-    res.paymentStatus === 'captured'
+  const paymentLabel = settlesAtProperty
+    ? 'Due at the hotel'
+    : res.paymentStatus === 'captured'
       ? 'Processed'
       : res.paymentStatus === 'failed'
         ? 'Failed'
@@ -583,14 +591,16 @@ export default function ConfirmationFlow() {
                   extras: extraLines,
                 }}
                 currency={currency}
-                totalLabel="Paid total"
+                totalLabel={settlesAtProperty ? "Due at the hotel" : "Paid total"}
                 highlight
                 note={
-                  paymentDone
-                    ? 'Payment processed.'
-                    : res.paymentStatus === 'failed'
-                      ? 'Payment failed — retry from Manage booking.'
-                      : 'Payment pending — complete it from Manage booking.'
+                  settlesAtProperty
+                    ? 'Nothing charged — you settle this at the hotel.'
+                    : paymentDone
+                      ? 'Payment processed.'
+                      : res.paymentStatus === 'failed'
+                        ? 'Payment failed — retry from Manage booking.'
+                        : 'Payment pending — complete it from Manage booking.'
                 }
               />
             </div>

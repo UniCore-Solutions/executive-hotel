@@ -178,6 +178,7 @@ export type ReservationSummaryFragment = {
     ratePlanName: string | null;
     isRefundable: boolean;
     freeCancellationUntil: string | null;
+    paymentTiming: string;
   }>;
   extras: Array<{
     id: string;
@@ -574,6 +575,8 @@ export type QuoteQuery = {
     taxAmount: number;
     feeAmount: number;
     totalAmount: number;
+    paymentTiming: string;
+    amountDueNow: number;
     originalTotal: number;
     valid: boolean;
     message: string | null;
@@ -634,6 +637,7 @@ export type MyReservationsQuery = {
       ratePlanName: string | null;
       isRefundable: boolean;
       freeCancellationUntil: string | null;
+      paymentTiming: string;
     }>;
     extras: Array<{
       id: string;
@@ -703,6 +707,7 @@ export type ReservationLookupQuery = {
       ratePlanName: string | null;
       isRefundable: boolean;
       freeCancellationUntil: string | null;
+      paymentTiming: string;
     }>;
     extras: Array<{
       id: string;
@@ -855,6 +860,7 @@ export const ReservationSummaryFragmentDoc = {
                 { kind: 'Field', name: { kind: 'Name', value: 'ratePlanName' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'isRefundable' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'freeCancellationUntil' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'paymentTiming' } },
               ],
             },
           },
@@ -2031,6 +2037,8 @@ export const QuoteDocument = {
                 { kind: 'Field', name: { kind: 'Name', value: 'taxAmount' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'feeAmount' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'totalAmount' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'paymentTiming' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'amountDueNow' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'originalTotal' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'valid' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'message' } },
@@ -2165,6 +2173,7 @@ export const MyReservationsDocument = {
                 { kind: 'Field', name: { kind: 'Name', value: 'ratePlanName' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'isRefundable' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'freeCancellationUntil' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'paymentTiming' } },
               ],
             },
           },
@@ -2317,6 +2326,7 @@ export const ReservationLookupDocument = {
                 { kind: 'Field', name: { kind: 'Name', value: 'ratePlanName' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'isRefundable' } },
                 { kind: 'Field', name: { kind: 'Name', value: 'freeCancellationUntil' } },
+                { kind: 'Field', name: { kind: 'Name', value: 'paymentTiming' } },
               ],
             },
           },

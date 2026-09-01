@@ -247,6 +247,12 @@ export default function BookingFlow({
   }, [plan, validStay, state.checkin, state.checkout, state.adults, state.children, room, state.rooms, state.promo, extrasSel, extrasList, resolved?.property.id]);
 
   const quote = quoteState.quote;
+  /* What the guest is charged at booking, decided by the server from the
+     rate plan's payment_timing — never derived here. While the quote is
+     still loading we fall back to the total, so the card step is never
+     skipped because a value has not arrived yet. */
+  const dueNow = quote?.amountDueNow ?? quote?.total ?? 0;
+  const settlesAtProperty = !!quote && dueNow === 0;
   const quoteLoading = !quote && !quoteState.error;
   const quoteError = quoteState.error;
 
@@ -336,10 +342,13 @@ export default function BookingFlow({
   const submitPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs: PayErrors = {};
-    if (!card.name.trim()) errs.pname = 'Enter the name on the card.';
-    if (!validCardNumber(card.number)) errs.pnumber = 'Enter a valid card number.';
-    if (!validExpiry(card.expiry)) errs.pexp = 'Enter a valid future expiry.';
-    if (!validCvc(card.cvc)) errs.pcvc = 'Enter a valid CVC.';
+    // Card details are only demanded when something is actually charged now.
+    if (dueNow > 0) {
+      if (!card.name.trim()) errs.pname = 'Enter the name on the card.';
+      if (!validCardNumber(card.number)) errs.pnumber = 'Enter a valid card number.';
+      if (!validExpiry(card.expiry)) errs.pexp = 'Enter a valid future expiry.';
+      if (!validCvc(card.cvc)) errs.pcvc = 'Enter a valid CVC.';
+    }
     if (!terms) errs.pterms = 'Please accept the Terms and Cancellation policy.';
     setPErrors(errs);
     if (Object.values(errs).some(Boolean)) return;
@@ -389,12 +398,18 @@ export default function BookingFlow({
       // reservation key (stable for the same reason); guestEmail is the
       // accountless-checkout proof of possession the backend accepts in
       // place of a signed-in session.
-      await startPaymentAttempt({
-        reservationId: result.reservation.id,
-        amount: quote.total,
-        idempotencyKey: `${idempotencyKey}:payment`,
-        guestEmail,
-      });
+      // A pay-at-property rate takes nothing at booking, so no payment
+      // attempt is started. The backend has already confirmed the reservation
+      // outright (BookingServiceImpl: no hold, so the expiry job leaves it
+      // alone) — there is no settlement to poll for.
+      if (dueNow > 0) {
+        await startPaymentAttempt({
+          reservationId: result.reservation.id,
+          amount: dueNow,
+          idempotencyKey: `${idempotencyKey}:payment`,
+          guestEmail,
+        });
+      }
 
       if (apollo) {
         invalidateGraphql(apollo, REST_INVALIDATIONS['reservations.create']);
@@ -412,7 +427,8 @@ export default function BookingFlow({
       }
 
       router.push(
-        `/confirmation?ref=${encodeURIComponent(result.reservation.reference)}&email=${encodeURIComponent(guestEmail)}&status=processing`
+        `/confirmation?ref=${encodeURIComponent(result.reservation.reference)}` +
+          `&email=${encodeURIComponent(guestEmail)}${dueNow > 0 ? '&status=processing' : ''}`
       );
     } catch (err) {
       setPaying(false);
@@ -450,7 +466,10 @@ export default function BookingFlow({
       ) : null}
 
       <div id="steps" className={`mb-8 ${missing ? 'hidden' : ''}`} aria-label="Booking progress">
-        <Steps steps={['Guest details', 'Payment & confirm']} current={step - 1} />
+        <Steps
+          steps={['Guest details', settlesAtProperty ? 'Confirm booking' : 'Payment & confirm']}
+          current={step - 1}
+        />
       </div>
 
       {missing ? (
@@ -800,7 +819,9 @@ export default function BookingFlow({
 
                 <div className="border-navy/10 mt-7 flex flex-col items-stretch justify-between gap-3 border-t pt-6 sm:flex-row sm:items-center">
                   <p className="text-navy/45 text-[11px]">
-                    Free cancellation on most plans · No charge until you confirm
+                    {settlesAtProperty
+                      ? 'Free cancellation on most plans · Nothing charged online'
+                      : 'Free cancellation on most plans · No charge until you confirm'}
                   </p>
                   <Button
                     type="submit"
@@ -819,9 +840,13 @@ export default function BookingFlow({
                 className="border-navy/10 rounded-3xl border bg-white p-5 sm:p-6 lg:p-8"
                 aria-label="Payment"
               >
-                <h2 className="font-display text-navy text-2xl font-semibold">Payment</h2>
+                <h2 className="font-display text-navy text-2xl font-semibold">
+                  {settlesAtProperty ? 'Confirm your booking' : 'Payment'}
+                </h2>
                 <p className="text-navy/55 mt-1 text-sm">
-                  Enter your card details to complete the booking.
+                  {settlesAtProperty
+                    ? 'This rate is settled at the hotel — no card is needed to confirm.'
+                    : 'Enter your card details to complete the booking.'}
                 </p>
 
                 {declined ? (
@@ -836,6 +861,21 @@ export default function BookingFlow({
 
                 <form id="pay-form" onSubmit={submitPayment} noValidate>
                   <fieldset className="mt-6 grid gap-x-4 gap-y-5 sm:grid-cols-2">
+                  {settlesAtProperty ? (
+                    /* Nothing is taken now, so there is no card form at all —
+                       asking for one would contradict the rate. */
+                    <div
+                      id="pay-at-property"
+                      className="border-gold/30 bg-gold/[0.06] col-span-full rounded-2xl border px-4 py-4"
+                    >
+                      <p className="text-navy text-sm font-semibold">Pay at the hotel</p>
+                      <p className="text-navy/65 mt-1 text-[13px] leading-relaxed">
+                        Nothing is charged now. Your room is confirmed as soon as you finish, and
+                        you settle {quote ? fmt(quote.total) : 'the total'} at the property.
+                      </p>
+                    </div>
+                  ) : (
+                  <>
                   <legend className="text-navy/45 col-span-full mb-1 text-xs font-semibold tracking-widest uppercase">
                     Card details
                   </legend>
@@ -946,6 +986,8 @@ export default function BookingFlow({
                     />
                     <FieldErr id="err-pcvc" msg={payError('pcvc')} />
                   </div>
+                  </>
+                  )}
                   <label className="text-navy/65 mt-1 flex cursor-pointer items-start gap-2.5 text-xs sm:col-span-2">
                     <input
                       type="checkbox"
@@ -987,10 +1029,10 @@ export default function BookingFlow({
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="order-2 sm:order-1">
                       <p className="text-navy/45 text-[11px] font-semibold tracking-widest uppercase">
-                        Total due
+                        {settlesAtProperty ? 'Due at the hotel' : 'Total due'}
                       </p>
                       <strong id="pay-total" className="font-display text-navy text-2xl">
-                        {quote ? fmt(quote.total) : '—'}
+                        {quote ? fmt(settlesAtProperty ? quote.total : dueNow) : '—'}
                       </strong>
                     </div>
                     <Button
@@ -1013,7 +1055,15 @@ export default function BookingFlow({
                           d="M12 11V6m0 0v0m0 0a3 3 0 1 0 0-6m8 8.5-1.5 12h-13L4 8.5M2 8.5h20"
                         />
                       </svg>
-                      <span id="pay-label">{paying ? 'Processing…' : 'Confirm & pay'}</span>
+                      <span id="pay-label">
+                        {paying
+                          ? settlesAtProperty
+                            ? 'Confirming…'
+                            : 'Processing…'
+                          : settlesAtProperty
+                            ? 'Confirm booking'
+                            : 'Confirm & pay'}
+                      </span>
                     </Button>
                     </div>
                     <div className="mt-4">

@@ -20,9 +20,11 @@ import org.springframework.test.context.ContextConfiguration;
 
 import com.hotelcollection.hotel.entity.Payment;
 import com.hotelcollection.hotel.entity.PaymentStatus;
+import com.hotelcollection.hotel.entity.RatePlan;
 import com.hotelcollection.hotel.entity.Reservation;
 import com.hotelcollection.hotel.entity.ReservationStatus;
 import com.hotelcollection.hotel.dto.billing.CreatePaymentInput;
+import com.hotelcollection.hotel.util.PaymentTerms;
 import com.hotelcollection.hotel.dto.reservation.CreateResult;
 import com.hotelcollection.hotel.dto.reservation.GuestInput;
 import com.hotelcollection.hotel.dto.reservation.CreateReservationInput;
@@ -30,6 +32,7 @@ import com.hotelcollection.hotel.dto.reservation.RoomInput;
 import com.hotelcollection.hotel.exception.DomainException;
 import com.hotelcollection.hotel.exception.ErrorCode;
 import com.hotelcollection.hotel.repository.AvailabilityRepository;
+import com.hotelcollection.hotel.repository.RatePlanRepository;
 import com.hotelcollection.hotel.repository.ReservationRepository;
 import com.hotelcollection.hotel.security.CurrentUser;
 import com.hotelcollection.hotel.service.BookingService;
@@ -56,6 +59,8 @@ class PaymentSimulationIntegrationTest {
 	ReservationRepository reservationRepository;
 	@Autowired
 	AvailabilityRepository availabilityRepository;
+	@Autowired
+	RatePlanRepository ratePlanRepository;
 	@Autowired
 	TestFixtures fixtures;
 
@@ -271,6 +276,62 @@ class PaymentSimulationIntegrationTest {
 		List<UUID> candidates = bookingService.findExpiredHoldIds();
 		assertThat(candidates).contains(expiredHold.reservation().getId());
 		assertThat(candidates).doesNotContain(freshHold.reservation().getId());
+	}
+
+	// ------------------------------------------------------- pay at the property
+
+	/**
+	 * A pay-at-property booking has no payment to wait for, so it is confirmed
+	 * outright and carries no hold. The hold is what the expiry job keys on
+	 * ({@code status = pending AND holdExpiresAt < now}); giving one of these
+	 * bookings a hold would auto-cancel it minutes after the guest made it.
+	 */
+	@Test
+	void payAtPropertyBookingIsConfirmedWithoutAHoldAndSurvivesTheExpiryJob() {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		payAtProperty(fx);
+
+		CreateResult created = bookingService.create(
+				input(fx, "pap-" + System.nanoTime(), LocalDate.now().plusDays(41)));
+		Reservation reservation = created.reservation();
+
+		assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.confirmed);
+		assertThat(reservation.getHoldExpiresAt()).isNull();
+		assertThat(reservation.getPaymentStatus()).isEqualTo(PaymentStatus.pending);
+
+		// The reaper must not see it, however long it sits there.
+		assertThat(bookingService.findExpiredHoldIds()).doesNotContain(reservation.getId());
+		bookingService.expireHold(reservation.getId());
+		assertThat(bookingService.getById(reservation.getId()).getStatus())
+				.isEqualTo(ReservationStatus.confirmed);
+	}
+
+	@Test
+	void payAtPropertyQuoteTakesNothingAtBooking() {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		payAtProperty(fx);
+
+		CreateResult created = bookingService.create(
+				input(fx, "pap-quote-" + System.nanoTime(), LocalDate.now().plusDays(42)));
+		// The stay still has a total — it is simply collected at the property.
+		assertThat(created.reservation().getTotalAmount()).isPositive();
+	}
+
+	@Test
+	void prepaidBookingStillWaitsOnAHold() {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		CreateResult created = bookingService.create(
+				input(fx, "prepaid-" + System.nanoTime(), LocalDate.now().plusDays(43)));
+
+		assertThat(created.reservation().getStatus()).isEqualTo(ReservationStatus.pending);
+		assertThat(created.reservation().getHoldExpiresAt()).isNotNull();
+	}
+
+	/** Switches the fixture's plan to settle at the property. */
+	private void payAtProperty(TestFixtures.HotelFixture fx) {
+		RatePlan plan = ratePlanRepository.findById(fx.ratePlan().getId()).orElseThrow();
+		plan.setPaymentTiming(PaymentTerms.PAY_AT_PROPERTY);
+		ratePlanRepository.save(plan);
 	}
 
 	// ---------------------------------------------------------------- admin manual trigger

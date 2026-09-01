@@ -28,6 +28,7 @@ import com.hotelcollection.hotel.service.CatalogQueryService;
 import com.hotelcollection.hotel.entity.Extra;
 import com.hotelcollection.hotel.entity.ExtraPricingModel;
 import com.hotelcollection.hotel.util.MoneyUtil;
+import com.hotelcollection.hotel.util.PaymentTerms;
 import com.hotelcollection.hotel.entity.Promotion;
 import com.hotelcollection.hotel.entity.RatePlan;
 import com.hotelcollection.hotel.entity.RatePlanPrice;
@@ -185,8 +186,17 @@ public class PricingServiceImpl implements PricingService {
 
 		BigDecimal total = taxedBase.add(tax).add(fee).add(extrasTotal);
 		BigDecimal originalTotal = subtotal.add(tax).add(fee).add(extrasTotal);
+
+		/* Settlement terms come from the booked rate plans, never the client.
+		   A mixed cart is rejected inside timingOf rather than resolved here. */
+		List<RatePlan> bookedPlans = ratePlanRepository.findActiveByIds(
+				lines.stream().map(QuoteLine::ratePlanId).distinct().toList());
+		String paymentTiming = PaymentTerms.timingOf(bookedPlans);
+		BigDecimal amountDueNow = PaymentTerms.amountDueNow(paymentTiming, total,
+				bookedPlans.get(0).getDepositPercentage());
+
 		return new Quote(in.currencyCode(), subtotal, discount, tax, fee, total, originalTotal, valid,
-				lines, extras, charges, promoMessage);
+				lines, extras, charges, promoMessage, paymentTiming, amountDueNow);
 	}
 
 	/**

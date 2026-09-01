@@ -89,6 +89,12 @@ type Quote {
 	originalTotal: Float!
 	valid: Boolean!
 	message: String
+	# Settlement terms of the booked rate plan, and the share of totalAmount
+	# actually charged at booking — zero for pay_at_property, the whole total
+	# for prepay_full, a percentage for prepay_deposit. Clients must show what
+	# is taken now from this, never recompute it.
+	paymentTiming: String!
+	amountDueNow: Float!
 	lines: [QuoteLine!]!
 	extras: [QuoteExtraLine!]!
 	# Itemized tax/fee lines as priced by the backend (tax_fee_types): each

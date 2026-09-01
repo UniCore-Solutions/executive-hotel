@@ -3,7 +3,7 @@
     graphqlClient.ts) — the display currency the guest picks never reaches
     this call; useCurrency().fmt() converts the MAD result for display only. */
 import { QuoteDocument, type QuoteQuery } from '@/graphql/generated/graphql';
-import type { Extra, PriceBreakdown, QuoteExtraLine } from '@/types';
+import type { Extra, PaymentTiming, PriceBreakdown, QuoteExtraLine } from '@/types';
 import { gqlRequest, TRANSACTION_CURRENCY } from './graphqlClient';
 import { toISODate } from '@/lib/dates';
 
@@ -43,6 +43,12 @@ export function mapQuoteExtraLines(
 }
 
 /** Call the backend quote engine and map the result to a PriceBreakdown. */
+/** Narrows the backend's payment_timing string; anything unexpected reads as
+    "pay now", the safe assumption (see catalog.ts for the same rule). */
+function normalizePaymentTiming(value: string | null | undefined): PaymentTiming {
+  return value === 'pay_at_property' || value === 'prepay_deposit' ? value : 'prepay_full';
+}
+
 export async function getQuote(params: QuoteParams): Promise<{
   quote: PriceBreakdown;
   raw: BackendQuote;
@@ -93,6 +99,10 @@ export async function getQuote(params: QuoteParams): Promise<{
     originalTotal: raw.originalTotal,
     currency: raw.currencyCode,
     charges,
+    // Settlement terms are the backend's call; the client shows what it is
+    // told is due rather than deriving money from the rate plan itself.
+    paymentTiming: normalizePaymentTiming(raw.paymentTiming),
+    amountDueNow: raw.amountDueNow,
   };
 
   return { quote: breakdown, raw };

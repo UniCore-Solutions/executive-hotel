@@ -125,6 +125,11 @@ export interface PriceBreakdown {
   /** Itemized extras (name/quantity/unit price) — undefined where a caller
       hasn't wired it through yet; QuoteTable falls back to one aggregate line. */
   extras?: QuoteExtraLine[];
+  /** Settlement terms of the booked rate, from the server quote. */
+  paymentTiming?: PaymentTiming;
+  /** What is actually charged at booking — 0 for a pay-at-property rate.
+      Server-computed; never derived client-side. */
+  amountDueNow?: number;
   /** Server-derived figures when pricing came from the backend quote engine.
       `taxes` is the aggregate for display; these preserve the split. */
   taxAmount?: number;

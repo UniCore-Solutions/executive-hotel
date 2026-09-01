@@ -40,6 +40,7 @@ fragment ReservationSummary on Reservation {
     ratePlanName
     isRefundable
     freeCancellationUntil
+    paymentTiming
   }
   extras {
     id
