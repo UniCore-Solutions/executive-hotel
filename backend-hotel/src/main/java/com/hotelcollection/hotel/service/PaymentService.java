@@ -26,6 +26,19 @@ public interface PaymentService {
 	BigDecimal paidAmount(UUID reservationId);
 
 	/**
+	 * Simulated refund (no real gateway, same posture as the mock capture
+	 * reference {@link #capture} synthesizes): transitions the reservation's
+	 * captured payment(s) to {@code refunded} (amount &gt;= everything
+	 * captured) or {@code partially_refunded} (less — e.g. a cancellation
+	 * penalty was withheld), records a {@code refund} payment transaction,
+	 * and updates the reservation's {@code paymentStatus} to match. A no-op
+	 * when {@code amount} is zero/blank or nothing was ever captured — the
+	 * caller (cancellation) is expected to have already capped the amount at
+	 * what {@link #paidAmount} reports, this is a defensive second check.
+	 */
+	void refund(UUID reservationId, BigDecimal amount);
+
+	/**
 	 * Applies a simulated payment-provider outcome to one payment. Idempotent:
 	 * an event for an already-resolved payment (captured or failed) is a
 	 * no-op that returns the current row rather than reprocessing it, and a

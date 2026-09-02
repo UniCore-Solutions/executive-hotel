@@ -47,7 +47,9 @@ class DatabaseIntegrityIntegrationTest {
 	void flywayAppliedAllMigrations() {
 		Integer applied = jdbc.queryForObject(
 				"SELECT count(*) FROM flyway_schema_history WHERE success = TRUE", Integer.class);
-		assertThat(applied).isEqualTo(31);
+		// V32 (remove_western_sahara_country) landed after this literal was
+		// last updated — pre-existing drift, unrelated to this change.
+		assertThat(applied).isEqualTo(32);
 	}
 
 	@Test

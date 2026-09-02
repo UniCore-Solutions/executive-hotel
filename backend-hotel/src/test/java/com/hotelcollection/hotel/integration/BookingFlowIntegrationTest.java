@@ -161,8 +161,12 @@ class BookingFlowIntegrationTest {
 		assertThat(cancelled.getStatus()).isEqualTo(ReservationStatus.cancelled);
 		assertThat(cancelled.getCancellation()).isNotNull();
 		assertThat(cancelled.getCancellation().getPenaltyAmount()).isZero();
-		assertThat(cancelled.getCancellation().getRefundAmount())
-				.isEqualByComparingTo(new BigDecimal("3360.00"));
+		// This reservation was never paid — still a payment hold when
+		// cancelled — so the refund is correctly 0, not the reservation
+		// total. (Was previously the total minus penalty regardless of what
+		// was actually collected — a fabricated refund for money never
+		// taken; see the dedicated refund tests below.)
+		assertThat(cancelled.getCancellation().getRefundAmount()).isZero();
 		rows = availabilityRepository.findByRoomTypeIdsAndRange(List.of(fx.roomType().getId()),
 				reservation.getCheckInDate(), reservation.getCheckOutDate().minusDays(1));
 		assertThat(rows).allMatch(r -> r.getRoomsSold() == 2);
@@ -208,6 +212,80 @@ class BookingFlowIntegrationTest {
 				.isInstanceOf(DomainException.class)
 				.extracting(ex -> ((DomainException) ex).getCode())
 				.isEqualTo(ErrorCode.VALIDATION);
+	}
+
+	// ---------------------------------------------------------------- refund on cancellation
+
+	@Test
+	void cancellingAPaidReservationWithNoPenaltyRefundsInFullAndActuallyRefunds() {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		LocalDate checkIn = LocalDate.now().plusDays(40); // comfortably inside the free-cancellation window
+		CreateResult created = bookingService.create(input(fx, "refund-full-" + System.nanoTime(), checkIn, 2));
+		BigDecimal total = created.reservation().getTotalAmount();
+
+		var payment = asStaff(() -> paymentService.createPayment(new CreatePaymentInput(
+				created.reservation().getId(), total, TestFixtures.CURRENCY, "mock",
+				"refund-full-pay-" + System.nanoTime(), null)));
+		asStaff(() -> paymentService.capture(new CapturePaymentInput(payment.getId(), null, null)));
+
+		Reservation cancelled = bookingService.cancel(new CancelReservationInput(
+				created.reservation().getReference(), GUEST_EMAIL, null, null));
+
+		assertThat(cancelled.getCancellation().getPenaltyAmount()).isZero();
+		assertThat(cancelled.getCancellation().getRefundAmount()).isEqualByComparingTo(total);
+
+		// Not just a computed number: the payment and the reservation's
+		// paymentStatus actually transitioned.
+		Payment refunded = paymentService.getById(payment.getId(), GUEST_EMAIL);
+		assertThat(refunded.getStatus()).isEqualTo(PaymentStatus.refunded);
+		Reservation reloaded = bookingService.getByReferenceAndEmail(
+				created.reservation().getReference(), GUEST_EMAIL);
+		assertThat(reloaded.getPaymentStatus()).isEqualTo(PaymentStatus.refunded);
+	}
+
+	@Test
+	void cancellingAPaidReservationWithAPenaltyRefundsOnlyTheRemainder() {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		LocalDate soon = LocalDate.now().plusDays(2); // 1-night stay starting tomorrow -> first-night penalty
+		CreateResult created = bookingService.create(input(fx, "refund-partial-" + System.nanoTime(), soon, 1));
+		BigDecimal total = created.reservation().getTotalAmount();
+
+		var payment = asStaff(() -> paymentService.createPayment(new CreatePaymentInput(
+				created.reservation().getId(), total, TestFixtures.CURRENCY, "mock",
+				"refund-partial-pay-" + System.nanoTime(), null)));
+		asStaff(() -> paymentService.capture(new CapturePaymentInput(payment.getId(), null, null)));
+
+		Reservation cancelled = bookingService.cancel(new CancelReservationInput(
+				created.reservation().getReference(), GUEST_EMAIL, null, null));
+
+		BigDecimal penalty = cancelled.getCancellation().getPenaltyAmount();
+		assertThat(penalty).isGreaterThan(BigDecimal.ZERO);
+		BigDecimal expectedRefund = total.subtract(penalty);
+		assertThat(cancelled.getCancellation().getRefundAmount()).isEqualByComparingTo(expectedRefund);
+
+		Payment refunded = paymentService.getById(payment.getId(), GUEST_EMAIL);
+		assertThat(refunded.getStatus()).isEqualTo(PaymentStatus.partially_refunded);
+		Reservation reloaded = bookingService.getByReferenceAndEmail(
+				created.reservation().getReference(), GUEST_EMAIL);
+		assertThat(reloaded.getPaymentStatus()).isEqualTo(PaymentStatus.partially_refunded);
+	}
+
+	@Test
+	void cancellingAnUnchargedReservationNeverFabricatesARefund() {
+		// Pay-at-property (or simply cancelled before ever paying): no payment
+		// row exists at all. This is the exact case the bug produced a
+		// nonzero "refund" for money that was never collected.
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		LocalDate checkIn = LocalDate.now().plusDays(41);
+		CreateResult created = bookingService.create(input(fx, "refund-none-" + System.nanoTime(), checkIn, 2));
+		assertThat(paymentService.paidAmount(created.reservation().getId())).isZero();
+
+		Reservation cancelled = bookingService.cancel(new CancelReservationInput(
+				created.reservation().getReference(), GUEST_EMAIL, null, null));
+
+		assertThat(cancelled.getCancellation().getRefundAmount()).isZero();
+		// paymentStatus is left exactly as it was (pending) — never fabricated to refunded.
+		assertThat(cancelled.getPaymentStatus()).isEqualTo(PaymentStatus.pending);
 	}
 
 	// ---------------------------------------------------------------- Task 3: payment idempotency

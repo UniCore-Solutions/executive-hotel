@@ -449,6 +449,65 @@ public class PaymentServiceImpl implements PaymentService {
 	}
 
 	/**
+	 * Simulated refund — see {@link PaymentService#refund}. A single
+	 * synthesized {@code REFUND-XXXXXXXX} reference is used for every payment
+	 * touched by one cancellation (mirroring the {@code MOCK-XXXXXXXX}
+	 * capture reference's posture: honest about being simulated, not a real
+	 * gateway operation). In the common case there is exactly one captured
+	 * payment per reservation (at most one may ever be {@code pending} at a
+	 * time — see {@link #createPayment}'s V23 invariant); the rare case of
+	 * more than one captured payment (e.g. a manually-recorded offline
+	 * top-up) applies the same full-vs-partial outcome to all of them rather
+	 * than attempting to split the refund unit-by-unit across them, which
+	 * this simulated gateway has no real basis to do correctly.
+	 */
+	@Override
+	@Transactional
+	public void refund(UUID reservationId, BigDecimal amount) {
+		if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+			return;
+		}
+		List<Payment> captured = paymentRepository.findByReservationId(reservationId).stream()
+				.filter(p -> p.getStatus() == PaymentStatus.captured)
+				.toList();
+		if (captured.isEmpty()) {
+			// Nothing was ever captured (e.g. a pay-at-property cancellation)
+			// — the caller should already have capped amount to 0 in that
+			// case via paidAmount(), this is the defensive fallback.
+			return;
+		}
+		BigDecimal totalCaptured = captured.stream().map(Payment::getAmount)
+				.reduce(BigDecimal.ZERO, BigDecimal::add);
+		boolean full = amount.compareTo(totalCaptured) >= 0;
+		PaymentStatus newStatus = full ? PaymentStatus.refunded : PaymentStatus.partially_refunded;
+		String reference = "REFUND-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+		Instant now = Instant.now();
+		for (Payment payment : captured) {
+			payment.setStatus(newStatus);
+			payment.setUpdatedAt(now);
+			PaymentTransaction transaction = new PaymentTransaction();
+			transaction.setPaymentId(payment.getId());
+			transaction.setTransactionType("refund");
+			transaction.setAmount(full ? payment.getAmount() : amount);
+			transaction.setStatus("succeeded");
+			transaction.setProviderTransactionId(reference);
+			transaction.setCreatedAt(now);
+			payment.getTransactions().add(transaction);
+			paymentRepository.save(payment);
+		}
+		Reservation reservation = booking.markPaymentStatus(reservationId, newStatus);
+
+		eventPublisher.publish("payment.refunded", 1, reservation.getHotelId(),
+				"payment:" + captured.get(0).getId(),
+				Map.of(
+						"reservationReference", reservation.getReference(),
+						"refundAmount", amount,
+						"currencyCode", reservation.getCurrencyCode(),
+						"paymentStatus", newStatus.name()),
+				null);
+	}
+
+	/**
 	 * Owner-or-staff access check (IDOR guard), plus an accountless-reservation
 	 * escape hatch: guest checkout is a supported self-service product flow
 	 * (createReservation/cancelReservation already work with no account), and

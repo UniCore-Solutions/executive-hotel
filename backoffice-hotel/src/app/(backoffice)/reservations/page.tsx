@@ -50,6 +50,31 @@ const CANCEL_REASONS = ['guest_request', 'payment_failed', 'no_show', 'staff_cor
 
 type ReservationItem = AdminReservationsQuery['adminReservations']['items'][number];
 
+/**
+ * Clarifies what "Refund X" actually means given the reservation's real
+ * payment status — a nonzero refund figure alone doesn't say money has
+ * moved (e.g. a pay-at-property booking cancelled before any charge). Same
+ * wording as admin-hotel's ReservationDetailSheet and the guest-facing
+ * cancellation view in frontend-hotel, so all three consoles/apps tell a
+ * consistent story about the same reservation.
+ */
+function refundStatusNote(r: ReservationItem): string {
+  const status = String(r.paymentStatus).toLowerCase();
+  if (status === 'pending' || status === 'failed') {
+    return 'No payment was ever collected — nothing to refund.';
+  }
+  if (status === 'refunded') {
+    return 'Refunded in full.';
+  }
+  if (status === 'partially_refunded') {
+    return 'Partially refunded — a cancellation fee applied.';
+  }
+  if (r.cancellation && r.cancellation.refundAmount <= 0) {
+    return 'Non-refundable rate — no refund applies.';
+  }
+  return 'Refund not yet processed.';
+}
+
 export default function ReservationsPage() {
   const { hotels, activeHotelId } = useHotelScope();
   const [status, setStatus] = useState<ReservationStatusType | 'ALL'>('ALL');
@@ -312,6 +337,7 @@ function ReservationDetail({
                 Refund {formatMoney(r.cancellation.refundAmount, r.currencyCode)} · penalty{' '}
                 {formatMoney(r.cancellation.penaltyAmount, r.currencyCode)}
               </p>
+              <p className="mt-1 text-xs text-muted-foreground">{refundStatusNote(r)}</p>
             </div>
           ) : null}
 

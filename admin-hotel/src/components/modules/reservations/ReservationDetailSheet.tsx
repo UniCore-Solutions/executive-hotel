@@ -23,6 +23,30 @@ type Reservation = AdminReservationsQuery['adminReservations']['items'][number];
 
 const CANCELLABLE = new Set(['pending', 'confirmed', 'modified']);
 
+/**
+ * Clarifies what the penalty/refund figures actually mean for this
+ * reservation's payment status — a nonzero "Refund" amount alone doesn't say
+ * whether that money has actually moved. Mirrors the wording used in the
+ * guest-facing cancellation view (frontend-hotel's ReservationFlow) so a
+ * guest and a staff member reading the same reservation see the same story.
+ */
+function refundStatusNote(reservation: Reservation): string {
+  const status = reservation.paymentStatus.toLowerCase();
+  if (status === 'pending' || status === 'failed') {
+    return 'No payment was ever collected — nothing to refund.';
+  }
+  if (status === 'refunded') {
+    return 'Refunded in full.';
+  }
+  if (status === 'partially_refunded') {
+    return 'Partially refunded — a cancellation fee applied.';
+  }
+  if (reservation.cancellation && reservation.cancellation.refundAmount <= 0) {
+    return 'Non-refundable rate — no refund applies.';
+  }
+  return 'Refund not yet processed.';
+}
+
 export function ReservationDetailSheet({
   reservation,
   open,
@@ -190,6 +214,10 @@ export function ReservationDetailSheet({
                       <Money amount={reservation.cancellation.refundAmount} />
                     </div>
                   </div>
+                  <p className="mt-2 flex items-center gap-1.5 text-xs">
+                    <StatusBadge domain="payment" value={reservation.paymentStatus} />
+                    <span className="text-muted-foreground">{refundStatusNote(reservation)}</span>
+                  </p>
                   <p className="mt-2 text-[11px] text-muted-foreground">
                     Cancelled {formatDateTime(reservation.cancellation.cancelledAt)}
                   </p>

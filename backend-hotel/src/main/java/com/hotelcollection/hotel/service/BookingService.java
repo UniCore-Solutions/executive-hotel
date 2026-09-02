@@ -3,6 +3,7 @@ package com.hotelcollection.hotel.service;
 import java.util.List;
 import java.util.UUID;
 
+import com.hotelcollection.hotel.entity.PaymentStatus;
 import com.hotelcollection.hotel.entity.Reservation;
 import com.hotelcollection.hotel.entity.ReservationStatus;
 import com.hotelcollection.hotel.dto.PageInput;
@@ -60,6 +61,15 @@ public interface BookingService {
 	 * promotes it to {@code confirmed} in the same call.
 	 */
 	Reservation markFullyPaid(UUID reservationId);
+
+	/**
+	 * Updates only the reservation's {@code paymentStatus} — called by the
+	 * billing service once it has applied a refund to the underlying
+	 * payment(s) (see {@code PaymentService#refund}). Never touches
+	 * {@code reservation.status}: cancellation itself is what moves that to
+	 * {@code cancelled}, independently of whether a refund exists.
+	 */
+	Reservation markPaymentStatus(UUID reservationId, PaymentStatus paymentStatus);
 
 	/** Candidate ids for the hold-expiry job (see {@link #expireHold}). */
 	List<UUID> findExpiredHoldIds();

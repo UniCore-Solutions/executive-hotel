@@ -94,6 +94,23 @@ public class BookingServiceImpl implements BookingService {
 	@org.springframework.beans.factory.annotation.Value("${app.reservations.hold-minutes:15}")
 	private long holdMinutes;
 
+	// Same reason (11-param cap), plus InvoiceService depends back on
+	// BookingService (constructor) — @Lazy on this side breaks that cycle at
+	// wiring time rather than needing it on both.
+	@org.springframework.beans.factory.annotation.Autowired
+	@Lazy
+	private com.hotelcollection.hotel.service.InvoiceService invoiceService;
+
+	@org.springframework.beans.factory.annotation.Autowired
+	@Lazy
+	private com.hotelcollection.hotel.service.NotificationService notificationService;
+
+	// Same reason again — PaymentServiceImpl already constructor-injects
+	// BookingService, so this is a second circular pair broken the same way.
+	@org.springframework.beans.factory.annotation.Autowired
+	@Lazy
+	private com.hotelcollection.hotel.service.PaymentService paymentService;
+
 	public BookingServiceImpl(ReservationRepository reservationRepository,
 			ReservationCancellationRepository cancellationRepository,
 			GuestRepository guestRepository,
@@ -172,6 +189,12 @@ public class BookingServiceImpl implements BookingService {
 				reservation.getReference(), in.hotelId(), lines.size(), quote.totalAmount(),
 				in.currencyCode(), quote.amountDueNow(), quote.paymentTiming(),
 				reservation.getStatus(), reservation.getHoldExpiresAt());
+		// Pay-at-property: confirmed immediately, nothing to wait for. A
+		// prepaid booking is still 'pending' here — its confirmation fires
+		// later, from markFullyPaid, once payment actually captures.
+		if (reservation.getStatus() == ReservationStatus.confirmed) {
+			onReservationConfirmed(reservation);
+		}
 		return new CreateResult(reservation, true);
 	}
 
@@ -530,7 +553,43 @@ public class BookingServiceImpl implements BookingService {
 					Map.of("reference", reservation.getReference(), "hotelId", reservation.getHotelId(),
 							"totalAmount", reservation.getTotalAmount()),
 					null);
+			onReservationConfirmed(reservation);
 		}
+		reservation.setUpdatedAt(Instant.now());
+		return reservationRepository.save(reservation);
+	}
+
+	/**
+	 * Runs once, the moment a reservation first becomes {@code confirmed} —
+	 * either immediately (pay-at-property, from {@link #create}) or on
+	 * payment capture (from here). Auto-issues the invoice (previously
+	 * on-demand only and never actually triggered by any real flow — see
+	 * docs audit §F) and sends the guest a confirmation email. Neither
+	 * failure is allowed to roll back the reservation/payment transaction
+	 * that got us here: both services already swallow their own errors
+	 * internally and log, but this call is defended too in case a future
+	 * change there forgets to.
+	 */
+	private void onReservationConfirmed(Reservation reservation) {
+		try {
+			invoiceService.issueInvoiceForConfirmedReservation(reservation.getId());
+		} catch (Exception ex) {
+			log.warn("failed to auto-issue invoice for reservation {}", reservation.getReference(), ex);
+		}
+		try {
+			notificationService.notifyBookingConfirmed(reservation);
+		} catch (Exception ex) {
+			log.warn("failed to send booking-confirmed notification for reservation {}",
+					reservation.getReference(), ex);
+		}
+	}
+
+	@Override
+	@Transactional
+	public Reservation markPaymentStatus(UUID reservationId, PaymentStatus paymentStatus) {
+		Reservation reservation = reservationRepository.findById(reservationId)
+				.orElseThrow(() -> DomainException.notFound("reservation not found"));
+		reservation.setPaymentStatus(paymentStatus);
 		reservation.setUpdatedAt(Instant.now());
 		return reservationRepository.save(reservation);
 	}
@@ -629,7 +688,15 @@ public class BookingServiceImpl implements BookingService {
 		cancellation.setCancelledByUserId(actor == null ? null : actor.userId());
 		cancellation.setRefundable(refundable);
 		cancellation.setPenaltyAmount(penalty);
-		cancellation.setRefundAmount(reservation.getTotalAmount().subtract(penalty).max(MoneyUtil.ZERO));
+		// Capped at what was actually collected: an uncapped
+		// total-minus-penalty figure overstated the refund for any
+		// reservation not yet fully paid, and fabricated a nonzero "refund"
+		// for a pay-at-property booking that was never charged a single unit
+		// of its currency. paidAmount() sums only captured payments.
+		BigDecimal paidAmount = paymentService.paidAmount(reservation.getId());
+		BigDecimal refundAmount = reservation.getTotalAmount().subtract(penalty).max(MoneyUtil.ZERO)
+				.min(paidAmount);
+		cancellation.setRefundAmount(refundAmount);
 		cancellation.setCancelledAt(Instant.now());
 		try {
 			// saveAndFlush surfaces the unique (reservation_id) violation NOW so
@@ -669,6 +736,21 @@ public class BookingServiceImpl implements BookingService {
 						"refundAmount", cancellation.getRefundAmount(),
 						"currencyCode", reservation.getCurrencyCode()),
 				actor == null ? null : "user:" + actor.userId());
+
+		// Both effects are secondary to the cancellation itself succeeding —
+		// neither may roll back a cancellation that has already committed
+		// its status change and released inventory.
+		try {
+			paymentService.refund(reservation.getId(), cancellation.getRefundAmount());
+		} catch (Exception ex) {
+			log.warn("failed to process refund for reservation {}", reservation.getReference(), ex);
+		}
+		try {
+			notificationService.notifyBookingCancelled(reservation, cancellation);
+		} catch (Exception ex) {
+			log.warn("failed to send booking-cancelled notification for reservation {}",
+					reservation.getReference(), ex);
+		}
 		return reservation;
 	}
 

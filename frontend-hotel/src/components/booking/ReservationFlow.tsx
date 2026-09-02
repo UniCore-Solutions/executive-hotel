@@ -66,6 +66,46 @@ type CancellationEstimate =
   | { status: 'free'; freeUntil?: string }
   | { status: 'fee_may_apply' };
 
+/**
+ * Post-cancellation summary — what actually happened to the guest's money,
+ * not an estimate. Reads `paymentStatus` (not just `refundAmount`) because a
+ * nonzero `refundAmount` alone doesn't mean anything was ever returned: a
+ * pay-at-property booking that's cancelled before any charge sits at
+ * `paymentStatus: 'pending'` with nothing to refund, and this must never be
+ * shown as if money is coming back. Mirrors the backend's own distinction —
+ * see `PaymentStatus.refunded`/`partially_refunded` on the backend.
+ */
+function cancellationSummary(
+  res: BackendReservation,
+  currency: CurrencyCode
+): { headline: string; detail?: string } {
+  const c = res.cancellation;
+  if (!c) {
+    return { headline: 'This reservation was already cancelled.' };
+  }
+  if (res.paymentStatus === 'pending' || res.paymentStatus === 'failed') {
+    return {
+      headline: 'Your booking hold has been released.',
+      detail: 'No payment was ever collected for this reservation, so there is nothing to refund.',
+    };
+  }
+  if (res.paymentStatus === 'refunded') {
+    return { headline: `Refunded in full: ${fmtPrice(c.refundAmount, currency)}` };
+  }
+  if (res.paymentStatus === 'partially_refunded') {
+    return {
+      headline: `Partially refunded: ${fmtPrice(c.refundAmount, currency)}`,
+      detail: `A ${fmtPrice(c.penaltyAmount, currency)} cancellation fee applied under this rate's policy.`,
+    };
+  }
+  // Captured but not (yet) reflected as refunded/partially_refunded — e.g. a
+  // fully non-refundable rate, where the penalty consumes the whole amount.
+  if (c.refundAmount <= 0) {
+    return { headline: 'This rate was non-refundable — no refund applies.' };
+  }
+  return { headline: `Refund pending: ${fmtPrice(c.refundAmount, currency)}` };
+}
+
 function deriveCancellation(br: BackendReservation): CancellationEstimate {
   const c = br.cancellation;
   if (c) {
@@ -249,6 +289,7 @@ export default function ReservationFlow() {
   const cancelled = res.status === 'cancelled';
   const est = deriveCancellation(res);
   const price = derivePrice(res);
+  const cancelSummary = cancelled ? cancellationSummary(res, currency) : null;
 
   const statusText = STATUS_META[res.status] || STATUS_META.confirmed!;
   const statusCls =
@@ -426,8 +467,8 @@ export default function ReservationFlow() {
               Need to cancel?
             </h2>
             <p className="mt-2 text-sm text-white/70" id="cancel-policy-line">
-              {cancelled
-                ? 'This reservation was already cancelled.'
+              {cancelSummary
+                ? cancelSummary.headline
                 : est.status === 'free'
                   ? est.freeUntil
                     ? `Free cancellation until ${fmt(fromISODate(est.freeUntil))}.`
@@ -437,13 +478,15 @@ export default function ReservationFlow() {
                     : 'A cancellation fee may apply.'}
             </p>
             <p className="mt-1 text-xs text-white/50" id="cancel-due-line">
-              {cancelled || res.status !== 'confirmed'
-                ? ''
-                : est.status === 'free'
-                  ? 'No fee applies today.'
-                  : est.status === 'non_refundable'
-                    ? `Cancelling today would charge ${fmtPrice(est.fee, currency)} (full stay).`
-                    : 'The exact amount is shown before you confirm.'}
+              {cancelSummary
+                ? (cancelSummary.detail ?? '')
+                : res.status !== 'confirmed'
+                  ? ''
+                  : est.status === 'free'
+                    ? 'No fee applies today.'
+                    : est.status === 'non_refundable'
+                      ? `Cancelling today would charge ${fmtPrice(est.fee, currency)} (full stay).`
+                      : 'The exact amount is shown before you confirm.'}
             </p>
             <Button
               type="button"
