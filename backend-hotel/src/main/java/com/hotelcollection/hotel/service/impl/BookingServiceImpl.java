@@ -752,9 +752,8 @@ public class BookingServiceImpl implements BookingService {
 					reservation.getReference(), ex);
 		}
 		// Documents the adjustment against the reservation's invoice, if it
-		// had one — a no-op when it never confirmed (KNOWN_ISSUES.md §B5,
-		// built 2026-09-02). Secondary to the cancellation itself, same as
-		// the refund and notification above.
+		// had one — a no-op when it never confirmed. Secondary to the
+		// cancellation itself, same as the refund and notification above.
 		try {
 			invoiceService.issueCreditNoteForCancellation(reservation.getId(), cancellation.getId(),
 					penalty, cancellation.getRefundAmount());
