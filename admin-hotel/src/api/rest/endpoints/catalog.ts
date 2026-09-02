@@ -1,6 +1,33 @@
 import { restClient } from '../client';
 import type { Media } from '@/graphql/generated/graphql';
 
+export interface HotelInput {
+  name?: string;
+  brand?: string;
+  description?: string;
+  hotelType?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  countryCode?: string;
+  latitude?: number;
+  longitude?: number;
+  phone?: string;
+  email?: string;
+  starRating?: number;
+  checkInTime?: string;
+  checkOutTime?: string;
+  defaultCurrency?: string;
+  status?: string;
+}
+
+export interface HotelPolicyInput {
+  name: string;
+  value: string;
+  icon?: string;
+  sortOrder?: number;
+}
+
 export interface RoomTypeInput {
   name?: string;
   description?: string;
@@ -27,6 +54,50 @@ export interface MediaInput {
   category?: string;
   isPrimary?: boolean;
   sortOrder?: number;
+}
+
+// ---------------------------------------------------------------- hotel settings
+
+export async function updateHotel(id: string, input: HotelInput): Promise<unknown> {
+  const { data } = await restClient.put(`/admin/hotels/${id}`, input);
+  return data;
+}
+
+export async function setHotelAmenities(hotelId: string, amenityIds: string[]): Promise<unknown> {
+  const { data } = await restClient.put(`/admin/hotels/${hotelId}/amenities`, amenityIds);
+  return data;
+}
+
+export async function setHotelMedia(hotelId: string, media: MediaInput[]): Promise<unknown> {
+  const { data } = await restClient.put(`/admin/hotels/${hotelId}/media`, media);
+  return data;
+}
+
+export async function setHotelPolicies(hotelId: string, policies: HotelPolicyInput[]): Promise<unknown> {
+  const { data } = await restClient.put(`/admin/hotels/${hotelId}/policies`, policies);
+  return data;
+}
+
+/**
+ * Hotel-level media upload, unlike `uploadRoomTypeImage` below, needs no
+ * workaround: `MediaStorageServiceImpl.Owner.of` accepts ownerType "hotel"
+ * directly (only "room_type" is rejected — see J-6), and the upload call
+ * already sets sortOrder/isPrimary/hotelId correctly on its own. So this is
+ * just the upload — no follow-up replace-list call needed to attach it.
+ */
+export async function uploadHotelImage(
+  hotelId: string,
+  file: File,
+  meta: { altText?: string; isPrimary?: boolean },
+): Promise<Media> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('ownerType', 'hotel');
+  formData.append('ownerId', hotelId);
+  if (meta.altText) formData.append('altText', meta.altText);
+  formData.append('isPrimary', String(meta.isPrimary ?? false));
+  const { data } = await restClient.post('/media/upload', formData);
+  return data as Media;
 }
 
 export async function createRoomType(hotelId: string, input: RoomTypeInput): Promise<{ id: string }> {

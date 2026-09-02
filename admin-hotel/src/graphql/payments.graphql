@@ -1,0 +1,17 @@
+query AdminPayments($hotelId: ID!, $page: PageInput) {
+  adminPayments(hotelId: $hotelId, page: $page) {
+    total
+    page
+    size
+    items {
+      id
+      reservationId
+      amount
+      currencyCode
+      status
+      provider
+      providerReference
+      createdAt
+    }
+  }
+}

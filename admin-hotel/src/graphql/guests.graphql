@@ -1,0 +1,18 @@
+query AdminGuests($hotelId: ID!, $query: String, $page: PageInput) {
+  adminGuests(hotelId: $hotelId, query: $query, page: $page) {
+    total
+    page
+    size
+    items {
+      id
+      firstName
+      lastName
+      email
+      phone
+      countryCode
+      reservationsCount
+      totalSpent
+      lastStayDate
+    }
+  }
+}

@@ -23,7 +23,21 @@ export default function RoomTypeEditPage({ params }: { params: Promise<{ hotelId
   const { hotelId, id } = use(params);
   const { data, loading, error, refetch } = useQuery(AdminHotelInventoryDocument, { variables: { hotelId } });
 
-  const roomType = data?.adminHotel?.roomTypes.find((rt) => rt.id === id);
+  const liveRoomType = data?.adminHotel?.roomTypes.find((rt) => rt.id === id);
+  // Buffered against `adminHotel` transiently disappearing from the cache
+  // during a background refetch (adding/editing a room, or this room
+  // type's own details/amenities/media, all evict `adminHotel` —
+  // api/invalidation.ts). Gating the Tabs below on live `data` alone
+  // unmounted them on every such write, throwing an open Rooms/Amenities/
+  // Gallery tab back to Details on every save (confirmed with Playwright:
+  // adding a room here reset the active tab every time). "Adjusting state
+  // during render", not an effect: https://react.dev/learn/you-might-not-need-an-effect
+  const [roomType, setRoomType] = useState(liveRoomType);
+  const [prevLiveRoomType, setPrevLiveRoomType] = useState(liveRoomType);
+  if (liveRoomType !== prevLiveRoomType) {
+    setPrevLiveRoomType(liveRoomType);
+    if (liveRoomType) setRoomType(liveRoomType);
+  }
 
   const [editingRoom, setEditingRoom] = useState<RoomRow | null | undefined>(undefined);
   const [roomSheetOpen, setRoomSheetOpen] = useState(false);
@@ -59,12 +73,12 @@ export default function RoomTypeEditPage({ params }: { params: Promise<{ hotelId
         actions={roomType ? <StatusBadge domain="catalog" value={roomType.status} /> : undefined}
       />
 
-      {loading ? (
+      {!roomType && loading ? (
         <div className="space-y-4">
           <Skeleton className="h-9 w-full max-w-md" />
           <Skeleton className="h-64 w-full" />
         </div>
-      ) : error ? (
+      ) : !roomType && error ? (
         <ErrorState error={error} onRetry={() => void refetch()} />
       ) : !roomType ? (
         <ErrorState error={new Error('Room type not found.')} />

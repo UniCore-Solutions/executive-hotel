@@ -1,0 +1,23 @@
+query AdminAvailability($hotelId: ID!) {
+  adminHotel(hotelId: $hotelId) {
+    id
+    name
+    status
+    roomTypes {
+      id
+      name
+      status
+      totalInventory
+    }
+    availability {
+      id
+      roomTypeId
+      stayDate
+      totalInventory
+      roomsSold
+      outOfOrder
+      blocked
+      free
+    }
+  }
+}

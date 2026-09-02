@@ -1,0 +1,44 @@
+query AdminRatePlans($hotelId: ID!) {
+  adminHotel(hotelId: $hotelId) {
+    id
+    name
+    status
+    roomTypes {
+      id
+      name
+      status
+    }
+    ratePlans {
+      id
+      hotelId
+      name
+      code
+      currencyCode
+      mealPlan
+      cancellationPolicy
+      paymentPolicy
+      isRefundable
+      cancellationDeadlineDays
+      cancellationPenaltyType
+      cancellationPenaltyValue
+      paymentTiming
+      depositPercentage
+      minStay
+      maxStay
+      status
+      links {
+        id
+        roomTypeId
+        roomTypeName
+        ratePlanId
+        currencyCode
+        prices {
+          id
+          validFrom
+          validTo
+          priceAmount
+        }
+      }
+    }
+  }
+}

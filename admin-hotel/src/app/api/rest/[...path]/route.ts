@@ -44,7 +44,16 @@ async function handler(
     cache: 'no-store',
   });
   const payload = await res.text();
-  return new NextResponse(payload, {
+  // A null-body status (204/205/304 — e.g. the media DELETE endpoint's
+  // `ResponseEntity.noContent()`) cannot carry a body per the Fetch spec,
+  // not even an empty string: `new NextResponse('', { status: 204 })`
+  // throws ("Response with null body status cannot have body"), crashing
+  // this route with an opaque 500 while the backend write had already
+  // succeeded. Found live while testing the new hotel Media tab's delete
+  // action — it equally affects the pre-existing room-type media delete,
+  // which goes through this same proxy.
+  const nullBodyStatus = res.status === 204 || res.status === 205 || res.status === 304;
+  return new NextResponse(nullBodyStatus ? null : payload, {
     status: res.status,
     headers: { 'content-type': res.headers.get('content-type') ?? 'application/json' },
   });

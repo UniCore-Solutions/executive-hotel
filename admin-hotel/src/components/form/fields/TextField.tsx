@@ -17,7 +17,7 @@ export function TextField<TValues extends FieldValues>({
   label?: string;
   description?: string;
   required?: boolean;
-  type?: 'text' | 'email' | 'tel' | 'url';
+  type?: 'text' | 'email' | 'tel' | 'url' | 'date';
   placeholder?: string;
   disabled?: boolean;
 }) {

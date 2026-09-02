@@ -35,3 +35,6 @@ Thumbs.db
 # Local scratch export — not part of the platform
 standalone-hotel-page/
 standalone-hotel-page.zip
+
+# Agent worktrees (isolation: "worktree") — separate checkouts, never vendor these in
+.claude/worktrees/

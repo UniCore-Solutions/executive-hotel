@@ -50,7 +50,15 @@ function SelectContent({
         data-slot="select-content"
         position={position}
         className={cn(
-          'relative z-50 max-h-(--radix-select-content-available-height) min-w-(--radix-select-trigger-width) overflow-hidden rounded-lg border border-border bg-white shadow-lg',
+          // z-[95]: Sheet/Dialog overlays sit at z-[85] (sheet.tsx,
+          // dialog.tsx); a plain z-50 here rendered the popover BEHIND that
+          // overlay whenever a Select is used inside a Sheet or Dialog — the
+          // options were visible through the overlay's translucency but not
+          // clickable (confirmed: opening any Select in RoomFormSheet, an
+          // already-shipped component, reproduced the same stuck click
+          // before this fix). Found while building the rate-plan create
+          // drawer, which also has Selects inside a Sheet.
+          'relative z-[95] max-h-(--radix-select-content-available-height) min-w-(--radix-select-trigger-width) overflow-hidden rounded-lg border border-border bg-white shadow-lg',
           'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
           'data-[state=closed]:animate-out data-[state=closed]:fade-out-0',
           className,

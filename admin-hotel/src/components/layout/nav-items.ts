@@ -1,4 +1,16 @@
-import { BedDouble, Building2, CalendarRange, DoorOpen, LayoutDashboard, type LucideIcon } from 'lucide-react';
+import {
+  BedDouble,
+  Building2,
+  CalendarClock,
+  CalendarRange,
+  DoorOpen,
+  LayoutDashboard,
+  Receipt,
+  Settings,
+  Tag,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 import { SUPER_ADMIN } from '@/lib/roles';
 
 export interface NavItem {
@@ -46,7 +58,21 @@ export function hotelNavGroups(hotelId: string, roles: string[]): NavGroup[] {
     },
     {
       label: 'Operations',
-      items: [{ href: `${base}/reservations`, label: 'Reservations', icon: CalendarRange }],
+      items: [
+        { href: `${base}/reservations`, label: 'Reservations', icon: CalendarRange },
+        {
+          href: `${base}/guests`,
+          label: 'Guests',
+          icon: Users,
+          roles: ['hotel_admin', 'reservation_agent', 'reception_staff'],
+        },
+        {
+          href: `${base}/payments`,
+          label: 'Payments',
+          icon: Receipt,
+          roles: ['hotel_admin', 'finance_staff'],
+        },
+      ],
     },
     {
       label: 'Inventory',
@@ -62,6 +88,39 @@ export function hotelNavGroups(hotelId: string, roles: string[]): NavGroup[] {
           label: 'Rooms',
           icon: DoorOpen,
           roles: ['hotel_admin', 'revenue_manager', 'content_manager', 'reception_staff'],
+        },
+        {
+          href: `${base}/availability`,
+          label: 'Availability',
+          icon: CalendarClock,
+          // Blocking dates and marking units out of order is a revenue/ops
+          // call, not a content one — deliberately excludes content_manager,
+          // unlike Room Types/Rooms above. Same judgement-call caveat as the
+          // rest of this file (see NavItem.roles doc): no backend permission
+          // data behind this, only a plausibility guess.
+          roles: ['hotel_admin', 'revenue_manager', 'reception_staff'],
+        },
+      ],
+    },
+    {
+      label: 'Rates',
+      items: [
+        {
+          href: `${base}/rate-plans`,
+          label: 'Rate Plans',
+          icon: Tag,
+          roles: ['hotel_admin', 'revenue_manager'],
+        },
+      ],
+    },
+    {
+      label: 'Configuration',
+      items: [
+        {
+          href: `${base}/settings`,
+          label: 'Settings',
+          icon: Settings,
+          roles: ['hotel_admin', 'content_manager'],
         },
       ],
     },

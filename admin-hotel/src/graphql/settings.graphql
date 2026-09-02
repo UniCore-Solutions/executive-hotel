@@ -1,0 +1,55 @@
+query AdminHotelSettings($hotelId: ID!) {
+  adminHotel(hotelId: $hotelId) {
+    id
+    name
+    status
+    hotel {
+      id
+      name
+      brand
+      description
+      hotelType
+      addressLine1
+      addressLine2
+      city
+      countryCode
+      latitude
+      longitude
+      phone
+      email
+      starRating
+      checkInTime
+      checkOutTime
+      defaultCurrency
+      status
+    }
+    amenities {
+      id
+      name
+      icon
+      category
+    }
+    media {
+      id
+      url
+      altText
+      category
+      isPrimary
+      sortOrder
+    }
+  }
+  # AdminHotel has no `policies` field (see docs/ADMIN_REBUILD_PROGRESS.md, backend
+  # gap NEW-4) — the only query exposing HotelPolicy rows is the guest-facing
+  # hotelDetails query, which is permitAll and safe to read from here too since
+  # policies are public guest-facing content.
+  hotelDetails(id: $hotelId) {
+    policies {
+      id
+      hotelId
+      name
+      value
+      icon
+      sortOrder
+    }
+  }
+}

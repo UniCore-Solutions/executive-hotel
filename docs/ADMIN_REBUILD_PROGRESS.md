@@ -9,11 +9,11 @@
 
 | | |
 |---|---|
-| **Phase** | 2.2 (Inventory) complete; 2.3 (Dashboard) complete; **E-NAV-1 and E-ROLES-1 complete** |
-| **Current module** | Role-aware entry routing + drawer/full-page CRUD split — done. Next: E-NAV-2 (search/sort/create on `/hotels`), then resume Rate plans & pricing (E5) |
-| **Last completed** | E-ROLES-1 — login redesign, staff-only gate, single-hotel auto-entry, role-filtered nav, Room/Room-Type drawers |
-| **Next READY task** | E-NAV-2 — Hotels list search/filter/sort/create; then E5-T01 — Rate plans list |
-| **Verified against** | Live stack (`hotel-backend` healthy, Flyway V32), 2026-09-01 |
+| **Phase** | 2.2 (Inventory) complete; 2.3 (Dashboard) complete; **E-NAV-1, E-ROLES-1, E5 (Rate plans & Availability), E6 (Settings & Media), E7 (Guests & Payments) all complete** |
+| **Current module** | E5/E6/E7 built in parallel this session (one agent per module, each in its own worktree off `339e069`), then merged by hand and re-verified as a whole. Next: E-NAV-2 (search/sort/create on `/hotels`), or Promotions (E5, needs rate plans — now unblocked) |
+| **Last completed** | E5 (Rate Plans & Pricing, Availability), E6 (Hotel Settings: Profile/Policies/Amenities/Media), E7 (Guests, Payments) |
+| **Next READY task** | E-NAV-2 — Hotels list search/filter/sort/create; or E5-T0x — Promotions (rate plans now exist, J-14 unblocked) |
+| **Verified against** | Live stack (`hotel-backend` healthy, Flyway V32), 2026-09-02 |
 
 ## Summary
 
@@ -23,10 +23,16 @@
   [this investigation](https://claude.ai/code/artifact/9ebec2c4-1366-4ab4-9efc-84502aad27c9)
   — see "Multi-hotel navigation" below. E-NAV-1 COMPLETED; E-NAV-2 through E-NAV-4 not
   started.
-- Epics E5–E9 (Rates/Availability/Promotions, Settings/Media, Guests/Payments,
-  Users/Audit/Reviews, backend-blocked modules) are in the approved plan but **not
-  started** — see the investigation report §S for their task breakdowns. They now build
-  under `/hotels/[hotelId]/...` from the start rather than flat.
+- **E5 (Rate Plans & Pricing, Availability), E6 (Hotel Settings, Media), E7 (Guests,
+  Payments) COMPLETED** in a later session (2026-09-02), one agent per module in a
+  parallel git worktree off `339e069`, then hand-merged and re-verified as a whole (shared
+  files — `nav-items.ts`, `invalidation.ts`, the hotel workspace `layout.tsx`, the REST
+  BFF proxy, `next.config.ts` — were touched by more than one agent; see "Verification
+  log" for the merge and re-verification). Promotions (part of E5) and E8/E9 remain not
+  started — see below.
+- Epics E8–E9 (Users/Audit/Reviews, and the fully backend-blocked modules: Front desk,
+  Extras, Content, Invoices, Reports) are in the approved plan but **not started** — see
+  the investigation report §S for their task breakdowns.
 
 ## Multi-hotel navigation (E-NAV)
 
@@ -144,6 +150,11 @@ the existing back-office.
 | `/hotels/[hotelId]/reservations` | ✅ | Status filter + server pagination; row click opens a detail sheet; deep-linkable via `?ref=`; cancel with reason |
 | `/hotels/[hotelId]/room-types`, `.../room-types/[id]` | ✅ | Create is now a drawer, not `/room-types/new` (gone). Edit: Details / **Rooms (new)** / Amenities / Gallery tabs |
 | `/hotels/[hotelId]/rooms` | ✅ | Filterable by room type; create/edit is now a side drawer (`RoomFormSheet`, was a modal `Dialog`); status, housekeeping, maintenance |
+| `/hotels/[hotelId]/rate-plans`, `.../rate-plans/[id]` | ✅ | List (`DataTable`) + create drawer (`RatePlanCreateSheet`) + full-page editor (Details / Room-type-&-pricing tabs). One rate plan per room type is a UI/data convention, not a DB constraint — documented as such, not enforced by a unique index. Pricing is inclusive date-range rows (`rate_plan_prices`), not per-day — the price editor is a range editor, not a literal day-grid |
+| `/hotels/[hotelId]/availability` | ✅ | Full-page 31-day calendar (today..+30, per J-10, confirmed exactly live), colour-coded to the backend's scarcity rule; block/out-of-order editor (`AvailabilityBlockSheet`) against a real, previously-undocumented REST write path (see Backend gaps) |
+| `/hotels/[hotelId]/settings` | ✅ | Full-page Profile / Policies / Amenities / Media tabs. Policies' write path — flagged "unverified" before this session — is confirmed working end to end (real Postgres rows after a real write) |
+| `/hotels/[hotelId]/guests` | ✅ | List (`DataTable`) with server-side debounced search on name/email (not phone — schema doesn't support it) |
+| `/hotels/[hotelId]/payments` | ✅ | Read-only list (`DataTable`), no search (schema has none). Shows `reservationId` as plain reference text — no drill-down link (no `adminReservation(id)` query exists, NEW-2) |
 
 `hotels/[hotelId]/layout.tsx` resolves and validates the hotel (via a new, deliberately
 light `AdminHotelHeader` query — id/name/status/city/countryCode, not the full inventory)
@@ -210,11 +221,37 @@ session (not just typechecked) — see "Verification log" below.
 | E-ROLES-1 | Login redesign; staff-only gate (`STAFF_ROLES`); single-hotel auto-entry on `/hotels`; role-filtered hotel nav; Room and Room-Type-create moved to drawers; Rooms tab on Room Type edit | COMPLETED |
 | E-ROLES-2 | Real per-module permissions, if/when the backend's `role_permissions` table is ever populated and enforced (currently 0 rows, unused) | NOT_STARTED — no backend work exists to build against |
 
-### Epics E5–E9 — not started
+### Epic E5 — Rate plans & pricing, Availability
 
-See the investigation report §S for the full breakdown (Rate plans & pricing,
-Availability, Promotions, Hotel profile/Policies/Media, Guests/Payments, Users/Audit/
-Reviews, and the backend-blocked modules: Front desk, Extras, Content, Invoices, Reports).
+| ID | Task | Status |
+|---|---|---|
+| E5-T01 | Rate plans list | COMPLETED |
+| E5-T02 | Rate plan editor (meal plan, payment timing, cancellation policy, min/max stay, room-type link) | COMPLETED |
+| E5-T03 | Nightly price editor (range-based, matching `rate_plan_prices`) | COMPLETED |
+| E5-T04 | Availability calendar (30-day window, per J-10) | COMPLETED |
+| E5-T05 | Availability block / out-of-order editor | COMPLETED — real REST write path found and used (see Backend gaps) |
+| E5-T06 | Promotions | NOT_STARTED — was blocked on rate plans existing (J-14); unblocked now, not yet picked up |
+
+### Epic E6 — Hotel Settings & Media
+
+| ID | Task | Status |
+|---|---|---|
+| E6-T01 | Profile settings form (`PUT /admin/hotels/{id}`) | COMPLETED |
+| E6-T02 | Policies settings form | COMPLETED — write path verified working end to end (was flagged unverified; see Backend gaps NEW-4 for the read-side gap found instead) |
+| E6-T03 | Amenities settings form | COMPLETED |
+| E6-T04 | Hotel-level media library | COMPLETED — no J-6-style workaround needed for hotel-owned media (only `ownerType: "room_type"` uploads are rejected) |
+
+### Epic E7 — Guests & Payments
+
+| ID | Task | Status |
+|---|---|---|
+| E7-T01 | Guests directory with search | COMPLETED — search covers name/email only (schema has no phone search) |
+| E7-T02 | Payments list | COMPLETED — read-only, no search (schema has none); J-9 corrected (see Backend gaps) |
+
+### Epics E8–E9 — not started
+
+See the investigation report §S for the full breakdown (Users/Audit/Reviews, and the
+backend-blocked modules: Front desk, Extras, Content, Invoices, Reports).
 
 ## Backend gaps
 
@@ -226,11 +263,13 @@ Carried from the investigation report (§J), plus two discovered during this ses
 | J-2 | No admin write endpoint for extras/services | OPEN | E9 (Extras module) |
 | J-3 | No check-in/check-out entity or mutations | OPEN | E9 (Front desk), reviews intake |
 | J-6 | Media upload rejects `ownerType: "room_type"` | OPEN — **worked around** client-side (upload against the hotel, then attach via the room type's media replace-list PUT) | none currently; direct upload would simplify E3-T02's gallery code |
-| J-9 | `Payment` has no reservation reference on the GraphQL type | OPEN | E7 (Payments) |
-| J-10 | `adminHotel.availability` window is fixed to `now…now+30d` | OPEN | E5 (Availability) |
+| ~~J-9~~ | ~~`Payment` has no reservation reference on the GraphQL type~~ | **RESOLVED — was stale.** `Payment.reservationId: ID!` is real, always-populated (`billing.graphqls:16`; confirmed live via introspection and real query data). The Payments list shows it directly. What's still true: there's no `adminReservation(id)` query, so it's shown as plain reference text, not a clickable drill-down (see NEW-2). | — |
+| J-10 | `adminHotel.availability` window is fixed to `now…now+30d` | OPEN — confirmed exactly live (31 calendar days inclusive, today..+30). **Not blocking a write path**: a real, previously-undocumented REST endpoint exists and works — `PUT /api/v1/admin/availability/hotels/{hotelId}` (`AdminAvailabilityRestController` → `AvailabilityAdminServiceImpl.updateAvailabilityRange`), sets `blocked`/`outOfOrder` for a date range, hotel-scoped, capacity-checked (409 on overflow). REST only, no GraphQL mutation. | Widening the window is the only remaining ask |
 | **NEW-1** | **No `cancellationReasons` GraphQL query.** Unlike `countries`, the `cancellation_reasons` reference table (6 active rows, verified live) has no query exposing it. Worked around: hardcoded in `src/schemas/reservations.ts` with a comment pointing here. | OPEN | Low priority — 6 rows, rarely change. Add a query if the reference list needs admin management. |
 | **NEW-3** | **`adminHotels(page: PageInput)` has no search/filter/sort args**, unlike the public `hotels(input: HotelSearchInput)` query which already has that shape. Worked around: `/hotels` fetches one generous page (100) and filters client-side — honest at the platform's current scale (3 hotel rows), but the point to add matching args if the collection genuinely grows past a page. | OPEN | Not blocking; E-NAV-2 should re-check before building server pagination on `/hotels`. |
-| **NEW-2** | **No admin query to fetch a single reservation by id.** `adminReservations` returns pages only; there is no `adminReservation(id)`. Worked around: the detail view reads the already-fetched row from the list query (Apollo cache) rather than an extra round trip — this is *better* UX than a naive fetch-by-id would have been, but it means a reservation not on the currently-loaded page can't be deep-linked to until it's paged into view (the app shows an honest "not in the current view" notice in that case, never a fabricated result). | OPEN — low urgency given the workaround, but resolving J-1 (real search) would make this moot for the common case. | none blocking |
+| **NEW-2** | **No admin query to fetch a single reservation by id.** `adminReservations` returns pages only; there is no `adminReservation(id)`. Worked around: the detail view reads the already-fetched row from the list query (Apollo cache) rather than an extra round trip — this is *better* UX than a naive fetch-by-id would have been, but it means a reservation not on the currently-loaded page can't be deep-linked to until it's paged into view (the app shows an honest "not in the current view" notice in that case, never a fabricated result). Also means the Payments list's `reservationId` is shown as plain text, not a link. | OPEN — low urgency given the workaround, but resolving J-1 (real search) would make this moot for the common case. | none blocking |
+| **NEW-4** | **No `policies` field on the admin `AdminHotel` GraphQL type** — the write path (`PUT /admin/hotels/{id}/policies`) works and was verified end to end (real Postgres rows after a real write, previously flagged "unverified — 0 rows"), but there's no admin read query to match. Worked around: the Settings page reads policies via the public, `permitAll` `hotelDetails(id).policies` query instead (safe since it's already public content). | OPEN | Would let Settings drop its public-query workaround |
+| **NEW-5** | **No `currencies` reference query**, same shape gap as NEW-1's `cancellationReasons`. Worked around: hardcoded 6 currency options client-side in the Settings Profile form. | OPEN | Low priority — rarely changes |
 
 ## Decisions
 
@@ -259,6 +298,37 @@ Carried from the investigation report (§J), plus two discovered during this ses
   rejection of writes to it.
 
 ## Known issues found during implementation (not backend gaps)
+
+- **`invalidation.ts`'s cache-eviction registry was a silent, app-wide no-op — FIXED,
+  2026-09-02.** Its keys were PascalCase but real GraphQL field names are camelCase, so no
+  eviction rule ever matched anything; every mutation across the whole app has been
+  leaving stale Apollo cache entries since it was introduced. Found and fixed during the
+  Rate Plans work (needed for the rate-plan create→list refresh to work at all) and
+  independently rediscovered during the Settings work, which found the correct fix
+  cascades into the hotel workspace `layout.tsx`'s shared query and resets page-local
+  state elsewhere — validated as correct but judged too broad to land inside a single
+  task's scope, so Settings kept its own explicit `refetch()` as a safety net on top of
+  the now-fixed registry rather than depending on it alone. Verified live (full
+  create→update→link→set-prices→unlink→deactivate rate-plan cycle) after the fix.
+- **The REST BFF proxy 500'd on every DELETE — FIXED, 2026-09-02.**
+  `app/api/rest/[...path]/route.ts` tried to read a body off the backend's `204 No
+  Content` DELETE response, which the Fetch spec forbids for an empty body — the backend
+  write succeeded but the client saw a crash. This silently broke the pre-existing
+  room-type photo delete too, not just the new Media library delete that surfaced it.
+- **CSP `img-src` was silently blocking every seeded Unsplash photo, app-wide — FIXED,
+  2026-09-02.** `next.config.ts`'s CSP had no `images.unsplash.com` origin, so any image
+  from that host failed to load with no visible error — affecting the pre-existing Room
+  Type gallery as well as the new hotel-level Media library. Added the origin.
+- **`RoomTypeGallery` likely has the same "upload doesn't appear without reload" gap
+  `HotelGallery` had before its refetch fix** — flagged during the Settings work but not
+  fixed (out of that task's scope); worth checking next time `RoomTypeGallery` is touched.
+- **`Select` rendered behind an open `Sheet` (z-index)** — fixed during the Rate Plan
+  editor work (a `Select` inside `RatePlanCreateSheet`/the editor's payment-timing field
+  was rendering under the drawer). Verified live by actually opening the dropdown and
+  confirming the conditional deposit field appears on selecting `prepay_deposit`.
+- **Hotel workspace `layout.tsx` reset the active tab on every background refetch** —
+  fixed during the Rate Plan editor work (the editor's Details/Pricing tabs were losing
+  the active tab whenever the shared workspace query refetched in the background).
 
 - **Apollo context bug in the copied provider pattern.** `backoffice-hotel`'s
   `src/api/apollo/provider.tsx` defines its own React context under the name
@@ -412,3 +482,75 @@ All commands run from `admin-hotel/`, all live checks against the running
     `room?.id ?? 'new'` so switching records remounts the form — not by changing
     `useAdminForm` itself, which other forms share and whose current contract (fresh mount
     per record) already holds everywhere else in the app. Re-verified live after the fix.
+
+### 2026-09-02 — E5 (Rate plans & Availability), E6 (Settings & Media), E7 (Guests & Payments)
+
+Built as four parallel tasks, one per module, each in its own git worktree off `339e069`
+(`isolation: "worktree"` for three of them; one worktree provisioning bug — see below —
+meant the fourth was built in a manually-created worktree instead). Each agent
+ground-truthed its own backend shape against source and a live query before writing UI,
+per the standing rule; see the Backend gaps table above for what that turned up (J-9
+corrected, J-10 confirmed with a real write path found, NEW-4/NEW-5 added).
+
+**Environment note — worktree provisioning bug, not a code issue.** The `isolation:
+"worktree"` mechanism twice handed the Guests+Payments task a worktree already checked
+out on an unrelated, stale commit (`d25f7c2`, pre-dating `admin-hotel/` entirely) instead
+of branching from the session's actual branch. Both agents correctly detected this (no
+`admin-hotel/`, no this doc) and refused to build against the wrong codebase rather than
+inventing work that didn't fit. Worked around by creating the worktree by hand
+(`git worktree add -b guests-payments-agent .claude/worktrees/manual-guests-payments
+rate-plan-payment-timing`) and pointing a plain agent at that path directly. The
+Availability agent hit the same bug once and self-recovered by branching its own worktree
+off the correct branch before proceeding. Filed as product feedback; added
+`.claude/worktrees/` to `.gitignore` since it wasn't there before and a careless `git add
+-A` could otherwise vendor a full duplicate checkout into the repo.
+
+**Merge.** All four agents left their work uncommitted, as instructed, for manual review.
+Merged into `rate-plan-payment-timing` by hand: each module's new files (list/editor
+pages, `components/modules/<name>/`, `graphql/*.graphql`, `schemas/*.ts`, REST endpoint
+wrappers) were independent and copied over with no conflicts. Five files were modified by
+more than one agent and needed real reconciliation:
+- `nav-items.ts` — all four added a nav entry; merged by hand into one file (Rate Plans
+  under a new "Rates" group, Availability into "Inventory", Settings into a new
+  "Configuration" group, Guests/Payments into "Operations").
+- `invalidation.ts`, hotel workspace `layout.tsx`, `room-types/[id]/page.tsx`,
+  `components/ui/select.tsx` — all four changes came from the Rate Plans agent alone (the
+  bug fixes above); copied through directly, no conflict.
+- `next.config.ts`, `catalog.ts` (REST endpoints), the REST BFF `route.ts` — all three
+  changes came from the Settings agent alone; copied through directly.
+- `package-lock.json` and `next-env.d.ts` diffs in two of the four worktrees were pure
+  noise (an incidental `npm install` pruning `extraneous` transitive packages with no
+  `package.json` change behind it; a dev-server-vs-build `.next/types` path difference) —
+  discarded rather than merged; regenerated cleanly by the build step below instead.
+- `src/graphql/generated/` (gitignored, per-worktree) wasn't carried over by definition;
+  regenerated once in the merged tree via `npm run graphql:generate` against the live
+  schema after copying every module's `.graphql` operation files in.
+
+**Full verification run fresh on the merged result** (not trusting any individual
+agent's own report of a clean run in isolation):
+- `npx tsc --noEmit` — clean, 0 errors (after the `graphql:generate` regeneration above;
+  failed with missing-export errors before that step, as expected).
+- `npx eslint .` — 0 errors, same 1 pre-existing benign React Compiler warning as always.
+- `npx vitest run` — 14/14 passing (up from 8; Availability added 6 new tests).
+- `npm run build` — clean production build, 19 admin routes total, including all 8 new
+  ones (`rate-plans`, `rate-plans/[id]`, `availability`, `settings`, `guests`, `payments`
+  plus the pre-existing 13).
+- Live, cookie-authenticated, end-to-end against `localhost:8180` through the merged
+  app's own `/api/graphql` BFF (dev server on port 3102, `admin@hotelcollection.test`/
+  `admin123`): `adminHotel(...).ratePlans` returned real rate plans with real
+  `paymentTiming` values; `adminGuests` returned 114 real guests (2-item page shown);
+  `adminPayments` returned 169 real payments, each with a populated `reservationId`
+  (confirming the J-9 correction against the merged code, not just the original agent's
+  isolated worktree); `adminHotel(...).availability` returned real sparse rows spanning
+  the confirmed 30-day window. A sanity check against the *existing*, unrelated
+  `/dashboard` and `/room-types` pages (both touch files the Rate Plans agent modified)
+  confirmed the merge didn't regress anything already shipped.
+- Individual agents' own verification (each did this in isolation before merge, per the
+  task brief): full REST/GraphQL write-cycle tests (rate plan create→update→link→set
+  prices→unlink→deactivate; availability block-write with a real 409 capacity conflict
+  and a real 401 unauthenticated case; a real policies write confirmed via direct Postgres
+  read), and Playwright screenshots at 1440×900 and 390×844 for every new page — see each
+  module's own summary above for specifics (interactive round-trips confirming no
+  stale-defaultValues regressions, and two apparent mobile "bugs" that turned out to be
+  Playwright `fullPage` screenshot artifacts rather than real defects, caught by
+  cross-checking with plain-viewport screenshots).
