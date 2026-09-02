@@ -35,7 +35,10 @@ own lockfile and is built independently; the root only holds Docker Compose + sc
 /
 ├── backend-hotel/      Spring Boot 4.1.0 / Java 21 — the only backend, owns the DB
 ├── frontend-hotel/     Next.js 16 (App Router) — guest site        :3000
-├── backoffice-hotel/   Next.js 16 (App Router) — staff console     :3101
+├── backoffice-hotel/   Next.js 16 (App Router) — staff console (legacy)     :3101
+├── admin-hotel/        Next.js 16 (App Router) — new staff console          :3102
+│                       (docs/ADMIN_REBUILD_PROGRESS.md tracks build-out; backoffice-hotel
+│                       stays untouched and running until admin-hotel reaches parity)
 ├── database/           Oracle-dialect legacy schema, READ-ONLY reference, not executed
 ├── scripts/            bash entry points (setup/build/start/test/db-*)
 ├── backups/postgres/   gitignored pg_dump output
@@ -127,7 +130,9 @@ backend **8180**, Postgres **5433**, Kafka 9092.
 
 The **`backoffice` service is profile-gated** (`profiles: ["backoffice"]`, commit
 `1e52894`) and therefore does **not** start with the default `docker compose up` —
-despite the root README presenting it as part of the quickstart.
+despite the root README presenting it as part of the quickstart. **`admin` is not
+profile-gated** (commit `0a80d4b`, 2026-09-02) — it starts automatically with the
+default stack, alongside `frontend` and `backend`, on port 3102.
 
 Backend boot hard-depends on both Postgres *and* Kafka being healthy.
 

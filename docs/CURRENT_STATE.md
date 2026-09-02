@@ -296,13 +296,9 @@ SMTP config, no template rendering.
 1. ~~**`./mvnw test` is RED.**~~ **Fixed in this task**: `StaySearchGraphQLController`
    now resolves its hotel scope via `CatalogQueryService.canonicalHotel()`; all 5
    ArchUnit rules pass (152/152 tests).
-2. **`backoffice-hotel` `npm run graphql:generate` cannot work.** `codegen.ts` points at
-   `../backend-hotel/src/main/resources/graphql/schema.graphqls`, which is only the
-   skeleton (`type Query` / `type Mutation` empty, scalars). The real schema lives in
-   `graphql/<domain>/*.graphqls`. `frontend-hotel/codegen.ts` uses the correct glob.
-3. **Back-office is off by default.** `profiles: ["backoffice"]` in `docker-compose.yml`
+2. **Back-office is off by default.** `profiles: ["backoffice"]` in `docker-compose.yml`
    (commit `1e52894`) — `docker compose up` never starts it, contradicting the README.
-4. **Playwright e2e suite is stale** — targets the retired fixture world
+3. **Playwright e2e suite is stale** — targets the retired fixture world
    (`e2e/helpers.ts` fixture room ids, `index-2.spec.ts` for a deleted route). Not part
    of the build gates; needs a rewrite against the canonical flow.
 
@@ -338,8 +334,76 @@ Remaining known scope, in order:
    `depends_on` so the backend can boot without a broker.
 3. **Rewrite the stale Playwright e2e suite** against the canonical single-hotel flow
    (search → availability → book → verify inventory → sell-out).
-4. **Fix `backoffice-hotel/codegen.ts`** to the same glob `frontend-hotel` uses.
-5. **Reconcile `AGENTS.md` in both sub-projects** — both describe structures that no
+4. **Reconcile `AGENTS.md` in both sub-projects** — both describe structures that no
    longer exist. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §Documentation.
-6. **Newsletter/password-reset/contact remain local or canned** — blocked on there being
+5. **Newsletter/password-reset/contact remain local or canned** — blocked on there being
    no email provider anywhere in the repo.
+
+> **Update 2026-09-01 — new admin console (`admin-hotel/`), foundation + first three
+> modules.** Per `docs/ADMIN_REBUILD_PROGRESS.md`: a new Next.js 16 admin console was
+> scaffolded at the repo root (port 3102, `profiles: ["admin"]` in `docker-compose.yml`,
+> additive-only), isolated from and leaving `backoffice-hotel` untouched. Shipped and
+> live-verified against the running stack: auth (httpOnly `admin_session` cookie, distinct
+> from the old admin's `bo_session`), route protection, a reusable data-table/form/toast
+> architecture, Dashboard (only the metrics verified correct — `inHouseToday` deliberately
+> omitted, see KNOWN_ISSUES §A4-derived dashboard defects), Reservations (list, detail,
+> cancel), Room Types and Rooms (full CRUD, amenities, gallery). `tsc`, `eslint`, 8/8
+> vitest and `next build` all clean. Also fixed here: the "`backoffice-hotel`
+> `codegen.ts` cannot work" entry above was stale — the file already points at the
+> correct glob — removed rather than re-flagged.
+> **Superseded by the 2026-09-02 update below** — `profiles: ["admin"]` is gone and
+> three more modules have since shipped.
+
+> **Update 2026-09-01 (later) — multi-hotel routing + RBAC entry (`admin-hotel/`).**
+> Routing migrated to `/hotels` (global list) + `/hotels/[hotelId]/...` (workspace
+> segment), replacing the old single-hotel `HotelContext` singleton with a validating
+> layout guard on the URL's `hotelId`. Login redesigned; a staff-only gate
+> (`STAFF_ROLES`) replaced a weaker `roles.length === 0` check; a single-hotel staff
+> account is now server-redirected straight into their hotel instead of seeing a global
+> list; hotel-scoped nav is role-filtered (UX-only, not a security boundary — the real
+> enforcement stays in `CurrentUserAccessor.requireHotelAccess`). Room and Room-Type
+> create moved from full pages/dialogs to side drawers; Room Type edit gained a Rooms
+> tab. `tsc`, `eslint`, 8/8 vitest, `next build` all clean; live-verified against the
+> running backend including real `FORBIDDEN`/`NOT_FOUND` cases for cross-hotel and
+> invalid `hotelId` access.
+
+> **Update 2026-09-02 — Rate Plans & Pricing, Availability, Hotel Settings & Media,
+> Guests & Payments (`admin-hotel/`); admin joins the default Docker stack.** Four
+> modules built in parallel (one per module, each ground-truthing its backend shape
+> against source and a live query before writing UI) and merged by hand:
+> - **Rate Plans & Pricing** — list, editor (meal plan/payment timing/cancellation
+>   policy/min-max stay/room-type link), range-based nightly pricing (the real schema is
+>   inclusive date ranges, not per-day). "One rate plan per room type" is a UI/data
+>   convention, not a DB constraint.
+> - **Availability** — a 31-day calendar (today..+30, the real backend window) and a
+>   block/out-of-order editor against a real, previously-undocumented REST endpoint
+>   (`PUT /api/v1/admin/availability/hotels/{hotelId}`).
+> - **Hotel Settings & Media** — Profile/Policies/Amenities/Media tabs. The Policies
+>   write path — previously flagged unverified with 0 DB rows — was verified working
+>   end to end (a real write produced real Postgres rows).
+> - **Guests & Payments** — a searchable guest directory and a read-only payments list.
+>   Corrected a stale claim that `Payment` has no reservation reference — it does
+>   (`Payment.reservationId`, confirmed live via introspection).
+>
+> Along the way, three real cross-cutting bugs were found and fixed: `invalidation.ts`'s
+> cache-eviction registry was a silent, app-wide no-op (PascalCase keys never matched
+> real camelCase field names); the REST BFF proxy 500'd on every DELETE (a `204` response
+> can't carry a body); and a CSP gap silently blocked every Unsplash-hosted image
+> app-wide (including the pre-existing Room Type gallery).
+>
+> **`admin` is no longer profile-gated** — `docker compose up` now starts it
+> automatically alongside `postgres`/`kafka`/`backend`/`frontend`, verified with a fresh
+> `docker compose down && docker compose up -d` (no profile flags) bringing up all five
+> healthy, plus a real login + GraphQL round-trip through the containerized app.
+> `backoffice-hotel` keeps its separate profile gate, unchanged.
+>
+> Also fixed this session, unrelated to `admin-hotel`: a transitive `lodash` dependency
+> (pulled in by `@graphql-codegen/cli`, dev-tooling only) carried two GHSA advisories;
+> pinned via `package.json` overrides in both `admin-hotel` and `backoffice-hotel`, `npm
+> audit` now clean in both. A letters-only-query bug in the guest site's
+> `CountryCombobox` that silently returned every country unfiltered, fixed alongside
+> removing "Western Sahara" as a selectable country (`V32`). A race condition in
+> `BookingFlow.tsx` that flashed a false "Nothing to book yet" panel while the room/rate
+> plan were still resolving asynchronously, fixed with a proper three-state model and a
+> skeleton loader. Full detail, verification logs and backend-gap corrections in
+> `docs/ADMIN_REBUILD_PROGRESS.md`.

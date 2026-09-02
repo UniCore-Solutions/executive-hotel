@@ -63,7 +63,43 @@ Three deployables, then the backend's internal application services.
 - **Status** — **the most complete client.** All 14 pages are wired to real GraphQL.
 - **Known problems** — **disabled by default** in Docker (`profiles: ["backoffice"]`);
   several debug scripts (`debug2..6.mjs`, `debug-e2e.mjs`) are committed at the
-  project root.
+  project root. Being replaced by `admin-hotel/`; left untouched and running until that
+  reaches parity.
+
+---
+
+## Deployable: `admin-hotel` (new staff console, :3102)
+
+- **Purpose** — its eventual purpose is the same as `backoffice-hotel`'s, rebuilt with a
+  module-first IA, a multi-hotel-ready URL shape (`/hotels/[hotelId]/...`), a shared
+  data-table/form architecture and honest empty/error states. See
+  `docs/ADMIN_REBUILD_PROGRESS.md` for the live task register.
+- **Technology** — Next.js 16 App Router, TS strict, Tailwind v4 (tokens copied from
+  `frontend-hotel`), Apollo Client (reads), Axios (writes), react-hook-form + Zod, TanStack
+  Table + TanStack Query (mutation lifecycle only).
+- **Entry points** — `(auth)/login`, `/hotels` (global list, role-scoped), and under
+  `/hotels/[hotelId]/...`: `dashboard`, `reservations`, `room-types` (+ `[id]`), `rooms`,
+  `rate-plans` (+ `[id]`), `availability`, `settings`, `guests`, `payments`; BFF route
+  handlers `/api/auth/{login,me,logout}`, `/api/graphql`, `/api/rest/[...path]`.
+- **Auth** — httpOnly `admin_session` cookie (distinct from the old admin's `bo_session`
+  so both can run concurrently), 7 d. Staff-only gate (`STAFF_ROLES`) plus role-filtered
+  nav; a single-hotel staff account is auto-routed into their hotel rather than seeing
+  the global list.
+- **Status** — Foundation, multi-hotel routing/RBAC entry, Dashboard, Reservations, Room
+  Types/Rooms, Rate Plans & Pricing, Availability (calendar + block/out-of-order editor),
+  Hotel Settings (Profile/Policies/Amenities/Media), and Guests/Payments are all shipped
+  and live-verified against the running backend. Not started: Promotions (unblocked now
+  that rate plans exist), the `/hotels` search/sort/create polish (E-NAV-2/3/4), and
+  Users/Audit/Reviews (E8) — plus the fully backend-blocked modules (Front desk, Extras,
+  Content, Invoices, Reports).
+- **Known problems** — see `docs/ADMIN_REBUILD_PROGRESS.md`'s "Backend gaps" table for
+  the current list (no `cancellationReasons` or `currencies` reference query, no
+  admin-side `policies` read field, no admin single-reservation-by-id query, `adminHotels`
+  has no server-side search/sort args). The earlier claim that `Payment` has no
+  reservation reference was itself stale and has been corrected — it does.
+- **Not profile-gated** — starts with the default `docker compose up`, same as
+  `frontend` and `backend` (changed 2026-09-02, was `profiles: ["admin"]` before).
+  `backoffice-hotel` keeps its separate profile gate.
 
 ---
 
