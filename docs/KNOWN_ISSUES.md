@@ -120,6 +120,25 @@ failures — all rules green, plus the new `NO_GRAPHQL_MUTATIONS` rule). The
   of `updateAvailabilityRange`; the back-office still calls it.
 - **Severity:** Low.
 
+### B5 — No credit note / cancellation invoice
+- **Problem:** since 2026-09-02, an invoice auto-issues the moment a reservation confirms
+  (`BookingServiceImpl.onReservationConfirmed` → `InvoiceService.issueInvoiceForConfirmedReservation`)
+  and a real (simulated) refund now executes on cancellation
+  (`BookingServiceImpl.doCancel` → `PaymentService.refund`). But cancellation itself
+  produces no second document: the original invoice is left untouched as the record of
+  what was charged, and the penalty/refund breakdown exists only in the
+  `reservation_cancellations` row, the cancellation notification email, and the UI —
+  never as a downloadable credit note referencing the original invoice.
+- **Evidence:** `BookingServiceImpl.java` — the `DEFERRED` comment at the end of
+  `doCancel`, right after the refund/notification calls.
+- **Decision:** agreed 2026-09-02 that this is wanted (Option B of the two considered),
+  deliberately deferred rather than built in the same session as the invoice/refund work.
+- **Next:** extend `InvoiceService` with credit-note generation, triggered from the same
+  spot `doCancel` already calls the refund from; reuse the existing client-side
+  HTML-download pattern (`lib/invoice.ts` in each frontend) for delivery.
+- **Severity:** Medium — real accounting gap once refunds are real money, not yet urgent
+  while payments are simulated.
+
 ---
 
 ## API / developer experience
