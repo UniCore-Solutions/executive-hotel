@@ -19,6 +19,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ContextConfiguration;
 
+import com.hotelcollection.hotel.entity.CreditNote;
 import com.hotelcollection.hotel.entity.Invoice;
 import com.hotelcollection.hotel.entity.Payment;
 import com.hotelcollection.hotel.entity.PaymentStatus;
@@ -241,6 +242,14 @@ class BookingFlowIntegrationTest {
 		Reservation reloaded = bookingService.getByReferenceAndEmail(
 				created.reservation().getReference(), GUEST_EMAIL);
 		assertThat(reloaded.getPaymentStatus()).isEqualTo(PaymentStatus.refunded);
+
+		// A credit note documents the adjustment against the invoice that
+		// auto-issued when the payment captured.
+		CreditNote note = invoiceService.getCreditNote(created.reservation().getReference(), GUEST_EMAIL);
+		assertThat(note.getCreditNoteNumber()).startsWith("CN-");
+		assertThat(note.getOriginalAmount()).isEqualByComparingTo(total);
+		assertThat(note.getPenaltyAmount()).isZero();
+		assertThat(note.getCreditedAmount()).isEqualByComparingTo(total);
 	}
 
 	@Test
@@ -268,6 +277,11 @@ class BookingFlowIntegrationTest {
 		Reservation reloaded = bookingService.getByReferenceAndEmail(
 				created.reservation().getReference(), GUEST_EMAIL);
 		assertThat(reloaded.getPaymentStatus()).isEqualTo(PaymentStatus.partially_refunded);
+
+		CreditNote note = invoiceService.getCreditNote(created.reservation().getReference(), GUEST_EMAIL);
+		assertThat(note.getOriginalAmount()).isEqualByComparingTo(total);
+		assertThat(note.getPenaltyAmount()).isEqualByComparingTo(penalty);
+		assertThat(note.getCreditedAmount()).isEqualByComparingTo(expectedRefund);
 	}
 
 	@Test
@@ -286,6 +300,15 @@ class BookingFlowIntegrationTest {
 		assertThat(cancelled.getCancellation().getRefundAmount()).isZero();
 		// paymentStatus is left exactly as it was (pending) — never fabricated to refunded.
 		assertThat(cancelled.getPaymentStatus()).isEqualTo(PaymentStatus.pending);
+
+		// Never confirmed -> never invoiced -> nothing to issue a credit note
+		// against. Not just "empty", genuinely absent (404), same as asking
+		// for a credit note on a reservation that was never cancelled at all.
+		assertThatThrownBy(() -> invoiceService.getCreditNote(
+				created.reservation().getReference(), GUEST_EMAIL))
+				.isInstanceOf(DomainException.class)
+				.extracting(ex -> ((DomainException) ex).getCode())
+				.isEqualTo(ErrorCode.NOT_FOUND);
 	}
 
 	// ---------------------------------------------------------------- Task 3: payment idempotency

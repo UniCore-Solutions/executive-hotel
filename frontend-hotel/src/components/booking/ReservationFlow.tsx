@@ -13,6 +13,9 @@ import { REST_INVALIDATIONS, invalidateGraphql } from '@/api/invalidation';
 import { reservations, type BackendReservation } from '@/services/reservations';
 import { GraphqlClientError } from '@/services/graphqlClient';
 import { getExtras } from '@/services/extras';
+import { getCreditNote } from '@/api/rest/endpoints';
+import { ApiError } from '@/api/rest/client';
+import { buildCreditNoteHtml, downloadInvoiceHtml } from '@/lib/invoice';
 import { fmt, fromISODate, inStayWindow } from '@/lib/dates';
 import { fmtPrice } from '@/lib/format';
 import { image, IMG_FALLBACK } from '@/services/availability';
@@ -163,6 +166,7 @@ export default function ReservationFlow() {
     ok: null,
   });
   const [busy, setBusy] = useState(false);
+  const [creditNoteBusy, setCreditNoteBusy] = useState(false);
 
   const [extrasDefs, setExtrasDefs] = useState<Extra[]>([]);
   useEffect(() => {
@@ -298,6 +302,24 @@ export default function ReservationFlow() {
       : res.status === 'cancelled'
         ? 'bg-clay/8 border border-clay/25 text-clay'
         : 'bg-white border border-navy/10';
+
+  const downloadCreditNote = async () => {
+    setCreditNoteBusy(true);
+    try {
+      const note = await getCreditNote(res.reference, res.guest.email ?? '');
+      const html = buildCreditNoteHtml(note, { name: 'Executive Hotel' });
+      downloadInvoiceHtml(html, `${note.creditNoteNumber}.html`);
+      toast({ message: 'Credit note downloaded.', type: 'ok', title: 'Ready' });
+    } catch (err) {
+      const message =
+        err instanceof ApiError && err.code === 'NOT_FOUND'
+          ? 'No credit note exists for this reservation — it was never invoiced.'
+          : 'Could not fetch the credit note right now.';
+      toast({ message, type: 'error', title: 'Unavailable' });
+    } finally {
+      setCreditNoteBusy(false);
+    }
+  };
 
   const doCancel = () => {
     open(
@@ -499,6 +521,19 @@ export default function ReservationFlow() {
             >
               {cancelled ? 'Already cancelled' : 'Cancel this reservation'}
             </Button>
+            {cancelled ? (
+              <Button
+                type="button"
+                id="download-credit-note-btn"
+                onClick={downloadCreditNote}
+                disabled={creditNoteBusy}
+                variant="onDark"
+                size="sm"
+                className="mt-2 w-full py-3 text-white"
+              >
+                {creditNoteBusy ? 'Preparing…' : 'Download credit note'}
+              </Button>
+            ) : null}
           </div>
           <div className="text-center">
             <Button type="button" id="view-other" onClick={showOther} variant="ghost">

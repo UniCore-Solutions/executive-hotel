@@ -136,6 +136,23 @@ export async function adminCancelReservation(
   return data;
 }
 
+export interface AdminCreditNoteData {
+  creditNoteNumber: string;
+  billingName: string;
+  currencyCode: string;
+  originalAmount: number;
+  penaltyAmount: number;
+  creditedAmount: number;
+  issuedAt: string;
+}
+
+/** Read-only — a credit note is issued automatically on cancellation, never
+    on demand. Throws (404) if none exists for this reservation. */
+export async function adminGetCreditNote(reservationId: string): Promise<AdminCreditNoteData> {
+  const { data } = await restClient.get(`/v1/admin/reservations/${reservationId}/credit-note`);
+  return data as AdminCreditNoteData;
+}
+
 export async function moderateReview(
   id: string,
   input: { status: string; response?: string }

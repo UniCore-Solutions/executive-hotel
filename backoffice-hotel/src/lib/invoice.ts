@@ -87,6 +87,55 @@ export function buildInvoiceHtml(
 </html>`;
 }
 
+export interface CreditNoteDocData {
+  creditNoteNumber: string;
+  billingName: string;
+  currencyCode: string;
+  originalAmount: number;
+  penaltyAmount: number;
+  creditedAmount: number;
+  issuedAt: string;
+}
+
+/** Summary of original charge -> penalty retained -> credited back, not a
+    re-listing of the original invoice's line items. */
+export function buildCreditNoteHtml(
+  note: CreditNoteDocData,
+  hotelName: string = 'Executive Hotel'
+): string {
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Credit note ${esc(note.creditNoteNumber)}</title>
+<style>
+  body { font-family: Georgia, 'Times New Roman', serif; color: #182420; max-width: 640px;
+         margin: 40px auto; padding: 0 24px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .muted { color: #5c6b62; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
+  td { padding: 6px; text-align: left; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .grand { font-weight: bold; font-size: 15px; border-top: 2px solid #182420; }
+  @media print { body { margin: 0; } }
+</style>
+</head>
+<body>
+  <h1>${esc(hotelName)}</h1>
+  <h2 style="margin-top: 28px;">Credit note ${esc(note.creditNoteNumber)}</h2>
+  <p class="muted">Issued to ${esc(note.billingName)} &middot; Issued
+    ${new Date(note.issuedAt).toLocaleDateString()} &middot; following a cancellation</p>
+  <table>
+    <tr><td>Original invoice amount</td><td class="num">${money(note.originalAmount, note.currencyCode)}</td></tr>
+    <tr><td>Cancellation fee retained</td>
+      <td class="num">-${money(note.penaltyAmount, note.currencyCode)}</td></tr>
+    <tr class="grand"><td>Credited back</td>
+      <td class="num">${money(note.creditedAmount, note.currencyCode)}</td></tr>
+  </table>
+</body>
+</html>`;
+}
+
 export function downloadInvoiceHtml(html: string, filename: string) {
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);

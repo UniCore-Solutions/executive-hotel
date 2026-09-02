@@ -751,15 +751,16 @@ public class BookingServiceImpl implements BookingService {
 			log.warn("failed to send booking-cancelled notification for reservation {}",
 					reservation.getReference(), ex);
 		}
-		// DEFERRED (agreed 2026-09-02, not yet built — see KNOWN_ISSUES.md §B5):
-		// no credit note / cancellation invoice is generated here. The original
-		// invoice (if one was already issued on confirmation) is left untouched
-		// as the historical record of what was charged; the penalty/refund
-		// breakdown only exists in this cancellation row, the notification
-		// email above, and the UI. A real credit note — a second document
-		// referencing the original invoice, showing the refund/penalty split —
-		// would be issued from right here, the same place the refund above
-		// executes, once InvoiceService grows that capability.
+		// Documents the adjustment against the reservation's invoice, if it
+		// had one — a no-op when it never confirmed (KNOWN_ISSUES.md §B5,
+		// built 2026-09-02). Secondary to the cancellation itself, same as
+		// the refund and notification above.
+		try {
+			invoiceService.issueCreditNoteForCancellation(reservation.getId(), cancellation.getId(),
+					penalty, cancellation.getRefundAmount());
+		} catch (Exception ex) {
+			log.warn("failed to issue a credit note for reservation {}", reservation.getReference(), ex);
+		}
 		return reservation;
 	}
 

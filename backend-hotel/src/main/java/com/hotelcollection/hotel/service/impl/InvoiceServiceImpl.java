@@ -12,6 +12,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.hotelcollection.hotel.entity.CreditNote;
 import com.hotelcollection.hotel.entity.Invoice;
 import com.hotelcollection.hotel.entity.InvoiceItem;
 import com.hotelcollection.hotel.entity.ReservationStatus;
@@ -19,6 +20,7 @@ import com.hotelcollection.hotel.exception.DomainException;
 import com.hotelcollection.hotel.security.CurrentUserAccessor;
 import com.hotelcollection.hotel.service.InvoiceService;
 import com.hotelcollection.hotel.entity.Reservation;
+import com.hotelcollection.hotel.repository.CreditNoteRepository;
 import com.hotelcollection.hotel.repository.InvoiceItemRepository;
 import com.hotelcollection.hotel.repository.InvoiceRepository;
 import com.hotelcollection.hotel.service.BookingService;
@@ -38,14 +40,16 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 	private final InvoiceRepository invoiceRepository;
 	private final InvoiceItemRepository invoiceItemRepository;
+	private final CreditNoteRepository creditNoteRepository;
 	private final BookingService booking;
 	private final CurrentUserAccessor currentUser;
 
 	public InvoiceServiceImpl(InvoiceRepository invoiceRepository,
-			InvoiceItemRepository invoiceItemRepository, BookingService booking,
-			CurrentUserAccessor currentUser) {
+			InvoiceItemRepository invoiceItemRepository, CreditNoteRepository creditNoteRepository,
+			BookingService booking, CurrentUserAccessor currentUser) {
 		this.invoiceRepository = invoiceRepository;
 		this.invoiceItemRepository = invoiceItemRepository;
+		this.creditNoteRepository = creditNoteRepository;
 		this.booking = booking;
 		this.currentUser = currentUser;
 	}
@@ -130,6 +134,53 @@ public class InvoiceServiceImpl implements InvoiceService {
 		invoiceItemRepository.saveAll(items);
 		invoice.getItems().addAll(items);
 		return invoice;
+	}
+
+	@Override
+	@Transactional
+	public CreditNote issueCreditNoteForCancellation(UUID reservationId, UUID cancellationId,
+			BigDecimal penaltyAmount, BigDecimal creditedAmount) {
+		Invoice invoice = invoiceRepository.findByReservationId(reservationId).orElse(null);
+		if (invoice == null) {
+			// Nothing was ever invoiced for this reservation (cancelled before
+			// it confirmed) — there is nothing to adjust against.
+			return null;
+		}
+		CreditNote existing = creditNoteRepository.findByReservationId(reservationId).orElse(null);
+		if (existing != null) {
+			return existing;
+		}
+		CreditNote note = new CreditNote();
+		note.setCreditNoteNumber("CN-" + invoice.getInvoiceNumber().replaceFirst("^INV-", ""));
+		note.setInvoiceId(invoice.getId());
+		note.setReservationId(reservationId);
+		note.setReservationCancellationId(cancellationId);
+		note.setGuestId(invoice.getGuestId());
+		note.setBillingName(invoice.getBillingName());
+		note.setCurrencyCode(invoice.getCurrencyCode());
+		note.setOriginalAmount(invoice.getTotalAmount());
+		note.setPenaltyAmount(penaltyAmount);
+		note.setCreditedAmount(creditedAmount);
+		note.setStatus("issued");
+		note.setIssuedAt(Instant.now());
+		return creditNoteRepository.save(note);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public CreditNote getCreditNote(String reservationReference, String guestEmail) {
+		Reservation reservation = booking.getByReferenceAndEmail(reservationReference, guestEmail);
+		return creditNoteRepository.findByReservationId(reservation.getId())
+				.orElseThrow(() -> DomainException.notFound("no credit note exists for this reservation"));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public CreditNote getCreditNoteForStaff(UUID reservationId) {
+		Reservation reservation = booking.getById(reservationId);
+		currentUser.requireHotelAccess(reservation.getHotelId());
+		return creditNoteRepository.findByReservationId(reservationId)
+				.orElseThrow(() -> DomainException.notFound("no credit note exists for this reservation"));
 	}
 
 	private String guestDisplayName(Reservation reservation) {

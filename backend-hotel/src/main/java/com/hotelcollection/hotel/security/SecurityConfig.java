@@ -99,7 +99,8 @@ public class SecurityConfig {
 						.requestMatchers("/api/v1/auth/login", "/api/v1/auth/register").permitAll()
 						.requestMatchers("/api/v1/reservations",
 								"/api/v1/reservations/*/cancel",
-								"/api/v1/reservations/*/invoice").permitAll()
+								"/api/v1/reservations/*/invoice",
+								"/api/v1/reservations/*/credit-note").permitAll()
 						// Accountless booking: payments are created/captured with
 						// the guest email as proof of possession. The filter chain
 						// stays open like the reservation endpoints; PaymentService

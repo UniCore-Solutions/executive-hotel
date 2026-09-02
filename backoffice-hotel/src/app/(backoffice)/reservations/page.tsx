@@ -3,10 +3,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useQuery } from '@apollo/client/react';
 import { useState } from 'react';
-import { Ban } from 'lucide-react';
-import { adminCancelReservation } from '@/api/rest/endpoints';
+import { Ban, Download } from 'lucide-react';
+import { adminCancelReservation, adminGetCreditNote } from '@/api/rest/endpoints';
 import { useApollo } from '@/api/apollo/provider';
 import { invalidateAfterWrite } from '@/api/invalidation';
+import { buildCreditNoteHtml, downloadInvoiceHtml } from '@/lib/invoice';
+import { ApiError } from '@/lib/api';
 import { formatDate, formatDateTime, formatMoney, statusLabel } from '@/lib/format';
 import {
   AdminReservationsDocument,
@@ -205,6 +207,28 @@ function ReservationDetail({
   const [cancelling, setCancelling] = useState(false);
   const [reasonCode, setReasonCode] = useState(CANCEL_REASONS[0]);
   const [reasonNote, setReasonNote] = useState('');
+  const [creditNoteBusy, setCreditNoteBusy] = useState(false);
+  const [creditNoteError, setCreditNoteError] = useState('');
+
+  const downloadCreditNote = async () => {
+    setCreditNoteBusy(true);
+    setCreditNoteError('');
+    try {
+      const note = await adminGetCreditNote(r.id);
+      const html = buildCreditNoteHtml(note);
+      downloadInvoiceHtml(html, `${note.creditNoteNumber}.html`);
+    } catch (err) {
+      setCreditNoteError(
+        err instanceof ApiError && err.code === 'NOT_FOUND'
+          ? 'This reservation was never invoiced, so there is nothing to adjust.'
+          : err instanceof ApiError
+            ? err.message
+            : 'Could not fetch the credit note right now.'
+      );
+    } finally {
+      setCreditNoteBusy(false);
+    }
+  };
 
   const cancel = useMutation({
     mutationFn: () =>
@@ -338,6 +362,19 @@ function ReservationDetail({
                 {formatMoney(r.cancellation.penaltyAmount, r.currencyCode)}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">{refundStatusNote(r)}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={downloadCreditNote}
+                disabled={creditNoteBusy}
+              >
+                <Download className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                {creditNoteBusy ? 'Preparing…' : 'Download credit note'}
+              </Button>
+              {creditNoteError ? (
+                <p className="mt-1 text-xs text-clay">{creditNoteError}</p>
+              ) : null}
             </div>
           ) : null}
 

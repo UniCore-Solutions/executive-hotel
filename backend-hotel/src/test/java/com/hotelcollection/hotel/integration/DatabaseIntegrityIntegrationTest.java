@@ -47,9 +47,8 @@ class DatabaseIntegrityIntegrationTest {
 	void flywayAppliedAllMigrations() {
 		Integer applied = jdbc.queryForObject(
 				"SELECT count(*) FROM flyway_schema_history WHERE success = TRUE", Integer.class);
-		// V32 (remove_western_sahara_country) landed after this literal was
-		// last updated — pre-existing drift, unrelated to this change.
-		assertThat(applied).isEqualTo(32);
+		// V33 (credit_notes) is the current head.
+		assertThat(applied).isEqualTo(33);
 	}
 
 	@Test
@@ -58,7 +57,8 @@ class DatabaseIntegrityIntegrationTest {
 				"SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"
 						+ " AND table_name <> 'flyway_schema_history'",
 				Integer.class);
-		assertThat(tables).isEqualTo(54);
+		// 54 + credit_notes (V33).
+		assertThat(tables).isEqualTo(55);
 
 		assertThat(extensionInstalled("btree_gist")).isTrue();
 		assertThat(extensionInstalled("pgcrypto")).isTrue();

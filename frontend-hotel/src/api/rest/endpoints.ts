@@ -160,6 +160,27 @@ export async function issueInvoice(reference: string, email: string): Promise<In
   return response.data as InvoiceData;
 }
 
+export interface CreditNoteData {
+  creditNoteNumber: string;
+  billingName: string;
+  currencyCode: string;
+  originalAmount: number;
+  penaltyAmount: number;
+  creditedAmount: number;
+  status: string;
+  issuedAt: string;
+}
+
+/** Read-only — a credit note is issued automatically on cancellation, never
+    on demand. Throws (404) if the reservation was never cancelled, or was
+    cancelled without ever having an invoice to adjust. */
+export async function getCreditNote(reference: string, email: string): Promise<CreditNoteData> {
+  const response = await restClient.post(`/v1/reservations/${encodeURIComponent(reference)}/credit-note`, {
+    email,
+  });
+  return response.data as CreditNoteData;
+}
+
 export async function updateMyProfile(input: {
   firstName?: string;
   lastName?: string;

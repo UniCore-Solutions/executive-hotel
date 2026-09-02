@@ -16,8 +16,8 @@ import { Separator } from '@/components/ui/separator';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Money } from '@/components/shared/Money';
 import { formatDate, formatDateTime, humanizeEnum } from '@/lib/format';
-import { adminGetInvoice } from '@/api/rest/endpoints/reservations';
-import { buildInvoiceHtml, downloadInvoiceHtml } from '@/lib/invoice';
+import { adminGetInvoice, adminGetCreditNote } from '@/api/rest/endpoints/reservations';
+import { buildInvoiceHtml, buildCreditNoteHtml, downloadInvoiceHtml } from '@/lib/invoice';
 import { ApiError } from '@/lib/api';
 import { useToast } from '@/context/ToastContext';
 import { CancelReservationDialog } from './CancelReservationDialog';
@@ -64,6 +64,7 @@ export function ReservationDetailSheet({
 }) {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [invoiceBusy, setInvoiceBusy] = useState(false);
+  const [creditNoteBusy, setCreditNoteBusy] = useState(false);
   const { toast } = useToast();
   if (!reservation) return null;
 
@@ -72,6 +73,11 @@ export function ReservationDetailSheet({
   // (auto-issued on confirmation) or one that was cancelled after having
   // one — never for a still-'pending' payment hold.
   const canDownloadInvoice = ['confirmed', 'cancelled'].includes(reservation.status.toLowerCase());
+  // A credit note only exists once a cancelled reservation is confirmed to
+  // have had an invoice to adjust — the sheet doesn't know that in advance,
+  // so it offers the action whenever cancelled and lets a 404 explain the
+  // "never invoiced" case.
+  const canDownloadCreditNote = reservation.status.toLowerCase() === 'cancelled';
 
   const downloadInvoice = async () => {
     setInvoiceBusy(true);
@@ -88,6 +94,29 @@ export function ReservationDetailSheet({
       });
     } finally {
       setInvoiceBusy(false);
+    }
+  };
+
+  const downloadCreditNote = async () => {
+    setCreditNoteBusy(true);
+    try {
+      const note = await adminGetCreditNote(reservation.id);
+      const html = buildCreditNoteHtml(note);
+      downloadInvoiceHtml(html, `${note.creditNoteNumber}.html`);
+      toast({ title: 'Credit note ready', description: 'Downloaded — open it in your browser to view or print.', variant: 'success' });
+    } catch (err) {
+      toast({
+        title: 'Credit note unavailable',
+        description:
+          err instanceof ApiError && err.code === 'NOT_FOUND'
+            ? 'This reservation was never invoiced, so there is nothing to adjust.'
+            : err instanceof ApiError
+              ? err.message
+              : 'Could not fetch the credit note right now.',
+        variant: 'error',
+      });
+    } finally {
+      setCreditNoteBusy(false);
     }
   };
 
@@ -261,12 +290,18 @@ export function ReservationDetailSheet({
             ) : null}
           </SheetBody>
 
-          {canDownloadInvoice || canCancel ? (
+          {canDownloadInvoice || canDownloadCreditNote || canCancel ? (
             <SheetFooter>
               {canDownloadInvoice ? (
                 <Button variant="outline" size="sm" onClick={downloadInvoice} disabled={invoiceBusy}>
                   <Download className="size-3.5" />
                   {invoiceBusy ? 'Preparing…' : 'Download invoice'}
+                </Button>
+              ) : null}
+              {canDownloadCreditNote ? (
+                <Button variant="outline" size="sm" onClick={downloadCreditNote} disabled={creditNoteBusy}>
+                  <Download className="size-3.5" />
+                  {creditNoteBusy ? 'Preparing…' : 'Download credit note'}
                 </Button>
               ) : null}
               {canCancel ? (
