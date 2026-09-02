@@ -1,7 +1,13 @@
+// Whole amount, no cents — matches frontend-hotel and admin-hotel's money
+// formatting convention. The backend keeps exact BigDecimal precision; this
+// is a display-only rounding choice, now applied consistently across all
+// three apps instead of per-app (a reported inconsistency: the same total
+// showed with cents in one place and rounded elsewhere).
 export function formatMoney(amount: number, currencyCode: string): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: currencyCode,
+    maximumFractionDigits: 0,
   }).format(amount);
 }
 

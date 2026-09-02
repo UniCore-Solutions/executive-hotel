@@ -9,16 +9,23 @@ import {
 } from '@/lib/format';
 
 describe('formatMoney', () => {
-  it('formats with currency symbol and two decimals', () => {
-    expect(formatMoney(1234.5, 'USD')).toBe('$1,234.50');
+  it('formats with currency symbol, rounded to a whole amount — no cents', () => {
+    expect(formatMoney(1234.5, 'USD')).toBe('$1,235');
   });
 
   it('formats zero', () => {
-    expect(formatMoney(0, 'EUR')).toBe('€0.00');
+    expect(formatMoney(0, 'EUR')).toBe('€0');
   });
 
   it('formats negative amounts', () => {
-    expect(formatMoney(-49.99, 'GBP')).toBe('-£49.99');
+    expect(formatMoney(-49.99, 'GBP')).toBe('-£50');
+  });
+
+  it('never shows a decimal point — matches frontend-hotel and admin-hotel', () => {
+    // A real reported inconsistency: the same total showed as "5787.99" on
+    // an invoice download and "5788" elsewhere in the app. Every money
+    // display across all three apps must round to a whole amount.
+    expect(formatMoney(5787.99, 'MAD')).not.toContain('.');
   });
 });
 
