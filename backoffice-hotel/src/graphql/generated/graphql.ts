@@ -948,6 +948,7 @@ export type QueryStaySearchArgs = {
 
 export type Quote = {
   __typename?: "Quote";
+  amountDueNow: Scalars["Float"]["output"];
   charges: Array<QuoteChargeLine>;
   currencyCode: Scalars["String"]["output"];
   discountAmount: Scalars["Float"]["output"];
@@ -956,6 +957,7 @@ export type Quote = {
   lines: Array<QuoteLine>;
   message?: Maybe<Scalars["String"]["output"]>;
   originalTotal: Scalars["Float"]["output"];
+  paymentTiming: Scalars["String"]["output"];
   subtotalAmount: Scalars["Float"]["output"];
   taxAmount: Scalars["Float"]["output"];
   totalAmount: Scalars["Float"]["output"];
@@ -1155,12 +1157,6 @@ export type ReservationPage = {
   total: Scalars["Int"]["output"];
 };
 
-export type ReservationResult = {
-  __typename?: "ReservationResult";
-  created: Scalars["Boolean"]["output"];
-  reservation: Reservation;
-};
-
 export type ReservationRoomInput = {
   ratePlanId: Scalars["ID"]["input"];
   roomTypeId: Scalars["ID"]["input"];
@@ -1170,10 +1166,14 @@ export type ReservationRoomLine = {
   __typename?: "ReservationRoomLine";
   checkInDate: Scalars["LocalDate"]["output"];
   checkOutDate: Scalars["LocalDate"]["output"];
+  freeCancellationUntil?: Maybe<Scalars["LocalDate"]["output"]>;
   id: Scalars["ID"]["output"];
+  isRefundable: Scalars["Boolean"]["output"];
   nights: Scalars["Int"]["output"];
+  paymentTiming: Scalars["String"]["output"];
   ratePerNight: Scalars["Float"]["output"];
   ratePlanId: Scalars["ID"]["output"];
+  ratePlanName?: Maybe<Scalars["String"]["output"]>;
   roomTypeId: Scalars["ID"]["output"];
   roomTypeImageUrl?: Maybe<Scalars["String"]["output"]>;
   roomTypeName: Scalars["String"]["output"];
@@ -1256,8 +1256,10 @@ export type RoomRateOption = {
   __typename?: "RoomRateOption";
   cancellationPolicy?: Maybe<Scalars["String"]["output"]>;
   currencyCode: Scalars["String"]["output"];
+  depositPercentage?: Maybe<Scalars["Float"]["output"]>;
   isRefundable: Scalars["Boolean"]["output"];
   mealPlan?: Maybe<Scalars["String"]["output"]>;
+  paymentTiming: Scalars["String"]["output"];
   pricePerNight: Scalars["Float"]["output"];
   ratePlanCode: Scalars["String"]["output"];
   ratePlanId: Scalars["ID"]["output"];
