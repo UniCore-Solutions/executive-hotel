@@ -3,7 +3,7 @@
 /* Searchable country combobox — options come from the backend `countries`
    query (code + name + calling code). Flags are emoji derived from the ISO
    code. Replaces the native <select> so the guest can type to filter a
-   245-entry list. Keyboard: Escape closes, Enter picks the highlighted
+   244-entry list. Keyboard: Escape closes, Enter picks the highlighted
    option, ArrowUp/ArrowDown move through the filtered list. */
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -35,6 +35,43 @@ interface CountryComboboxProps {
   /** Accessible name for the trigger. Required by the `phone` variant, whose
       trigger text is only a flag and a dial code. */
   ariaLabel?: string;
+}
+
+/* Matching is scored rather than boolean so the obvious answer sits at the
+   top: typing "ma" must offer Morocco (code MA) before Madagascar, and "212"
+   must offer Morocco before Guatemala (+502 does not contain 212, but longer
+   dial codes can share a substring). 0 means "no match".
+
+   The two query shapes are kept apart deliberately. A digits-only query is
+   about the dial code — matching it against names would be noise. A query
+   containing letters is about the name or the ISO code, and must never be
+   stripped down to its digits: doing that yields "" for "mor", and every
+   calling code contains "", which is why the list used to stop filtering. */
+export function matchRank(c: CountryRef, q: string): number {
+  const dial = (c.callingCode ?? '').replace(/\D/g, '');
+  const digits = q.replace(/\D/g, '');
+  const isNumeric = digits.length > 0 && !/[a-z]/.test(q);
+
+  if (isNumeric) {
+    if (!dial) return 0;
+    if (dial === digits) return 100;
+    if (dial.startsWith(digits)) return 80;
+    return dial.includes(digits) ? 40 : 0;
+  }
+
+  const name = c.name.toLowerCase();
+  const code = c.code.toLowerCase();
+  if (code === q) return 100;
+  if (name === q) return 95;
+  if (name.startsWith(q)) return 80;
+  if (code.startsWith(q)) return 70;
+  /* Word-start hits ("guinea" → Papua New Guinea) beat mid-word ones. */
+  if (new RegExp(`\\b${escapeRe(q)}`).test(name)) return 60;
+  return name.includes(q) ? 30 : 0;
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 const ARROW_DOWN = 'ArrowDown';
@@ -84,12 +121,11 @@ export function CountryCombobox({
     if (!countries) return [];
     const q = query.trim().toLowerCase();
     if (!q) return countries;
-    return countries.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.code.toLowerCase().includes(q) ||
-        (c.callingCode ?? '').includes(q.replace(/\D/g, ''))
-    );
+    return countries
+      .map((c) => ({ c, rank: matchRank(c, q) }))
+      .filter((m) => m.rank > 0)
+      .sort((a, b) => b.rank - a.rank || a.c.name.localeCompare(b.c.name))
+      .map((m) => m.c);
   }, [countries, query]);
 
   /* Close on outside click / Escape. */
@@ -199,7 +235,7 @@ export function CountryCombobox({
               setHighlight(0);
             }}
             onKeyDown={onKeyDown}
-            placeholder="Search country…"
+            placeholder={isPhone ? 'Search country or code…' : 'Search name or code…'}
             className="bg-paper border-navy/10 placeholder:text-navy/35 w-full border-b px-3.5 py-3 text-sm focus:outline-none"
           />
           <ul
