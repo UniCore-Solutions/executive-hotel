@@ -276,11 +276,14 @@ export default function BookingFlow({
     history.replaceState(null, '', `${window.location.pathname}?${p.toString()}`);
   }, [validStay, state, roomId, plan, extrasSel]);
 
-  /* Missing pieces → "Nothing to book yet" panel. */
-  let missing = false;
-  if (!roomId || !planId || !hasDates || nights < 1) missing = true;
-  else if (room && plan) missing = false;
-  else missing = true;
+  /* Three states, not two. The room/plan are resolved asynchronously through
+     the catalog gateway, so on first paint `resolved` is still undefined and
+     `room`/`plan` are null — treating that as "missing" flashed the
+     "Nothing to book yet" panel for the length of one round trip before the
+     real flow appeared. Resolution is only a verdict once it has returned. */
+  const paramsReady = !!roomId && !!planId && hasDates && nights >= 1;
+  const resolving = paramsReady && resolved === undefined;
+  const missing = !resolving && (!paramsReady || !room || !plan);
 
   const wait = useRef(false);
 
@@ -449,7 +452,7 @@ export default function BookingFlow({
       {/* Context breadcrumb — the guest is booking a specific room of a
           specific hotel, so the trail preserves that context instead of
           pointing back at the generic search. */}
-      {!missing && room && resolved ? (
+      {!missing && !resolving && room && resolved ? (
         <div className="mb-6">
           <Breadcrumb
             items={[
@@ -465,14 +468,20 @@ export default function BookingFlow({
         </div>
       ) : null}
 
-      <div id="steps" className={`mb-8 ${missing ? 'hidden' : ''}`} aria-label="Booking progress">
+      <div
+        id="steps"
+        className={`mb-8 ${missing || resolving ? 'hidden' : ''}`}
+        aria-label="Booking progress"
+      >
         <Steps
           steps={['Guest details', settlesAtProperty ? 'Confirm booking' : 'Payment & confirm']}
           current={step - 1}
         />
       </div>
 
-      {missing ? (
+      {resolving ? (
+        <BookingSkeleton />
+      ) : missing ? (
         <div
           id="missing"
           className="border-navy/10 mx-auto max-w-xl rounded-3xl border bg-white p-12 text-center"
@@ -1079,6 +1088,56 @@ export default function BookingFlow({
         </div>
       )}
     </>
+  );
+}
+
+/** Full-page placeholder shaped like the booking grid, shown while the room
+    and rate plan are still being resolved. Without it the page briefly
+    rendered the "Nothing to book yet" panel — a false negative that read as
+    an error to the guest who had just pressed "Select room". */
+function BookingSkeleton() {
+  return (
+    <div
+      className="grid animate-pulse items-start gap-6 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-8"
+      role="status"
+      aria-label="Loading your booking"
+    >
+      <div className="border-navy/10 rounded-3xl border bg-white p-5 shadow-xl shadow-navy/10 sm:p-6 lg:order-2">
+        <div className="flex items-start gap-3.5">
+          <div className="bg-navy/10 h-20 w-24 shrink-0 rounded-2xl" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="bg-navy/10 h-3 w-32 rounded-full" />
+            <div className="bg-navy/10 h-3 w-24 rounded-full" />
+            <div className="bg-navy/10 h-3 w-20 rounded-full" />
+          </div>
+        </div>
+        <div className="mt-5 space-y-2.5">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex items-center justify-between gap-3">
+              <div className="bg-navy/10 h-3 w-24 rounded-full" />
+              <div className="bg-navy/10 h-3 w-14 rounded-full" />
+            </div>
+          ))}
+        </div>
+        <div className="bg-navy/[0.06] mt-4 flex items-baseline justify-between gap-3 rounded-2xl px-4 py-3">
+          <div className="bg-navy/10 h-3.5 w-16 rounded-full" />
+          <div className="bg-navy/10 h-5 w-20 rounded-full" />
+        </div>
+      </div>
+
+      <div className="border-navy/10 min-w-0 rounded-3xl border bg-white p-5 shadow-xl shadow-navy/10 sm:p-6 lg:order-1">
+        <div className="bg-navy/10 h-4 w-40 rounded-full" />
+        <div className="mt-6 grid gap-5 sm:grid-cols-2">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="space-y-2">
+              <div className="bg-navy/10 h-2.5 w-20 rounded-full" />
+              <div className="bg-navy/[0.06] h-11 w-full rounded-xl" />
+            </div>
+          ))}
+        </div>
+        <div className="bg-navy/10 mt-8 h-12 w-full rounded-xl sm:w-56" />
+      </div>
+    </div>
   );
 }
 
