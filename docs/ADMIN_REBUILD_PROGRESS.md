@@ -148,9 +148,13 @@ page.
 
 Running locally: `cd admin-hotel && npm run dev` → `http://localhost:3102`. Sign in with
 `admin@hotelcollection.test` / `admin123` (or `manager@hotelcollection.test` / `admin123`
-for a `hotel_admin`-scoped view). Not yet wired into a default `docker compose up` —
-start it explicitly with `docker compose --profile admin up -d admin`, same convention as
-the existing back-office.
+for a `hotel_admin`-scoped view). **Now wired into the default `docker compose up`**
+(2026-09-02, commit `0a80d4b`) — `admin` starts automatically with
+postgres/kafka/backend/frontend, no `--profile` flag needed; verified with a fresh
+`docker compose down && docker compose up -d` bringing up all five healthy, plus a real
+login + GraphQL round-trip through the containerized app. The back-office keeps its
+separate profile gate (`docker compose --profile backoffice up -d backoffice`),
+unchanged.
 
 | Page | Status | Notes |
 |---|---|---|
