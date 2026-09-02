@@ -16,6 +16,7 @@ import com.hotelcollection.hotel.entity.Invoice;
 import com.hotelcollection.hotel.entity.InvoiceItem;
 import com.hotelcollection.hotel.entity.ReservationStatus;
 import com.hotelcollection.hotel.exception.DomainException;
+import com.hotelcollection.hotel.security.CurrentUserAccessor;
 import com.hotelcollection.hotel.service.InvoiceService;
 import com.hotelcollection.hotel.entity.Reservation;
 import com.hotelcollection.hotel.repository.InvoiceItemRepository;
@@ -38,12 +39,15 @@ public class InvoiceServiceImpl implements InvoiceService {
 	private final InvoiceRepository invoiceRepository;
 	private final InvoiceItemRepository invoiceItemRepository;
 	private final BookingService booking;
+	private final CurrentUserAccessor currentUser;
 
 	public InvoiceServiceImpl(InvoiceRepository invoiceRepository,
-			InvoiceItemRepository invoiceItemRepository, BookingService booking) {
+			InvoiceItemRepository invoiceItemRepository, BookingService booking,
+			CurrentUserAccessor currentUser) {
 		this.invoiceRepository = invoiceRepository;
 		this.invoiceItemRepository = invoiceItemRepository;
 		this.booking = booking;
+		this.currentUser = currentUser;
 	}
 
 	@Override
@@ -57,6 +61,14 @@ public class InvoiceServiceImpl implements InvoiceService {
 	@Transactional
 	public Invoice issueInvoiceForConfirmedReservation(UUID reservationId) {
 		Reservation reservation = booking.getById(reservationId);
+		return getOrCreate(reservation);
+	}
+
+	@Override
+	@Transactional
+	public Invoice getInvoiceForStaff(UUID reservationId) {
+		Reservation reservation = booking.getById(reservationId);
+		currentUser.requireHotelAccess(reservation.getHotelId());
 		return getOrCreate(reservation);
 	}
 

@@ -129,6 +129,37 @@ export async function capturePayment(input: {
   return response.data as PaymentCreated;
 }
 
+export interface InvoiceItem {
+  description: string;
+  itemType: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+}
+
+export interface InvoiceData {
+  invoiceNumber: string;
+  billingName: string;
+  currencyCode: string;
+  subtotalAmount: number;
+  discountAmount: number;
+  taxAmount: number;
+  feeAmount: number;
+  totalAmount: number;
+  status: string;
+  issuedAt: string;
+  items: InvoiceItem[];
+}
+
+/** Get-or-create — idempotent, so calling this to "download" is safe even if
+    the reservation's invoice hasn't auto-issued yet for some reason. */
+export async function issueInvoice(reference: string, email: string): Promise<InvoiceData> {
+  const response = await restClient.post(`/v1/reservations/${encodeURIComponent(reference)}/invoice`, {
+    email,
+  });
+  return response.data as InvoiceData;
+}
+
 export async function updateMyProfile(input: {
   firstName?: string;
   lastName?: string;

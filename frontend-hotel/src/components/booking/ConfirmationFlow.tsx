@@ -15,6 +15,9 @@ import { GraphqlClientError } from '@/services/graphqlClient';
 import { getExtras } from '@/services/extras';
 import { getHotelById } from '@/services/catalog';
 import { buildIcs } from '@/lib/ics';
+import { buildInvoiceHtml, downloadInvoiceHtml } from '@/lib/invoice';
+import { issueInvoice } from '@/api/rest/endpoints';
+import { ApiError } from '@/api/rest/client';
 import { fmt, fmtShort, fromISODate, nightsBetween } from '@/lib/dates';
 import { image, IMG_FALLBACK } from '@/services/availability';
 import { QR } from '@/components/ui/QR';
@@ -74,6 +77,7 @@ export default function ConfirmationFlow() {
     queueMicrotask(() => setRes(reservation));
   }, [poll]);
   const [copied, setCopied] = useState('');
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
   const [emailInput, setEmailInput] = useState(emailParam);
   const [lookupBusy, setLookupBusy] = useState(false);
   const [lookupMsg, setLookupMsg] = useState('');
@@ -352,6 +356,28 @@ export default function ConfirmationFlow() {
     });
   };
 
+  const downloadInvoice = async () => {
+    setInvoiceBusy(true);
+    try {
+      const invoice = await issueInvoice(res.reference, res.guest.email ?? '');
+      const html = buildInvoiceHtml(invoice, invoice.items, {
+        name: hotelMeta?.name || 'Hotel',
+        city: hotelMeta?.city,
+      });
+      downloadInvoiceHtml(html, `${invoice.invoiceNumber}.html`);
+      toast({
+        message: 'Invoice downloaded — open it in your browser to view or print it.',
+        type: 'ok',
+        title: 'Invoice ready',
+      });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Could not generate the invoice right now.';
+      toast({ message, type: 'error', title: 'Invoice unavailable' });
+    } finally {
+      setInvoiceBusy(false);
+    }
+  };
+
   const copyRef = async () => {
     try {
       await navigator.clipboard.writeText(res.reference);
@@ -452,7 +478,7 @@ export default function ConfirmationFlow() {
       )}
 
       {/* actions */}
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Button asChild className="shadow-navy/15 rounded-2xl px-4 py-3.5">
           <a href={`/reservation?ref=${encodeURIComponent(res.reference)}`}>Manage booking</a>
         </Button>
@@ -474,6 +500,16 @@ export default function ConfirmationFlow() {
           className="rounded-2xl px-4 py-3.5"
         >
           Add to calendar
+        </Button>
+        <Button
+          type="button"
+          id="conf-download-invoice"
+          onClick={downloadInvoice}
+          disabled={invoiceBusy}
+          variant="outline"
+          className="rounded-2xl px-4 py-3.5"
+        >
+          {invoiceBusy ? 'Preparing…' : 'Download invoice'}
         </Button>
       </div>
 

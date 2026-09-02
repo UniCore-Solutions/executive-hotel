@@ -1,10 +1,12 @@
 'use client';
 
 import { useQuery } from '@apollo/client/react';
+import { Download } from 'lucide-react';
 import { formatDateTime, formatMoney } from '@/lib/format';
 import { AdminInvoicesDocument } from '@/graphql/generated/graphql';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -15,6 +17,7 @@ import {
 } from '@/components/ui/table';
 import { PageHeader, StatusBadge } from '@/components/admin/page';
 import { useHotelScope } from '@/context/HotelScopeContext';
+import { buildInvoiceHtml, downloadInvoiceHtml } from '@/lib/invoice';
 
 export default function InvoicesPage() {
   const { hotels, activeHotelId } = useHotelScope();
@@ -39,6 +42,13 @@ export default function InvoicesPage() {
 
   const invoices = data?.adminInvoices.items ?? [];
 
+  const downloadInvoice = (inv: (typeof invoices)[number]) => {
+    // All fields already come from the AdminInvoices query above — no extra
+    // round trip needed to build the download.
+    const html = buildInvoiceHtml(inv, inv.items);
+    downloadInvoiceHtml(html, `${inv.invoiceNumber}.html`);
+  };
+
   return (
     <div>
       <PageHeader title="Invoices" description="Invoices issued for the selected hotel" />
@@ -59,6 +69,7 @@ export default function InvoicesPage() {
                   <TableHead>Status</TableHead>
                   <TableHead>Issued</TableHead>
                   <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">&nbsp;</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -72,6 +83,12 @@ export default function InvoicesPage() {
                     <TableCell>{formatDateTime(inv.issuedAt)}</TableCell>
                     <TableCell className="text-right font-medium">
                       {formatMoney(inv.totalAmount, inv.currencyCode)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="sm" onClick={() => downloadInvoice(inv)}>
+                        <Download className="size-3.5" />
+                        Download
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

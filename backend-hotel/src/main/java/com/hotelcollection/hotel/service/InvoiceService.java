@@ -22,4 +22,12 @@ public interface InvoiceService {
 	 * proof required. Idempotent, same as {@link #getOrCreateInvoice}.
 	 */
 	Invoice issueInvoiceForConfirmedReservation(UUID reservationId);
+
+	/**
+	 * Staff entry point (hotel-scoped access enforced internally, same guard
+	 * every admin-reachable service method uses). Idempotent, same as
+	 * {@link #getOrCreateInvoice} — used by both admin consoles' "download
+	 * invoice" action.
+	 */
+	Invoice getInvoiceForStaff(UUID reservationId);
 }

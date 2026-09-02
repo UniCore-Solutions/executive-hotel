@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { BedDouble, Ban, Mail, Phone, User } from 'lucide-react';
+import { BedDouble, Ban, Download, Mail, Phone, User } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -16,6 +16,10 @@ import { Separator } from '@/components/ui/separator';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Money } from '@/components/shared/Money';
 import { formatDate, formatDateTime, humanizeEnum } from '@/lib/format';
+import { adminGetInvoice } from '@/api/rest/endpoints/reservations';
+import { buildInvoiceHtml, downloadInvoiceHtml } from '@/lib/invoice';
+import { ApiError } from '@/lib/api';
+import { useToast } from '@/context/ToastContext';
 import { CancelReservationDialog } from './CancelReservationDialog';
 import type { AdminReservationsQuery } from '@/graphql/generated/graphql';
 
@@ -59,9 +63,33 @@ export function ReservationDetailSheet({
   onCancelled: () => void;
 }) {
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
+  const { toast } = useToast();
   if (!reservation) return null;
 
   const canCancel = CANCELLABLE.has(reservation.status.toLowerCase());
+  // An invoice only ever exists for a reservation that reached 'confirmed'
+  // (auto-issued on confirmation) or one that was cancelled after having
+  // one — never for a still-'pending' payment hold.
+  const canDownloadInvoice = ['confirmed', 'cancelled'].includes(reservation.status.toLowerCase());
+
+  const downloadInvoice = async () => {
+    setInvoiceBusy(true);
+    try {
+      const invoice = await adminGetInvoice(reservation.id);
+      const html = buildInvoiceHtml(invoice, invoice.items);
+      downloadInvoiceHtml(html, `${invoice.invoiceNumber}.html`);
+      toast({ title: 'Invoice ready', description: 'Downloaded — open it in your browser to view or print.', variant: 'success' });
+    } catch (err) {
+      toast({
+        title: 'Invoice unavailable',
+        description: err instanceof ApiError ? err.message : 'Could not generate the invoice right now.',
+        variant: 'error',
+      });
+    } finally {
+      setInvoiceBusy(false);
+    }
+  };
 
   return (
     <>
@@ -233,12 +261,20 @@ export function ReservationDetailSheet({
             ) : null}
           </SheetBody>
 
-          {canCancel ? (
+          {canDownloadInvoice || canCancel ? (
             <SheetFooter>
-              <Button variant="destructive" size="sm" onClick={() => setCancelOpen(true)}>
-                <Ban className="size-3.5" />
-                Cancel reservation
-              </Button>
+              {canDownloadInvoice ? (
+                <Button variant="outline" size="sm" onClick={downloadInvoice} disabled={invoiceBusy}>
+                  <Download className="size-3.5" />
+                  {invoiceBusy ? 'Preparing…' : 'Download invoice'}
+                </Button>
+              ) : null}
+              {canCancel ? (
+                <Button variant="destructive" size="sm" onClick={() => setCancelOpen(true)}>
+                  <Ban className="size-3.5" />
+                  Cancel reservation
+                </Button>
+              ) : null}
             </SheetFooter>
           ) : null}
         </SheetContent>

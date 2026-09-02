@@ -2,27 +2,33 @@ package com.hotelcollection.hotel.controller;
 
 import java.util.UUID;
 
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.hotelcollection.hotel.entity.Invoice;
 import com.hotelcollection.hotel.entity.Reservation;
 import com.hotelcollection.hotel.service.BookingService;
+import com.hotelcollection.hotel.service.InvoiceService;
 
 /**
- * Back-office reservation action endpoint (staff cancellation).
- * Authorization is enforced inside {@link BookingService}.
+ * Back-office reservation action endpoints (staff cancellation, invoice
+ * lookup). Authorization is enforced inside {@link BookingService} /
+ * {@link InvoiceService}.
  */
 @RestController
 @RequestMapping("/api/v1/admin/reservations")
 public class AdminReservationRestController {
 
 	private final BookingService booking;
+	private final InvoiceService invoiceService;
 
-	public AdminReservationRestController(BookingService booking) {
+	public AdminReservationRestController(BookingService booking, InvoiceService invoiceService) {
 		this.booking = booking;
+		this.invoiceService = invoiceService;
 	}
 
 	@PostMapping("/{reservationId}/cancel")
@@ -31,6 +37,13 @@ public class AdminReservationRestController {
 		String reasonCode = in == null ? null : in.reasonCode();
 		String reasonNote = in == null ? null : in.reasonNote();
 		return booking.adminCancel(reservationId, reasonCode, reasonNote);
+	}
+
+	/** Get-or-create, same idempotent semantics as the guest endpoint — used
+	 * by both admin consoles' "download invoice" action. */
+	@GetMapping("/{reservationId}/invoice")
+	public Invoice invoice(@PathVariable UUID reservationId) {
+		return invoiceService.getInvoiceForStaff(reservationId);
 	}
 
 	/** Transport-specific body for the cancel action. */
