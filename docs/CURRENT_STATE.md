@@ -407,3 +407,28 @@ Remaining known scope, in order:
 > plan were still resolving asynchronously, fixed with a proper three-state model and a
 > skeleton loader. Full detail, verification logs and backend-gap corrections in
 > `docs/ADMIN_REBUILD_PROGRESS.md`.
+
+> **Update 2026-09-02 (later) — Platform settings, Room/Room-Type merge, actionable
+> check-in/check-out (`admin-hotel/`).** Three tasks built in parallel worktrees, hand-merged
+> and re-verified as a whole (backend: **227/227 tests**, all 7 ArchUnit rules; `admin-hotel`
+> build/tsc/eslint clean, 15/15 vitest). Full detail in `docs/ADMIN_REBUILD_PROGRESS.md`
+> ("What's live right now" and the E-NAV-2/E-PLATFORM/E3-T04/E4-T02 entries):
+> - **Check-in/check-out is now real**, closing half of this section's old #1 item below —
+>   `BookingService.checkIn/checkOut/assignRoom` set the reservation's already-declared
+>   `checked_in`/`checked_out` status (no migration needed; the enum values and
+>   `reservation_rooms.room_id` column already existed, unused) via new admin REST
+>   endpoints, gated on every room line having a physical room assigned first. This is a
+>   **staff-driven admin action**, not a guest-facing or date-triggered flow — the review
+>   proof-of-stay gate (`hasCompletedStayAt` checking `checked_out`) is consequently
+>   reachable for the first time, but only when staff actually check a guest out through the
+>   admin console.
+> - **Platform brand settings**: the `Platform` entity (brand identity, already read-only via
+>   the public `platform(slug)` query) had zero admin write path; now has one
+>   (`AdminPlatformRestController`, `super_admin`-gated, audited), plus new
+>   `contact_email`/`contact_phone` columns (`V34`) and a `/platform/settings` page.
+> - **Room Types + Rooms merged** into one page (the standalone `/hotels/[hotelId]/rooms`
+>   route is gone); room type edit gained Rate Plan (link/create) and room-type-scoped
+>   Availability tabs.
+> - Confirmed live during this work: room-type↔rate-plan linking is a genuine many-to-many
+>   (`room_type_rate_plans`, unique on the pair) — "one rate plan per room type" was a prior
+>   UI assumption, never a DB rule.

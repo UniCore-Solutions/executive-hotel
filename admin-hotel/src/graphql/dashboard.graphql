@@ -26,5 +26,43 @@ query AdminDashboard($hotelId: ID!) {
         lastName
       }
     }
+    arrivalsTodayList {
+      id
+      reference
+      status
+      checkInDate
+      checkOutDate
+      guest {
+        firstName
+        lastName
+      }
+      roomLines {
+        id
+        roomTypeId
+        roomTypeName
+        nights
+        roomId
+        roomNumber
+      }
+    }
+    departuresTodayList {
+      id
+      reference
+      status
+      checkInDate
+      checkOutDate
+      guest {
+        firstName
+        lastName
+      }
+      roomLines {
+        id
+        roomTypeId
+        roomTypeName
+        nights
+        roomId
+        roomNumber
+      }
+    }
   }
 }

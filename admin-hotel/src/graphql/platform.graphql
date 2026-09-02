@@ -1,0 +1,29 @@
+# Platform (brand) settings — the admin form's read side reuses the public,
+# permitAll `platform(slug)` query (same pattern the hotel Settings page
+# uses for policies, NEW-4) rather than a dedicated admin query: there is no
+# admin-only data here, brand identity is public content.
+#
+# The platform's slug is a small, effectively-fixed piece of config in a
+# single-tenant deployment (one row, seeded once) — the same "exactly one
+# platform row" assumption AdminPlatformRestController's write side makes.
+query AdminPlatformSettings($slug: String!) {
+  platform(slug: $slug) {
+    id
+    slug
+    name
+    tagline
+    description
+    status
+    defaultCurrency
+    contactEmail
+    contactPhone
+    media {
+      id
+      url
+      altText
+      category
+      isPrimary
+      sortOrder
+    }
+  }
+}

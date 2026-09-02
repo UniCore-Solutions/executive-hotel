@@ -13,6 +13,11 @@ export type CancelReservationInput = z.infer<typeof cancelReservationSchema>;
  * (see docs/ADMIN_REBUILD_PROGRESS.md, "Backend gaps found during
  * implementation"). Revisit if the table changes.
  */
+export const assignRoomSchema = z.object({
+  roomId: z.string().min(1, 'Choose a room'),
+});
+export type AssignRoomInput = z.infer<typeof assignRoomSchema>;
+
 export const CANCELLATION_REASONS = [
   { value: 'guest_changed_plans', label: 'Guest changed plans' },
   { value: 'guest_duplicate_booking', label: 'Duplicate booking' },

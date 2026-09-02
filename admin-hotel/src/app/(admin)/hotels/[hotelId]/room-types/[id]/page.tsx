@@ -13,11 +13,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { DataTable } from '@/components/data-table/DataTable';
+import { DataTableToolbar } from '@/components/data-table/DataTableToolbar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RoomTypeDetailsForm } from '@/components/modules/room-types/RoomTypeDetailsForm';
 import { RoomTypeAmenitiesForm } from '@/components/modules/room-types/RoomTypeAmenitiesForm';
 import { RoomTypeGallery } from '@/components/modules/room-types/RoomTypeGallery';
+import { RoomTypeRatePlansPanel } from '@/components/modules/room-types/RoomTypeRatePlansPanel';
+import { RoomTypeAvailabilityPanel } from '@/components/modules/room-types/RoomTypeAvailabilityPanel';
 import { buildRoomColumns, type RoomRow } from '@/components/modules/rooms/columns';
+import { ROOM_SORT_OPTIONS, compareRooms } from '@/components/modules/rooms/sort';
 import { RoomFormSheet } from '@/components/modules/rooms/RoomFormSheet';
+import { useTableState } from '@/hooks/useTableState';
 
 export default function RoomTypeEditPage({ params }: { params: Promise<{ hotelId: string; id: string }> }) {
   const { hotelId, id } = use(params);
@@ -41,11 +47,17 @@ export default function RoomTypeEditPage({ params }: { params: Promise<{ hotelId
 
   const [editingRoom, setEditingRoom] = useState<RoomRow | null | undefined>(undefined);
   const [roomSheetOpen, setRoomSheetOpen] = useState(false);
+  const { search, setSearch, sort, setSort } = useTableState();
+  const roomSort = ROOM_SORT_OPTIONS.some((o) => o.value === sort) ? sort : 'roomNumber-asc';
 
-  const rows: RoomRow[] = useMemo(
-    () => (roomType ? roomType.rooms.map((r) => ({ ...r, roomTypeName: roomType.name })) : []),
-    [roomType],
-  );
+  const rows: RoomRow[] = useMemo(() => {
+    const all = roomType ? roomType.rooms.map((r) => ({ ...r, roomTypeName: roomType.name })) : [];
+    const q = search.trim().toLowerCase();
+    const filtered = q ? all.filter((r) => [r.roomNumber, r.floor].some((f) => f?.toLowerCase().includes(q))) : all;
+    const [field = 'roomNumber', dir] = roomSort.split('-');
+    const sorted = [...filtered].sort((a, b) => compareRooms(a, b, field));
+    return dir === 'desc' ? sorted.reverse() : sorted;
+  }, [roomType, search, roomSort]);
   const roomTypeOptions = useMemo(
     () => (roomType ? [{ value: roomType.id, label: roomType.name }] : []),
     [roomType],
@@ -87,6 +99,8 @@ export default function RoomTypeEditPage({ params }: { params: Promise<{ hotelId
           <TabsList>
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="rooms">Rooms ({roomType.rooms.length})</TabsTrigger>
+            <TabsTrigger value="rate-plan">Rate Plan</TabsTrigger>
+            <TabsTrigger value="availability">Availability</TabsTrigger>
             <TabsTrigger value="amenities">Amenities</TabsTrigger>
             <TabsTrigger value="gallery">Gallery</TabsTrigger>
           </TabsList>
@@ -114,14 +128,43 @@ export default function RoomTypeEditPage({ params }: { params: Promise<{ hotelId
                 Add room
               </Button>
             </div>
+            <DataTableToolbar
+              searchValue={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search rooms…"
+              filters={
+                <div className="w-full max-w-56">
+                  <Select value={roomSort} onValueChange={setSort}>
+                    <SelectTrigger size="sm" aria-label="Sort rooms">
+                      <SelectValue placeholder="Sort by" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ROOM_SORT_OPTIONS.filter((opt) => !opt.value.startsWith('roomType-')).map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              }
+            />
             <DataTable
               columns={roomColumns}
               data={rows}
               onRowClick={openEditRoom}
               emptyIcon={DoorOpen}
-              emptyTitle="No rooms yet"
-              emptyDescription="Add the first physical room to make this type sellable."
+              emptyTitle={search ? 'No rooms match your search' : 'No rooms yet'}
+              emptyDescription={search ? 'Try a different room number.' : 'Add the first physical room to make this type sellable.'}
             />
+          </TabsContent>
+
+          <TabsContent value="rate-plan">
+            <RoomTypeRatePlansPanel hotelId={hotelId} roomTypeId={roomType.id} />
+          </TabsContent>
+
+          <TabsContent value="availability">
+            <RoomTypeAvailabilityPanel hotelId={hotelId} roomTypeId={roomType.id} />
           </TabsContent>
 
           <TabsContent value="amenities">
@@ -147,8 +190,9 @@ export default function RoomTypeEditPage({ params }: { params: Promise<{ hotelId
       )}
 
       {editingRoom !== undefined ? (
-        // See rooms/page.tsx — keyed by record identity to avoid reusing a
-        // previously-mounted form's stale defaultValues.
+        // See room-types/page.tsx's "All rooms" view — keyed by record
+        // identity to avoid reusing a previously-mounted form's stale
+        // defaultValues.
         <RoomFormSheet
           key={editingRoom?.id ?? 'new'}
           hotelId={hotelId}

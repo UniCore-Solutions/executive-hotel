@@ -295,6 +295,16 @@ public class CatalogQueryServiceImpl implements CatalogQueryService {
 
 	@Override
 	@Transactional(readOnly = true)
+	public Map<UUID, String> roomNumbersByIds(Collection<UUID> ids) {
+		if (ids == null || ids.isEmpty()) {
+			return Map.of();
+		}
+		return roomRepository.findAllById(ids).stream()
+				.collect(Collectors.toMap(Room::getId, Room::getRoomNumber));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
 	public BigDecimal roomTypeFromPrice(UUID hotelId, UUID roomTypeId) {
 		return pricing.fromPrice(hotelId, roomTypeId, java.time.LocalDate.now());
 	}

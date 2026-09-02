@@ -1,11 +1,13 @@
 package com.hotelcollection.hotel.service;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
 import com.hotelcollection.hotel.entity.PaymentStatus;
 import com.hotelcollection.hotel.entity.Reservation;
 import com.hotelcollection.hotel.entity.ReservationStatus;
+import com.hotelcollection.hotel.entity.Room;
 import com.hotelcollection.hotel.dto.PageInput;
 import com.hotelcollection.hotel.dto.reservation.CancelReservationInput;
 import com.hotelcollection.hotel.dto.reservation.CreateReservationInput;
@@ -48,7 +50,14 @@ public interface BookingService {
 
 	List<Reservation> myReservations();
 
-	ReservationPageResult adminReservations(UUID hotelId, ReservationStatus status, PageInput page);
+	/**
+	 * {@code search} matches the reservation reference or the guest's
+	 * name/email (case-insensitive substring). {@code sort} is
+	 * {@code "<field>-<asc|desc>"} (e.g. {@code "checkInDate-desc"}); an
+	 * unrecognized or blank value defaults to {@code createdAt desc}.
+	 */
+	ReservationPageResult adminReservations(UUID hotelId, ReservationStatus status, String search,
+			String sort, PageInput page);
 
 	String cancellationReasonLabel(UUID id);
 
@@ -83,4 +92,36 @@ public interface BookingService {
 	 * job, never directly by a controller.
 	 */
 	void expireHold(UUID reservationId);
+
+	/**
+	 * Assigns a physical room to one room line of a reservation — staff of
+	 * the reservation's hotel only. Validates the room belongs to the line's
+	 * room type and hotel, is {@code active}, and carries no conflicting
+	 * occupancy for the line's stay dates ({@link #eligibleRooms}); CONFLICT
+	 * (409) if any of those fail. Writes an {@code AuditService} record.
+	 */
+	Reservation assignRoom(UUID reservationId, UUID roomLineId, UUID roomId);
+
+	/**
+	 * Transitions a {@code confirmed} reservation to {@code checked_in},
+	 * writing a {@link com.hotelcollection.hotel.entity.ReservationStatusHistory}
+	 * row and an audit record. CONFLICT (409) if the reservation is not
+	 * {@code confirmed}, or if any room line still has no room assigned
+	 * ("assign rooms before check-in").
+	 */
+	Reservation checkIn(UUID reservationId);
+
+	/**
+	 * Transitions a {@code checked_in} reservation to {@code checked_out},
+	 * writing a status-history row and an audit record. CONFLICT (409) if
+	 * the reservation is not currently {@code checked_in}.
+	 */
+	Reservation checkOut(UUID reservationId);
+
+	/**
+	 * Active rooms of {@code roomTypeId} free of conflicting occupancy over
+	 * {@code [checkIn, checkOut)} — backs the admin room-assignment picker.
+	 * Staff of the room type's hotel only.
+	 */
+	List<Room> eligibleRooms(UUID roomTypeId, LocalDate checkIn, LocalDate checkOut);
 }

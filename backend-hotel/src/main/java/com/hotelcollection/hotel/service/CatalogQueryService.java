@@ -78,6 +78,9 @@ public interface CatalogQueryService {
 
 	Map<UUID, String> roomTypeNamesByIds(Collection<UUID> ids);
 
+	/** Physical room numbers by id (reservation room-line display). */
+	Map<UUID, String> roomNumbersByIds(Collection<UUID> ids);
+
 	BigDecimal roomTypeFromPrice(UUID hotelId, UUID roomTypeId);
 
 	Map<UUID, List<Media>> mediaByHotelIds(Collection<UUID> ids);

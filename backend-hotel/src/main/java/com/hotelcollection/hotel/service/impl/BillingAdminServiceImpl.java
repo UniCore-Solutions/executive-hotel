@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,13 +34,30 @@ public class BillingAdminServiceImpl implements BillingAdminService {
 		this.currentUser = currentUser;
 	}
 
+	private static final java.util.Set<String> PAYMENT_SORTABLE_FIELDS = java.util.Set.of(
+			"amount", "status", "createdAt");
+
+	private static Sort resolvePaymentSort(String sort) {
+		if (sort == null || sort.isBlank()) {
+			return Sort.by(Sort.Direction.DESC, "createdAt");
+		}
+		int idx = sort.lastIndexOf('-');
+		String field = idx > 0 ? sort.substring(0, idx) : sort;
+		String dir = idx > 0 ? sort.substring(idx + 1) : "asc";
+		if (!PAYMENT_SORTABLE_FIELDS.contains(field)) {
+			return Sort.by(Sort.Direction.DESC, "createdAt");
+		}
+		return Sort.by("desc".equalsIgnoreCase(dir) ? Sort.Direction.DESC : Sort.Direction.ASC, field);
+	}
+
 	@Override
 	@Transactional(readOnly = true)
-	public PaymentPageResult payments(UUID hotelId, PageInput page) {
+	public PaymentPageResult payments(UUID hotelId, String search, String sort, PageInput page) {
 		requireStaffAccess(hotelId);
 		int p = page == null || page.page() == null ? 0 : Math.max(page.page(), 0);
 		int s = page == null || page.size() == null ? 20 : Math.min(Math.max(page.size(), 1), 100);
-		Page<Payment> result = paymentRepository.findByHotelId(hotelId, PageRequest.of(p, s));
+		Page<Payment> result = paymentRepository.findByHotelId(hotelId, search,
+				PageRequest.of(p, s, resolvePaymentSort(sort)));
 		return new PaymentPageResult(result.getTotalElements(), result.getNumber(),
 				result.getSize(), result.getContent());
 	}

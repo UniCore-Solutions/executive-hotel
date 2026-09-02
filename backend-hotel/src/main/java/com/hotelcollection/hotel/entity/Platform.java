@@ -15,8 +15,9 @@ import lombok.Setter;
 
 /**
  * Platform = the collection / brand tenant ("The Hotel Collection").
- * Identity only: logo/hero/gallery/contact live in media + content blocks,
- * never as platform columns.
+ * Logo/hero/gallery live in media + content blocks, never as platform
+ * columns; contact_email/contact_phone (V34) are simple display fields and
+ * live here directly, same posture as the hotel's own phone/email.
  */
 @Entity
 @Table(name = "platforms")
@@ -45,6 +46,12 @@ public class Platform {
 	@org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.CHAR)
 	@Column(name = "default_currency")
 	private String defaultCurrency;
+
+	@Column(name = "contact_email")
+	private String contactEmail;
+
+	@Column(name = "contact_phone")
+	private String contactPhone;
 
 	@Column(nullable = false)
 	private Instant createdAt;

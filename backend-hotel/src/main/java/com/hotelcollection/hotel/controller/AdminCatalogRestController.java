@@ -1,16 +1,19 @@
 package com.hotelcollection.hotel.controller;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.hotelcollection.hotel.dto.catalog.AdminHotelInput;
@@ -24,21 +27,28 @@ import com.hotelcollection.hotel.entity.HotelPolicy;
 import com.hotelcollection.hotel.entity.Media;
 import com.hotelcollection.hotel.entity.Room;
 import com.hotelcollection.hotel.entity.RoomType;
+import com.hotelcollection.hotel.service.BookingService;
 import com.hotelcollection.hotel.service.CatalogAdminService;
 
 /**
  * Back-office catalog write endpoints (hotels, room types, rooms, amenity &
  * media & policy associations). Authorization (hotel scoping / super_admin)
- * is enforced inside {@link CatalogAdminService}.
+ * is enforced inside {@link CatalogAdminService}. Also carries the
+ * eligible-rooms read that backs the room-assignment picker (REST, not
+ * GraphQL, because it is the direct read-side companion of the REST
+ * assign-room write and depends on {@link BookingService}'s occupancy
+ * check, not a catalog write).
  */
 @RestController
 @RequestMapping("/api/v1/admin")
 public class AdminCatalogRestController {
 
 	private final CatalogAdminService catalog;
+	private final BookingService booking;
 
-	public AdminCatalogRestController(CatalogAdminService catalog) {
+	public AdminCatalogRestController(CatalogAdminService catalog, BookingService booking) {
 		this.catalog = catalog;
+		this.booking = booking;
 	}
 
 	// ---------------------------------------------------------------- hotels
@@ -106,5 +116,13 @@ public class AdminCatalogRestController {
 	@PutMapping("/rooms/{id}")
 	public Room updateRoom(@PathVariable UUID id, @RequestBody AdminRoomInput in) {
 		return catalog.updateRoom(id, in);
+	}
+
+	/** Active rooms of this room type with no conflicting occupancy over
+	 * {@code [checkIn, checkOut)} — backs the room-assignment picker. */
+	@GetMapping("/room-types/{roomTypeId}/rooms/eligible")
+	public List<Room> eligibleRooms(@PathVariable UUID roomTypeId,
+			@RequestParam LocalDate checkIn, @RequestParam LocalDate checkOut) {
+		return booking.eligibleRooms(roomTypeId, checkIn, checkOut);
 	}
 }

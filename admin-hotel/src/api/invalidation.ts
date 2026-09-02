@@ -23,6 +23,9 @@ import type { ApolloClient } from '@apollo/client';
  */
 export const REST_INVALIDATIONS: Record<string, string[]> = {
   'reservations.cancel': ['adminReservations', 'adminDashboard'],
+  'reservations.assignRoom': ['adminReservations', 'adminDashboard'],
+  'reservations.checkIn': ['adminReservations', 'adminDashboard'],
+  'reservations.checkOut': ['adminReservations', 'adminDashboard'],
   'roomTypes.create': ['adminHotel'],
   'roomTypes.update': ['adminHotel'],
   'roomTypes.amenities': ['adminHotel'],
@@ -38,10 +41,13 @@ export const REST_INVALIDATIONS: Record<string, string[]> = {
   'promotions.update': ['adminPromotions'],
   'promotions.status': ['adminPromotions'],
   'availability.range': ['adminHotel'],
+  'hotels.create': ['adminHotels'],
   'hotels.update': ['adminHotel', 'adminDashboard'],
   'hotels.amenities': ['adminHotel'],
   'hotels.media': ['adminHotel'],
   'hotels.policies': ['adminHotel'],
+  'platform.update': ['platform'],
+  'platform.media': ['platform'],
   'reviews.moderate': ['adminReviews'],
   'users.create': ['adminUsers'],
   'users.assignRole': ['adminUsers', 'adminRoles'],

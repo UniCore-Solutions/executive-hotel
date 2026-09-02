@@ -1,5 +1,5 @@
 extend type Query {
-	adminPayments(hotelId: ID!, page: PageInput): PaymentPage!
+	adminPayments(hotelId: ID!, search: String, sort: String, page: PageInput): PaymentPage!
 	adminInvoices(hotelId: ID!, page: PageInput): InvoicePage!
 }
 

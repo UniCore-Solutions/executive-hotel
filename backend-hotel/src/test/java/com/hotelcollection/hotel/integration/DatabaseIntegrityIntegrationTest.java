@@ -47,8 +47,8 @@ class DatabaseIntegrityIntegrationTest {
 	void flywayAppliedAllMigrations() {
 		Integer applied = jdbc.queryForObject(
 				"SELECT count(*) FROM flyway_schema_history WHERE success = TRUE", Integer.class);
-		// V33 (credit_notes) is the current head.
-		assertThat(applied).isEqualTo(33);
+		// V34 (platform_contact_info) is the current head.
+		assertThat(applied).isEqualTo(34);
 	}
 
 	@Test
@@ -57,7 +57,7 @@ class DatabaseIntegrityIntegrationTest {
 				"SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"
 						+ " AND table_name <> 'flyway_schema_history'",
 				Integer.class);
-		// 54 + credit_notes (V33).
+		// 54 + credit_notes (V33). V34 only adds columns to platforms, no new table.
 		assertThat(tables).isEqualTo(55);
 
 		assertThat(extensionInstalled("btree_gist")).isTrue();

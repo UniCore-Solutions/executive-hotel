@@ -62,8 +62,9 @@ public class ReservationGraphQLController {
 
 	@QueryMapping
 	public ReservationPageResult adminReservations(@Argument UUID hotelId,
-			@Argument ReservationStatus status, @Argument PageInput page) {
-		return booking.adminReservations(hotelId, status, page);
+			@Argument ReservationStatus status, @Argument String search, @Argument String sort,
+			@Argument PageInput page) {
+		return booking.adminReservations(hotelId, status, search, sort, page);
 	}
 
 	@SchemaMapping(typeName = "Reservation", field = "guest")
@@ -94,6 +95,19 @@ public class ReservationGraphQLController {
 		return lines.stream().collect(Collectors.toMap(l -> l,
 				l -> media.getOrDefault(l.getRoomTypeId(), List.of()).stream()
 						.findFirst().map(Media::getUrl).orElse(null)));
+	}
+
+	// The assigned physical room (back-office check-in flow): roomLines
+	// persist only the room id (nullable — unset until staff assign one), so
+	// its display number is resolved from the current room catalog the same
+	// way roomTypeName is.
+	@BatchMapping(typeName = "ReservationRoomLine", field = "roomNumber")
+	public Map<ReservationRoom, String> roomLineRoomNumbers(Collection<ReservationRoom> lines) {
+		Map<UUID, String> numbers = catalog.roomNumbersByIds(lines.stream()
+				.map(ReservationRoom::getRoomId).filter(java.util.Objects::nonNull)
+				.collect(Collectors.toSet()));
+		return lines.stream().collect(Collectors.toMap(l -> l,
+				l -> l.getRoomId() == null ? null : numbers.get(l.getRoomId())));
 	}
 
 	@BatchMapping(typeName = "ReservationRoomLine", field = "ratePlanName")

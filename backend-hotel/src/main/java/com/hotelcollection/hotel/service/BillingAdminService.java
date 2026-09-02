@@ -11,7 +11,13 @@ import com.hotelcollection.hotel.dto.billing.PaymentPageResult;
  */
 public interface BillingAdminService {
 
-	PaymentPageResult payments(UUID hotelId, PageInput page);
+	/**
+	 * {@code search} matches the payment's reservation reference or guest
+	 * name/email. {@code sort} is {@code "<field>-<asc|desc>"} over
+	 * {@code amount}/{@code status}/{@code createdAt}; anything else
+	 * (including blank) defaults to {@code createdAt desc}.
+	 */
+	PaymentPageResult payments(UUID hotelId, String search, String sort, PageInput page);
 
 	InvoicePageResult invoices(UUID hotelId, PageInput page);
 

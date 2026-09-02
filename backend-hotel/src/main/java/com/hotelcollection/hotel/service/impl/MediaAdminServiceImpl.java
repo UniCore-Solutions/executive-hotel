@@ -41,6 +41,13 @@ public class MediaAdminServiceImpl implements MediaAdminService {
 		return replaceMedia(inputs, m -> m.setRoomTypeId(roomTypeId));
 	}
 
+	@Override
+	@Transactional
+	public List<Media> replacePlatformMedia(UUID platformId, List<MediaInput> inputs) {
+		mediaRepository.deleteByPlatformId(platformId);
+		return replaceMedia(inputs, m -> m.setPlatformId(platformId));
+	}
+
 	private List<Media> replaceMedia(List<MediaInput> inputs,
 			java.util.function.Consumer<Media> owner) {
 		if (inputs == null) {

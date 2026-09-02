@@ -11,6 +11,8 @@ type Platform {
 	description: String
 	status: PlatformStatus!
 	defaultCurrency: String
+	contactEmail: String
+	contactPhone: String
 	media: [Media!]!
 	contentBlocks: [ContentBlock!]!
 	hotels: [Hotel!]!

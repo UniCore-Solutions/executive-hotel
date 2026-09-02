@@ -1,5 +1,5 @@
-query AdminGuests($hotelId: ID!, $query: String, $page: PageInput) {
-  adminGuests(hotelId: $hotelId, query: $query, page: $page) {
+query AdminGuests($hotelId: ID!, $query: String, $sort: String, $page: PageInput) {
+  adminGuests(hotelId: $hotelId, query: $query, sort: $sort, page: $page) {
     total
     page
     size

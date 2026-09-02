@@ -7,7 +7,7 @@ import { TextareaField } from '@/components/form/fields/TextareaField';
 import { SelectField } from '@/components/form/fields/SelectField';
 import { Button } from '@/components/ui/button';
 import { useAdminForm } from '@/hooks/useAdminForm';
-import { updateHotel } from '@/api/rest/endpoints/catalog';
+import { createHotel, updateHotel } from '@/api/rest/endpoints/catalog';
 import { hotelProfileSchema, HOTEL_CURRENCIES, type HotelProfileFormValues } from '@/schemas/settings';
 
 const STATUS_OPTIONS = [
@@ -39,32 +39,59 @@ export interface HotelProfile {
   status: string;
 }
 
-export function HotelProfileForm({ hotel, onSaved }: { hotel: HotelProfile; onSaved?: () => void }) {
+export function HotelProfileForm({
+  hotel,
+  onSaved,
+  onCreated,
+  onCancel,
+}: {
+  /** Omitted for creation (E-NAV-2's "New hotel" drawer) — every field then
+      starts blank/default and submit calls `createHotel` instead of
+      `updateHotel(hotel.id, …)`. */
+  hotel?: HotelProfile;
+  /** Called after a successful edit-mode save. */
+  onSaved?: () => void;
+  /** Called instead of navigating on a successful create — used when this
+      form is embedded in a drawer, mirroring RoomTypeDetailsForm's
+      onCreated so the caller can close the drawer before navigating. */
+  onCreated?: (id: string) => void;
+  /** Called instead of nothing on Cancel in create mode (the edit-mode
+      Settings page has no Cancel button — the form autosaves per field
+      group — so this is create-only). */
+  onCancel?: () => void;
+}) {
+  const isEdit = Boolean(hotel);
   const { form, submit, isSubmitting } = useAdminForm({
     schema: hotelProfileSchema,
     defaultValues: {
-      name: hotel.name,
-      brand: hotel.brand ?? '',
-      description: hotel.description ?? '',
-      hotelType: hotel.hotelType ?? '',
-      addressLine1: hotel.addressLine1 ?? '',
-      addressLine2: hotel.addressLine2 ?? '',
-      city: hotel.city ?? '',
-      countryCode: hotel.countryCode ?? '',
-      latitude: hotel.latitude ?? undefined,
-      longitude: hotel.longitude ?? undefined,
-      phone: hotel.phone ?? '',
-      email: hotel.email ?? '',
-      starRating: hotel.starRating ?? undefined,
-      checkInTime: hotel.checkInTime ?? '',
-      checkOutTime: hotel.checkOutTime ?? '',
-      defaultCurrency: (hotel.defaultCurrency as HotelProfileFormValues['defaultCurrency']) ?? 'MAD',
-      status: (hotel.status as HotelProfileFormValues['status']) ?? 'draft',
+      name: hotel?.name ?? '',
+      brand: hotel?.brand ?? '',
+      description: hotel?.description ?? '',
+      hotelType: hotel?.hotelType ?? '',
+      addressLine1: hotel?.addressLine1 ?? '',
+      addressLine2: hotel?.addressLine2 ?? '',
+      city: hotel?.city ?? '',
+      countryCode: hotel?.countryCode ?? '',
+      latitude: hotel?.latitude ?? undefined,
+      longitude: hotel?.longitude ?? undefined,
+      phone: hotel?.phone ?? '',
+      email: hotel?.email ?? '',
+      starRating: hotel?.starRating ?? undefined,
+      checkInTime: hotel?.checkInTime ?? '',
+      checkOutTime: hotel?.checkOutTime ?? '',
+      defaultCurrency: (hotel?.defaultCurrency as HotelProfileFormValues['defaultCurrency']) ?? 'MAD',
+      status: (hotel?.status as HotelProfileFormValues['status']) ?? 'active',
     },
-    mutationFn: (values) => updateHotel(hotel.id, values),
-    invalidates: 'hotels.update',
-    successMessage: 'Profile updated',
-    onSuccess: onSaved,
+    mutationFn: (values) => (isEdit ? updateHotel(hotel!.id, values) : createHotel(values)),
+    invalidates: isEdit ? 'hotels.update' : 'hotels.create',
+    successMessage: isEdit ? 'Profile updated' : 'Hotel created',
+    onSuccess: (result) => {
+      if (isEdit) {
+        onSaved?.();
+      } else {
+        onCreated?.((result as { id: string }).id);
+      }
+    },
   });
 
   return (
@@ -120,8 +147,13 @@ export function HotelProfileForm({ hotel, onSaved }: { hotel: HotelProfile; onSa
       </FormSection>
 
       <FormActions>
+        {!isEdit ? (
+          <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>
+            Cancel
+          </Button>
+        ) : null}
         <Button type="submit" loading={isSubmitting}>
-          Save changes
+          {isEdit ? 'Save changes' : 'Create hotel'}
         </Button>
       </FormActions>
     </Form>

@@ -16,10 +16,16 @@ export function RatePlanCreateSheet({
   hotelId,
   open,
   onOpenChange,
+  onCreated,
 }: {
   hotelId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Called with the new plan's id instead of navigating to its edit page —
+      used when creating from a room type's Rate Plan tab, so the caller can
+      immediately link the new plan to that room type and stay put. Defaults
+      to the original navigate-to-editor behavior. */
+  onCreated?: (id: string) => void;
 }) {
   const router = useRouter();
 
@@ -36,7 +42,8 @@ export function RatePlanCreateSheet({
             onCancel={() => onOpenChange(false)}
             onCreated={(id) => {
               onOpenChange(false);
-              router.push(`/hotels/${hotelId}/rate-plans/${id}`);
+              if (onCreated) onCreated(id);
+              else router.push(`/hotels/${hotelId}/rate-plans/${id}`);
             }}
           />
         </SheetBody>

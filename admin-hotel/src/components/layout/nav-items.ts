@@ -3,8 +3,8 @@ import {
   Building2,
   CalendarClock,
   CalendarRange,
-  DoorOpen,
   LayoutDashboard,
+  Palette,
   Receipt,
   Settings,
   Tag,
@@ -31,7 +31,10 @@ export interface NavGroup {
   items: NavItem[];
 }
 
-function visibleTo(item: NavItem, roles: string[]): boolean {
+/** Exported so other role-filtered UI (e.g. the dashboard's section
+    visibility) can reuse the exact same "declare roles?, missing = everyone,
+    super_admin = everyone" rule instead of re-implementing it. */
+export function visibleTo(item: { roles?: string[] }, roles: string[]): boolean {
   if (!item.roles || roles.includes(SUPER_ADMIN)) return true;
   return item.roles.some((r) => roles.includes(r));
 }
@@ -42,7 +45,14 @@ function visibleTo(item: NavItem, roles: string[]): boolean {
 export const GLOBAL_NAV_GROUPS: NavGroup[] = [
   {
     label: 'Platform',
-    items: [{ href: '/hotels', label: 'Hotels', icon: Building2 }],
+    items: [
+      { href: '/hotels', label: 'Hotels', icon: Building2 },
+      // Brand identity is platform-wide (write side gated to super_admin —
+      // AdminPlatformRestController), not hotel-scoped, so this stays
+      // super_admin-only same as the write it fronts. UX-only gate, same
+      // caveat as every other `roles` entry in this file.
+      { href: '/platform/settings', label: 'Platform Settings', icon: Palette, roles: [SUPER_ADMIN] },
+    ],
   },
 ];
 
@@ -81,12 +91,6 @@ export function hotelNavGroups(hotelId: string, roles: string[]): NavGroup[] {
           href: `${base}/room-types`,
           label: 'Room Types',
           icon: BedDouble,
-          roles: ['hotel_admin', 'revenue_manager', 'content_manager'],
-        },
-        {
-          href: `${base}/rooms`,
-          label: 'Rooms',
-          icon: DoorOpen,
           roles: ['hotel_admin', 'revenue_manager', 'content_manager', 'reception_staff'],
         },
         {

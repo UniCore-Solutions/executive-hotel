@@ -20,6 +20,10 @@ export function useTableState() {
   const pageSize = Number(searchParams.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const search = searchParams.get('q') ?? '';
   const status = searchParams.get('status') ?? '';
+  // Client-side sort (no server sort/filter args exist yet on some admin
+  // list queries, e.g. `adminHotels` — see NEW-3 in ADMIN_REBUILD_PROGRESS.md).
+  // Empty string means "no sort applied, keep server/default order".
+  const sort = searchParams.get('sort') ?? '';
 
   const setParams = useCallback(
     (updates: Record<string, string | number | null>) => {
@@ -39,9 +43,10 @@ export function useTableState() {
   const setPage = useCallback((next: number) => setParams({ page: next }), [setParams]);
   const setSearch = useCallback((next: string) => setParams({ q: next, page: 0 }), [setParams]);
   const setStatus = useCallback((next: string) => setParams({ status: next, page: 0 }), [setParams]);
+  const setSort = useCallback((next: string) => setParams({ sort: next, page: 0 }), [setParams]);
 
   return useMemo(
-    () => ({ page, pageSize, search, status, setPage, setSearch, setStatus }),
-    [page, pageSize, search, status, setPage, setSearch, setStatus],
+    () => ({ page, pageSize, search, status, sort, setPage, setSearch, setStatus, setSort }),
+    [page, pageSize, search, status, sort, setPage, setSearch, setStatus, setSort],
   );
 }

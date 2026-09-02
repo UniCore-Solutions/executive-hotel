@@ -43,3 +43,51 @@ export async function adminGetCreditNote(reservationId: string): Promise<AdminCr
   const { data } = await restClient.get(`/admin/reservations/${reservationId}/credit-note`);
   return data as AdminCreditNoteData;
 }
+
+/** Assigns a physical room to one room line. 409s (surfaced as ApiError with
+    code CONFLICT) if the room is already assigned to an overlapping stay. */
+export async function assignRoom(
+  reservationId: string,
+  roomLineId: string,
+  roomId: string,
+): Promise<unknown> {
+  const { data } = await restClient.post(
+    `/admin/reservations/${reservationId}/rooms/${roomLineId}/assign-room`,
+    { roomId },
+  );
+  return data;
+}
+
+/** 409s if any room line still has no room assigned. */
+export async function checkIn(reservationId: string): Promise<unknown> {
+  const { data } = await restClient.post(`/admin/reservations/${reservationId}/check-in`);
+  return data;
+}
+
+/** 409s unless the reservation is currently checked in. */
+export async function checkOut(reservationId: string): Promise<unknown> {
+  const { data } = await restClient.post(`/admin/reservations/${reservationId}/check-out`);
+  return data;
+}
+
+export interface EligibleRoom {
+  id: string;
+  roomNumber: string;
+  floor?: string | null;
+}
+
+/** Active rooms of this room type free of conflicting occupancy for
+    [checkIn, checkOut) — backs the assign-room picker. Read-only, so it
+    goes straight to the backend rather than through TanStack Query's
+    mutation lifecycle (this app's read cache is Apollo, but this data has
+    no GraphQL equivalent — see graphql-contract skill). */
+export async function eligibleRooms(
+  roomTypeId: string,
+  checkIn: string,
+  checkOut: string,
+): Promise<EligibleRoom[]> {
+  const { data } = await restClient.get(`/admin/room-types/${roomTypeId}/rooms/eligible`, {
+    params: { checkIn, checkOut },
+  });
+  return data as EligibleRoom[];
+}

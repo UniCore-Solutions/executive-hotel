@@ -10,6 +10,7 @@ import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,15 +45,39 @@ public class ReservationAdminServiceImpl implements ReservationAdminService {
 		this.currentUser = currentUser;
 	}
 
+	/**
+	 * Whitelisted, DB-level sort on real {@link Guest} columns only.
+	 * {@code reservationsCount}/{@code totalSpent}/{@code lastStay} on
+	 * {@link AdminGuestView} are computed in memory from a second query run
+	 * against just this page's guest ids (see below) — sorting by them would
+	 * only be correct within one page, which would silently mislead (a
+	 * "sort by total spent" that only reorders 20 rows out of hundreds is
+	 * worse than no sort), so they're deliberately not offered here.
+	 */
+	private static Sort resolveGuestSort(String sort) {
+		if (sort == null || sort.isBlank()) {
+			return Sort.unsorted();
+		}
+		int idx = sort.lastIndexOf('-');
+		String field = idx > 0 ? sort.substring(0, idx) : sort;
+		String dir = idx > 0 ? sort.substring(idx + 1) : "asc";
+		Sort.Direction direction = "desc".equalsIgnoreCase(dir) ? Sort.Direction.DESC : Sort.Direction.ASC;
+		return switch (field) {
+			case "name" -> Sort.by(direction, "firstName").and(Sort.by(direction, "lastName"));
+			case "email" -> Sort.by(direction, "email");
+			default -> Sort.unsorted();
+		};
+	}
+
 	@Override
 	@Transactional(readOnly = true)
-	public AdminGuestPage guests(UUID hotelId, String query, PageInput page) {
+	public AdminGuestPage guests(UUID hotelId, String query, String sort, PageInput page) {
 		currentUser.requireHotelAccess(hotelId);
 		int p = page == null || page.page() == null ? 0 : Math.max(page.page(), 0);
 		int s = page == null || page.size() == null ? 20 : Math.min(Math.max(page.size(), 1), 100);
 		String trimmed = query == null || query.isBlank() ? null : query.trim();
 		Page<Guest> result = guestRepository
-				.findDistinctByHotel(hotelId, trimmed, PageRequest.of(p, s));
+				.findDistinctByHotel(hotelId, trimmed, PageRequest.of(p, s, resolveGuestSort(sort)));
 		List<UUID> guestIds = result.getContent().stream().map(Guest::getId).toList();
 		Map<UUID, List<Reservation>> staysByGuest = guestIds.isEmpty() ? Map.of()
 				: reservationRepository.findByGuestIdsAndHotelId(guestIds, hotelId).stream()
@@ -87,6 +112,19 @@ public class ReservationAdminServiceImpl implements ReservationAdminService {
 	public long countDepartures(UUID hotelId, LocalDate date) {
 		return reservationRepository.countByHotelIdAndCheckOutDateAndStatusNot(hotelId, date,
 				ReservationStatus.cancelled);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<Reservation> arrivalsList(UUID hotelId, LocalDate date) {
+		return reservationRepository.findByHotelIdAndCheckInDateOrderByCreatedAtDesc(hotelId, date);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<Reservation> departuresList(UUID hotelId, LocalDate date) {
+		return reservationRepository.findByHotelIdAndCheckOutDateAndStatusNotOrderByCreatedAtDesc(
+				hotelId, date, ReservationStatus.cancelled);
 	}
 
 	@Override

@@ -127,8 +127,11 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 		double occupancy = total == 0 ? 0.0 : (sold * 100.0) / total;
 
 		List<Reservation> recent = reservations.recentReservations(hotelId, 5);
+		List<Reservation> arrivalsList = reservations.arrivalsList(hotelId, today);
+		List<Reservation> departuresList = reservations.departuresList(hotelId, today);
 		return new AdminDashboardView(hotelId, hotel.getName(), arrivals, departures, inHouse,
-				soldOut, occupancy, available, revenue, pendingPayments, pendingInvoices, recent);
+				soldOut, occupancy, available, revenue, pendingPayments, pendingInvoices, recent,
+				arrivalsList, departuresList);
 	}
 
 	private void requireStaffAccess(UUID hotelId) {

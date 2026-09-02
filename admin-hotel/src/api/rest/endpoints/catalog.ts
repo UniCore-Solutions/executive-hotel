@@ -58,6 +58,11 @@ export interface MediaInput {
 
 // ---------------------------------------------------------------- hotel settings
 
+export async function createHotel(input: HotelInput): Promise<{ id: string }> {
+  const { data } = await restClient.post('/admin/hotels', input);
+  return data as { id: string };
+}
+
 export async function updateHotel(id: string, input: HotelInput): Promise<unknown> {
   const { data } = await restClient.put(`/admin/hotels/${id}`, input);
   return data;

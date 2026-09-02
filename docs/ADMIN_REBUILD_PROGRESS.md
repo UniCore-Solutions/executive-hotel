@@ -9,11 +9,11 @@
 
 | | |
 |---|---|
-| **Phase** | 2.2 (Inventory) complete; 2.3 (Dashboard) complete; **E-NAV-1, E-ROLES-1, E5 (Rate plans & Availability), E6 (Settings & Media), E7 (Guests & Payments) all complete** |
-| **Current module** | E5/E6/E7 built in parallel this session (one agent per module, each in its own worktree off `339e069`), then merged by hand and re-verified as a whole. Next: E-NAV-2 (search/sort/create on `/hotels`), or Promotions (E5, needs rate plans — now unblocked) |
-| **Last completed** | E5 (Rate Plans & Pricing, Availability), E6 (Hotel Settings: Profile/Policies/Amenities/Media), E7 (Guests, Payments) |
-| **Next READY task** | E-NAV-2 — Hotels list search/filter/sort/create; or E5-T0x — Promotions (rate plans now exist, J-14 unblocked) |
-| **Verified against** | Live stack (`hotel-backend` healthy, Flyway V32), 2026-09-02 |
+| **Phase** | 2.2 (Inventory) complete; 2.3 (Dashboard) complete; **E-NAV-1, E-ROLES-1, E5 (Rate plans & Availability), E6 (Settings & Media), E7 (Guests & Payments), E-NAV-2, E-PLATFORM (new), E3-T04 (Room/Room-Type merge + rate-plan linking + scoped Availability), E4-T02 (actionable check-in/check-out + room assignment) all complete** |
+| **Current module** | Three tasks built in parallel this session (one agent per epic, each in its own worktree off `d9e4204`), then hand-merged (reconciling `nav-items.ts` — touched by all three — and `invalidation.ts` — touched by two — plus layering the concurrent money-formatting fix onto the rewritten dashboard page) and re-verified as a whole. Next: Promotions (E5, still unblocked and unstarted), or E8/E9 |
+| **Last completed** | Hotels list search/sort/create (E-NAV-2); Platform brand settings — logo, description, new contact fields (E-PLATFORM, new epic); Room Types + Rooms merged into one page with rate-plan linking and a room-type-scoped Availability tab (E3-T04); actionable role-aware Dashboard — real arrivals/departures lists, room assignment, check-in/check-out (E4-T02) |
+| **Next READY task** | E5-T0x — Promotions (rate plans exist, J-14 unblocked); or E8/E9 (Users/Audit/Reviews, Front desk, Extras, Content, Invoices, Reports) |
+| **Verified against** | Live stack + Maven-container test suite (backend: 227/227, all 7 ArchUnit rules) + `admin-hotel` build/tsc/eslint (0 errors)/vitest (15/15), 2026-09-02 |
 
 **Outstanding follow-up**: GitHub Dependabot flagged 2 lodash advisories (high +
 moderate) in both `admin-hotel` and `backoffice-hotel`, caused by `@graphql-codegen/cli`
@@ -43,6 +43,65 @@ it directly).
 - Epics E8–E9 (Users/Audit/Reviews, and the fully backend-blocked modules: Front desk,
   Extras, Content, Invoices, Reports) are in the approved plan but **not started** — see
   the investigation report §S for their task breakdowns.
+- **E-NAV-2, a new E-PLATFORM epic, E3-T04, and E4-T02 all COMPLETED** (2026-09-02, later
+  session), three agents in parallel worktrees off `d9e4204`, hand-merged:
+  - **E-NAV-2 — Hotels list.** `/hotels` gained a "New hotel" create flow (drawer, reusing
+    the existing `HotelProfileForm`) against the already-existing
+    `POST /api/v1/admin/hotels`, plus client-side sort (name/city/status/room-type-count/
+    active-reservations) next to the existing search. Still no server-side filter/sort args
+    on `adminHotels` (`NEW-3` still open) — fine at the platform's current ~3-4 hotel scale.
+  - **E-PLATFORM (new epic) — Platform brand settings.** The `Platform` entity (brand/tenant
+    identity, one row, already read via the public `platform(slug)` query used by the guest
+    site) had **zero admin write path** — closed that gap: Flyway `V34` adds nullable
+    `contact_email`/`contact_phone`; new `AdminPlatformRestController`
+    (`PUT /api/v1/admin/platform/{id}`, `PUT /api/v1/admin/platform/{id}/media`),
+    `super_admin`-gated, audited (`platform.updated`, `platform.media.updated`); new global
+    `/platform/settings` page (Brand/Contact/Media tabs), `super_admin`-only nav entry.
+    Confirmed live: the generic media-upload endpoint already accepts `ownerType=platform`
+    directly, no J-6-style workaround needed.
+  - **E3-T04 — Room Types + Rooms merged into one page.** The standalone `/rooms` route is
+    gone; its cross-type "all rooms" view is now a tab toggle on `/room-types`
+    (`By type` / `All rooms`), reusing the same `RoomFormSheet`/columns as before. Room type
+    edit gained two tabs: **Rate Plan** (list this type's linked plans; link an existing
+    unlinked hotel rate plan or create-and-auto-link a new one via the existing
+    `room-type-rate-plans` link/unlink REST endpoints — confirmed live this is a genuine
+    many-to-many, not "one rate plan per room type" as a DB rule) and **Availability**
+    (the hotel-wide availability calendar, client-side-filtered to this one room type — the
+    GraphQL rows already carry `roomTypeId` per day, so no new query was needed).
+  - **E4-T02 — Actionable, role-aware Dashboard.** Closes part of the "Where development
+    stopped" #1 item below: new `BookingService.assignRoom/checkIn/checkOut` (no migration
+    needed — `reservation_rooms.room_id` and the `checked_in`/`checked_out` enum values
+    already existed, unused), new REST endpoints
+    (`POST .../rooms/{roomLineId}/assign-room`, `.../check-in`, `.../check-out`,
+    `GET /admin/room-types/{id}/rooms/eligible`), new `arrivalsTodayList`/
+    `departuresTodayList` on the `adminDashboard` GraphQL query. Dashboard's Arrivals/
+    Departures are now real actionable lists (assign a room, check in/out — blocked until
+    every room line has an assignment) instead of bare counts; `inHouseToday` is finally
+    rendered (was fetched, silently dropped since E4-T01). Dashboard sections are now
+    role-aware (front-desk roles get ops front-and-center with full actions; finance/revenue
+    roles get pending-payments/revenue first and read-only ops visibility; `content_manager`
+    gets a reduced view) — same UX-only `roles?`/`visibleTo()` convention as the nav, now
+    exported from `nav-items.ts` for reuse. 6 new backend tests (assign-room conflict
+    detection via a real double-booking 409, check-in gated on every line being assigned,
+    audit rows written, dashboard lists returning real data).
+  - Merged total: **227/227 backend tests** (218 baseline + 6 + 3, confirming nothing was
+    lost or duplicated in the merge), all 7 ArchUnit rules; `admin-hotel` build clean (19
+    routes), `tsc`/`eslint` clean, 15/15 vitest. See "Verification log" for detail.
+- **Search + sort added to every admin table** (2026-09-02, later same session). Room Types,
+  "All rooms" (both the merged list and the Rooms tab on a room type), and Rate Plans are
+  client-side (the underlying queries already fetch the full unpaginated set, so this is
+  honest — same reasoning as the Hotels list). Reservations, Guests and Payments are real
+  server-side search/sort — closing the search half of **J-1** (`adminReservations` had no
+  search args) and the "no search, schema has none" gap on Payments (search is a nested
+  subquery through `Reservation`/`Guest` — `Payment` has no direct guest relation). Guests'
+  sort is deliberately limited to `firstName`/`lastName`/`email` — `reservationsCount`/
+  `totalSpent`/`lastStayDate` on `AdminGuestView` are computed in memory from a second
+  per-page query, so sorting by them would only be correct within one page (silently
+  misleading), and were left out rather than faked. Every sort field is server-side
+  whitelisted before it reaches a JPQL `order by`. 1 new backend test
+  (`adminReservationsGuestsPaymentsSearchAndSort`, 227→228) exercising real search-narrows-
+  results and real sort-reorders-results (not just "doesn't error") across all three, plus
+  an unrecognized-sort-field-falls-back-to-default case.
 
 ## Multi-hotel navigation (E-NAV)
 
@@ -57,8 +116,10 @@ guest-site change. Plan phases (see the investigation artifact linked above for 
    the old `HotelContext` singleton (it silently auto-picked "the one hotel" via
    `adminHotels(page:{size:1})`) in favour of the URL's `hotelId` param plus a
    validating `hotels/[hotelId]/layout.tsx` guard.
-2. **Global Hotel Management** (E-NAV-2, not started) — search/filter/sort/paginate on
-   `/hotels`, `/hotels/new` create form against the existing REST endpoint.
+2. **Global Hotel Management** (E-NAV-2, COMPLETED 2026-09-02) — client-side sort added
+   next to the existing search on `/hotels`; create is a drawer (`HotelCreateSheet`,
+   reusing `HotelProfileForm`), not a separate `/hotels/new` route. Server-side
+   filter/sort/paginate still not built (`NEW-3` open, not blocking at current scale).
 3. **Switcher & identity chrome** (E-NAV-3, not started) — `HotelSearchCombobox`, recent
    hotels (localStorage).
 4. **Nav split polish** (E-NAV-4, not started) — global `/users`, `/audit`, `/account` once
@@ -159,16 +220,20 @@ unchanged.
 | Page | Status | Notes |
 |---|---|---|
 | `/login` | ✅ redesigned | httpOnly `admin_session` cookie, 7 d; split brand/sign-in panel; shows `?error=not_staff` |
-| `/hotels` | ✅ | Server-redirects a single-hotel staff member straight into their hotel; otherwise the global list (`adminHotels`, backend-filtered), client-side name/brand/city search — no server search args exist yet (see J-below). No create form yet (E-NAV-2). |
-| `/hotels/[hotelId]/dashboard` | ✅ | 5 headline metrics + 2 labelled "awaiting"/"not yet" metrics + recent reservations. `inHouseToday` intentionally not rendered (always 0 — see below) |
+| `/hotels` | ✅ | Server-redirects a single-hotel staff member straight into their hotel; otherwise the global list (`adminHotels`, backend-filtered), client-side name/brand/city search + sort. **"New hotel" create drawer, done (E-NAV-2)** |
+| `/platform/settings` | ✅ **new** | Global (not hotel-scoped), `super_admin`-only. Brand / Contact / Media tabs against the new `AdminPlatformRestController` — closes the previously-zero admin write path for the `Platform` brand entity |
+| `/hotels/[hotelId]/dashboard` | ✅ | Metrics row + **Arrivals/Departures are now real actionable lists** (assign a room, check in/out — blocked until every room line is assigned), `inHouseToday` finally rendered, recent reservations. Sections are now **role-aware** (front-desk gets ops-first with actions; finance/revenue get pending/revenue-first, ops read-only; `content_manager` gets a reduced view) |
 | `/hotels/[hotelId]/reservations` | ✅ | Status filter + server pagination; row click opens a detail sheet; deep-linkable via `?ref=`; cancel with reason |
-| `/hotels/[hotelId]/room-types`, `.../room-types/[id]` | ✅ | Create is now a drawer, not `/room-types/new` (gone). Edit: Details / **Rooms (new)** / Amenities / Gallery tabs |
-| `/hotels/[hotelId]/rooms` | ✅ | Filterable by room type; create/edit is now a side drawer (`RoomFormSheet`, was a modal `Dialog`); status, housekeeping, maintenance |
-| `/hotels/[hotelId]/rate-plans`, `.../rate-plans/[id]` | ✅ | List (`DataTable`) + create drawer (`RatePlanCreateSheet`) + full-page editor (Details / Room-type-&-pricing tabs). One rate plan per room type is a UI/data convention, not a DB constraint — documented as such, not enforced by a unique index. Pricing is inclusive date-range rows (`rate_plan_prices`), not per-day — the price editor is a range editor, not a literal day-grid |
+| `/hotels/[hotelId]/room-types`, `.../room-types/[id]` | ✅ | **Merged with the old `/rooms` page** — list has a "By type" / "All rooms" toggle (the latter is the former standalone Rooms page, same columns/`RoomFormSheet`). Edit: Details / Rooms / **Rate Plan (new)** / **Availability (new)** / Amenities / Gallery tabs. Rate Plan tab links an existing unlinked hotel rate plan or creates-and-auto-links a new one; Availability tab is the hotel-wide calendar client-side-filtered to this one room type |
+| `/hotels/[hotelId]/rate-plans`, `.../rate-plans/[id]` | ✅ | List (`DataTable`) + create drawer (`RatePlanCreateSheet`) + full-page editor (Details / Room-type-&-pricing tabs). Confirmed live: room-type↔rate-plan linking is a genuine many-to-many (`room_type_rate_plans`, unique on the pair) — "one rate plan per room type" was never a DB rule, only a prior UI assumption; pricing is inclusive date-range rows (`rate_plan_prices`), not per-day |
 | `/hotels/[hotelId]/availability` | ✅ | Full-page 31-day calendar (today..+30, per J-10, confirmed exactly live), colour-coded to the backend's scarcity rule; block/out-of-order editor (`AvailabilityBlockSheet`) against a real, previously-undocumented REST write path (see Backend gaps) |
 | `/hotels/[hotelId]/settings` | ✅ | Full-page Profile / Policies / Amenities / Media tabs. Policies' write path — flagged "unverified" before this session — is confirmed working end to end (real Postgres rows after a real write) |
 | `/hotels/[hotelId]/guests` | ✅ | List (`DataTable`) with server-side debounced search on name/email (not phone — schema doesn't support it) |
-| `/hotels/[hotelId]/payments` | ✅ | Read-only list (`DataTable`), no search (schema has none). Shows `reservationId` as plain reference text — no drill-down link (no `adminReservation(id)` query exists, NEW-2) |
+| `/hotels/[hotelId]/payments` | ✅ | Read-only list (`DataTable`), **real server-side search+sort added 2026-09-02** (search matches reservation reference or guest name/email via a nested subquery — `Payment` has no direct guest relation). Shows `reservationId` as plain reference text — no drill-down link (no `adminReservation(id)` query exists, NEW-2) |
+
+**Note:** the old standalone `/hotels/[hotelId]/rooms` route is **gone** — merged into
+`/hotels/[hotelId]/room-types` per E3-T04 above (2026-09-02). Any bookmark or link to the
+old path 404s; the merged page is reachable from the same nav entry, unchanged href count.
 
 `hotels/[hotelId]/layout.tsx` resolves and validates the hotel (via a new, deliberately
 light `AdminHotelHeader` query — id/name/status/city/countryCode, not the full inventory)
@@ -203,7 +268,7 @@ session (not just typechecked) — see "Verification log" below.
 | E2-T01 | Reservations list | COMPLETED |
 | E2-T02 | Reservation detail (sheet, from already-fetched row data) | COMPLETED |
 | E2-T03 | Cancel a reservation | COMPLETED |
-| E2-T04 | Search & date-range filters | **BLOCKED** — needs J-1 (`adminReservations` has no search/date args) |
+| E2-T04 | Search & sort | COMPLETED 2026-09-02 — closes the search half of J-1; date-range filter args still not added |
 
 ### Epic E3 — Inventory
 
@@ -212,19 +277,27 @@ session (not just typechecked) — see "Verification log" below.
 | E3-T01 | Room types list & create | COMPLETED |
 | E3-T02 | Room type editor (details / amenities / gallery) | COMPLETED — gallery uses the Q-5 two-step upload workaround |
 | E3-T03 | Rooms list, create, edit | COMPLETED |
+| E3-T04 | Merge Room Types + Rooms into one page (view toggle); Rate Plan tab (link existing / create-and-link); room-type-scoped Availability tab | COMPLETED 2026-09-02 |
 
 ### Epic E4 — Dashboard
 
 | ID | Task | Status |
 |---|---|---|
 | E4-T01 | Honest dashboard | COMPLETED |
+| E4-T02 | Actionable dashboard: real arrivals/departures lists, room assignment, check-in/check-out, role-aware section visibility | COMPLETED 2026-09-02 — new `BookingService.assignRoom/checkIn/checkOut`, no migration needed |
+
+### Epic E-PLATFORM — Platform brand settings (new)
+
+| ID | Task | Status |
+|---|---|---|
+| E-PLATFORM-1 | Admin write path for the `Platform` brand entity (name/tagline/description/status/currency), new `contact_email`/`contact_phone` columns, logo/hero media, `/platform/settings` page | COMPLETED 2026-09-02 |
 
 ### Epic E-NAV — Multi-hotel navigation
 
 | ID | Task | Status |
 |---|---|---|
 | E-NAV-1 | Routing migration: `/hotels`, `/hotels/[hotelId]/...`, workspace guard | COMPLETED |
-| E-NAV-2 | Hotels list search/filter/sort/paginate, `/hotels/new` create | NOT_STARTED |
+| E-NAV-2 | Hotels list search/sort/create | COMPLETED 2026-09-02 — client-side sort + create drawer; server-side filter/sort/paginate still open (`NEW-3`) |
 | E-NAV-3 | Hotel switcher combobox, recent hotels | NOT_STARTED |
 | E-NAV-4 | Global nav polish (`/users`, `/audit`, `/account`) | NOT_STARTED — blocked on those modules existing |
 
@@ -260,7 +333,7 @@ session (not just typechecked) — see "Verification log" below.
 | ID | Task | Status |
 |---|---|---|
 | E7-T01 | Guests directory with search | COMPLETED — search covers name/email only (schema has no phone search) |
-| E7-T02 | Payments list | COMPLETED — read-only, no search (schema has none); J-9 corrected (see Backend gaps) |
+| E7-T02 | Payments list | COMPLETED — read-only; J-9 corrected (see Backend gaps); real search+sort added 2026-09-02 |
 
 ### Epics E8–E9 — not started
 
@@ -273,7 +346,7 @@ Carried from the investigation report (§J), plus two discovered during this ses
 
 | ID | Gap | Status | Blocks |
 |---|---|---|---|
-| J-1 | `adminReservations` has no search or date-range args | OPEN | E2-T04 |
+| J-1 | `adminReservations` has no search or date-range args | **PARTIALLY RESOLVED 2026-09-02** — `search`/`sort` args added (`ReservationRepository.searchByHotel`, same split-query pattern as `GuestRepository`); date-range args still not added | E2-T04 (search half done) |
 | J-2 | No admin write endpoint for extras/services | OPEN | E9 (Extras module) |
 | J-3 | No check-in/check-out entity or mutations | OPEN | E9 (Front desk), reviews intake |
 | J-6 | Media upload rejects `ownerType: "room_type"` | OPEN — **worked around** client-side (upload against the hotel, then attach via the room type's media replace-list PUT) | none currently; direct upload would simplify E3-T02's gallery code |

@@ -88,13 +88,14 @@ public class AdminGraphQLController {
 
 	@QueryMapping
 	public AdminGuestPage adminGuests(@Argument UUID hotelId, @Argument String query,
-			@Argument PageInput page) {
-		return reservations.guests(hotelId, query, page);
+			@Argument String sort, @Argument PageInput page) {
+		return reservations.guests(hotelId, query, sort, page);
 	}
 
 	@QueryMapping
-	public PaymentPageResult adminPayments(@Argument UUID hotelId, @Argument PageInput page) {
-		return billing.payments(hotelId, page);
+	public PaymentPageResult adminPayments(@Argument UUID hotelId, @Argument String search,
+			@Argument String sort, @Argument PageInput page) {
+		return billing.payments(hotelId, search, sort, page);
 	}
 
 	@QueryMapping

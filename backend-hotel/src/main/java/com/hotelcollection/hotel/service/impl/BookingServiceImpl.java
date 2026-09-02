@@ -2,6 +2,7 @@ package com.hotelcollection.hotel.service.impl;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -13,6 +14,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,6 +43,7 @@ import com.hotelcollection.hotel.util.MoneyUtil;
 import com.hotelcollection.hotel.entity.PaymentStatus;
 import com.hotelcollection.hotel.entity.RatePlan;
 import com.hotelcollection.hotel.entity.Reservation;
+import com.hotelcollection.hotel.entity.Room;
 import com.hotelcollection.hotel.entity.ReservationCancellation;
 import com.hotelcollection.hotel.entity.ReservationCharge;
 import com.hotelcollection.hotel.entity.ReservationExtra;
@@ -110,6 +113,21 @@ public class BookingServiceImpl implements BookingService {
 	@org.springframework.beans.factory.annotation.Autowired
 	@Lazy
 	private com.hotelcollection.hotel.service.PaymentService paymentService;
+
+	// Same 11-param cap as the three fields above — no circular dependency
+	// here, but there is no room left in the constructor either.
+	@org.springframework.beans.factory.annotation.Autowired
+	private com.hotelcollection.hotel.service.AuditService auditService;
+
+	@org.springframework.beans.factory.annotation.Autowired
+	private com.hotelcollection.hotel.repository.RoomRepository roomRepository;
+
+	/** Reservation statuses that hold a physical room — used by the
+	 * assign-room conflict check and the eligible-rooms picker. A cancelled
+	 * or checked-out reservation no longer occupies its room. */
+	private static final List<ReservationStatus> OCCUPYING_STATUSES =
+			List.of(ReservationStatus.confirmed, ReservationStatus.pending,
+					ReservationStatus.checked_in);
 
 	public BookingServiceImpl(ReservationRepository reservationRepository,
 			ReservationCancellationRepository cancellationRepository,
@@ -490,16 +508,36 @@ public class BookingServiceImpl implements BookingService {
 				.orElseThrow(() -> DomainException.notFound("reservation not found"));
 	}
 
+	private static final java.util.Set<String> RESERVATION_SORTABLE_FIELDS = java.util.Set.of(
+			"createdAt", "checkInDate", "checkOutDate", "totalAmount", "status");
+
+	/** Whitelisted against {@link #RESERVATION_SORTABLE_FIELDS} — the raw
+	    string otherwise flows into a JPQL {@code order by}, so an
+	    unrecognized field is treated the same as a blank one rather than
+	    passed through. */
+	private static Sort resolveReservationSort(String sort) {
+		if (sort == null || sort.isBlank()) {
+			return Sort.by(Sort.Direction.DESC, "createdAt");
+		}
+		int idx = sort.lastIndexOf('-');
+		String field = idx > 0 ? sort.substring(0, idx) : sort;
+		String dir = idx > 0 ? sort.substring(idx + 1) : "asc";
+		if (!RESERVATION_SORTABLE_FIELDS.contains(field)) {
+			return Sort.by(Sort.Direction.DESC, "createdAt");
+		}
+		return Sort.by("desc".equalsIgnoreCase(dir) ? Sort.Direction.DESC : Sort.Direction.ASC, field);
+	}
+
 	/** Admin back-office listing: hotel-scoped (staff access enforced). */
 	@Override
 	@Transactional(readOnly = true)
 	public ReservationPageResult adminReservations(UUID hotelId,
-			ReservationStatus status, PageInput page) {
+			ReservationStatus status, String search, String sort, PageInput page) {
 		requireStaffAccess(hotelId);
 		int p = page == null || page.page() == null ? 0 : Math.max(page.page(), 0);
 		int s = page == null || page.size() == null ? 20 : Math.min(Math.max(page.size(), 1), 100);
-		Page<Reservation> result = reservationRepository.searchByHotel(hotelId, status,
-				PageRequest.of(p, s));
+		Page<Reservation> result = reservationRepository.searchByHotel(hotelId, status, search,
+				PageRequest.of(p, s, resolveReservationSort(sort)));
 		return new ReservationPageResult(result.getTotalElements(), result.getNumber(),
 				result.getSize(), result.getContent());
 	}
@@ -768,5 +806,123 @@ public class BookingServiceImpl implements BookingService {
 		if (!actor.hasRole("super_admin") && !actor.inHotel(hotelId)) {
 			throw DomainException.forbidden("no access to this hotel");
 		}
+	}
+
+	// ---------------------------------------------------------------- room assignment / check-in
+
+	@Override
+	@Transactional
+	public Reservation assignRoom(UUID reservationId, UUID roomLineId, UUID roomId) {
+		CurrentUser actor = currentUser.require();
+		Reservation reservation = reservationRepository.findByIdWithLines(reservationId)
+				.orElseThrow(() -> DomainException.notFound("reservation not found"));
+		requireStaffAccess(reservation.getHotelId());
+		if (reservation.getStatus() == ReservationStatus.cancelled
+				|| reservation.getStatus() == ReservationStatus.checked_out) {
+			throw DomainException.conflict(
+					"cannot assign a room to a " + reservation.getStatus() + " reservation");
+		}
+		ReservationRoom line = reservation.getRoomLines().stream()
+				.filter(l -> l.getId().equals(roomLineId)).findFirst()
+				.orElseThrow(() -> DomainException.notFound("room line not found on this reservation"));
+
+		Room room = roomRepository.findById(roomId)
+				.orElseThrow(() -> DomainException.notFound("room not found"));
+		if (!room.getHotelId().equals(reservation.getHotelId())) {
+			throw DomainException.validation("room does not belong to this hotel");
+		}
+		if (!room.getRoomTypeId().equals(line.getRoomTypeId())) {
+			throw DomainException.validation("room does not match this line's room type");
+		}
+		if (!"active".equals(room.getStatus())) {
+			throw DomainException.conflict("room is not active");
+		}
+		List<Room> available = roomRepository.findAvailableRooms(
+				line.getRoomTypeId(), line.getCheckInDate(), line.getCheckOutDate(),
+				OCCUPYING_STATUSES, roomLineId);
+		boolean free = available.stream().anyMatch(r -> r.getId().equals(roomId));
+		if (!free) {
+			throw DomainException.conflict(
+					"room is already assigned to another reservation for an overlapping stay");
+		}
+
+		line.setRoomId(roomId);
+		reservation.setUpdatedAt(Instant.now());
+		reservationRepository.save(reservation);
+		auditService.record(actor, "reservation.room_assigned", "reservation_room", line.getId(),
+				reservation.getHotelId(), Map.of("reservationId", reservationId, "roomId", roomId,
+						"roomNumber", room.getRoomNumber()));
+		return reservation;
+	}
+
+	@Override
+	@Transactional
+	public Reservation checkIn(UUID reservationId) {
+		CurrentUser actor = currentUser.require();
+		Reservation reservation = reservationRepository.findByIdWithLines(reservationId)
+				.orElseThrow(() -> DomainException.notFound("reservation not found"));
+		requireStaffAccess(reservation.getHotelId());
+		if (reservation.getStatus() != ReservationStatus.confirmed) {
+			throw DomainException.conflict("only a confirmed reservation can be checked in "
+					+ "(current status: " + reservation.getStatus() + ")");
+		}
+		boolean allAssigned = reservation.getRoomLines().stream()
+				.allMatch(l -> l.getRoomId() != null);
+		if (!allAssigned) {
+			throw DomainException.conflict("assign rooms before check-in");
+		}
+		ReservationStatus from = reservation.getStatus();
+		reservation.setStatus(ReservationStatus.checked_in);
+		reservation.setUpdatedAt(Instant.now());
+		ReservationStatusHistory history = new ReservationStatusHistory();
+		history.setReservationId(reservation.getId());
+		history.setFromStatus(from);
+		history.setToStatus(ReservationStatus.checked_in);
+		history.setChangedByUserId(actor.userId());
+		history.setChangedAt(Instant.now());
+		reservation.getStatusHistory().add(history);
+		reservationRepository.save(reservation);
+		auditService.record(actor, "reservation.checked_in", "reservation", reservation.getId(),
+				reservation.getHotelId(), Map.of("reference", reservation.getReference()));
+		return reservation;
+	}
+
+	@Override
+	@Transactional
+	public Reservation checkOut(UUID reservationId) {
+		CurrentUser actor = currentUser.require();
+		Reservation reservation = reservationRepository.findByIdWithLines(reservationId)
+				.orElseThrow(() -> DomainException.notFound("reservation not found"));
+		requireStaffAccess(reservation.getHotelId());
+		if (reservation.getStatus() != ReservationStatus.checked_in) {
+			throw DomainException.conflict("only a checked-in reservation can be checked out "
+					+ "(current status: " + reservation.getStatus() + ")");
+		}
+		ReservationStatus from = reservation.getStatus();
+		reservation.setStatus(ReservationStatus.checked_out);
+		reservation.setUpdatedAt(Instant.now());
+		ReservationStatusHistory history = new ReservationStatusHistory();
+		history.setReservationId(reservation.getId());
+		history.setFromStatus(from);
+		history.setToStatus(ReservationStatus.checked_out);
+		history.setChangedByUserId(actor.userId());
+		history.setChangedAt(Instant.now());
+		reservation.getStatusHistory().add(history);
+		reservationRepository.save(reservation);
+		auditService.record(actor, "reservation.checked_out", "reservation", reservation.getId(),
+				reservation.getHotelId(), Map.of("reference", reservation.getReference()));
+		return reservation;
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<Room> eligibleRooms(UUID roomTypeId, LocalDate checkIn, LocalDate checkOut) {
+		RoomType roomType = catalog.getRoomType(roomTypeId);
+		requireStaffAccess(roomType.getHotelId());
+		if (checkIn == null || checkOut == null || !checkOut.isAfter(checkIn)) {
+			throw DomainException.validation("checkOut must be after checkIn");
+		}
+		return roomRepository.findAvailableRooms(roomTypeId, checkIn, checkOut,
+				OCCUPYING_STATUSES, null);
 	}
 }

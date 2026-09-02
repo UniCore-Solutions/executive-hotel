@@ -75,15 +75,52 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
 			select r from Reservation r
 			where r.hotelId = :hotelId
 			  and (:status is null or r.status = :status)
-			order by r.createdAt desc
 			""")
 	Page<Reservation> searchByHotel(@Param("hotelId") UUID hotelId,
 			@Param("status") ReservationStatus status, Pageable pageable);
+
+	/**
+	 * Split from the plain query on purpose — same reason as
+	 * {@link GuestRepository#findDistinctByHotelAndPattern}: PostgreSQL cannot
+	 * infer the parameter type when the same parameter is used both in a
+	 * {@code :query is null} check and a {@code like concat('%', :query, '%')}.
+	 * No hardcoded {@code order by} on either variant — the caller's
+	 * {@link Pageable}'s {@code Sort} is appended automatically by Spring Data;
+	 * the service layer defaults it to {@code createdAt desc} when unspecified.
+	 */
+	@Query("""
+			select r from Reservation r
+			join r.guest g
+			where r.hotelId = :hotelId
+			  and (:status is null or r.status = :status)
+			  and (lower(r.reference) like lower(concat('%', :query, '%'))
+			       or lower(g.firstName) like lower(concat('%', :query, '%'))
+			       or lower(g.lastName) like lower(concat('%', :query, '%'))
+			       or lower(g.email) like lower(concat('%', :query, '%')))
+			""")
+	Page<Reservation> searchByHotelAndQuery(@Param("hotelId") UUID hotelId,
+			@Param("status") ReservationStatus status, @Param("query") String query, Pageable pageable);
+
+	default Page<Reservation> searchByHotel(UUID hotelId, ReservationStatus status, String query,
+			Pageable pageable) {
+		if (query == null || query.isBlank()) {
+			return searchByHotel(hotelId, status, pageable);
+		}
+		return searchByHotelAndQuery(hotelId, status, query, pageable);
+	}
 
 	long countByHotelIdAndCheckInDate(UUID hotelId, java.time.LocalDate checkInDate);
 
 	long countByHotelIdAndCheckOutDateAndStatusNot(UUID hotelId, java.time.LocalDate checkOutDate,
 			ReservationStatus status);
+
+	/** List form of {@link #countByHotelIdAndCheckInDate} — dashboard arrivals feed. */
+	List<Reservation> findByHotelIdAndCheckInDateOrderByCreatedAtDesc(UUID hotelId,
+			java.time.LocalDate checkInDate);
+
+	/** List form of {@link #countByHotelIdAndCheckOutDateAndStatusNot} — dashboard departures feed. */
+	List<Reservation> findByHotelIdAndCheckOutDateAndStatusNotOrderByCreatedAtDesc(UUID hotelId,
+			java.time.LocalDate checkOutDate, ReservationStatus status);
 
 	long countByHotelIdAndStatus(UUID hotelId, ReservationStatus status);
 

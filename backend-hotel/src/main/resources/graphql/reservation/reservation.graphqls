@@ -1,8 +1,8 @@
 extend type Query {
 	myReservations: [Reservation!]!
 	reservation(input: ReservationLookupInput!): Reservation
-	adminReservations(hotelId: ID!, status: ReservationStatus, page: PageInput): ReservationPage!
-	adminGuests(hotelId: ID!, query: String, page: PageInput): AdminGuestPage!
+	adminReservations(hotelId: ID!, status: ReservationStatus, search: String, sort: String, page: PageInput): ReservationPage!
+	adminGuests(hotelId: ID!, query: String, sort: String, page: PageInput): AdminGuestPage!
 }
 
 type Reservation {
@@ -60,6 +60,13 @@ type ReservationRoomLine {
 	ratePerNight: Float!
 	subtotalAmount: Float!
 	status: String!
+	# The assigned physical room, if any (back-office check-in flow). Null
+	# until staff assign one via POST .../assign-room — display as
+	# "unassigned" rather than blank.
+	roomId: ID
+	# Resolved from the current room catalog (roomLines persist only the
+	# room id) — the display number for the back-office check-in flow.
+	roomNumber: String
 	# Resolved from the current catalog (roomLines persist only the room-type
 	# id) — the display identity for confirmation/lookup/check-in views.
 	roomTypeName: String!

@@ -40,6 +40,22 @@ public class AdminReservationRestController {
 		return booking.adminCancel(reservationId, reasonCode, reasonNote);
 	}
 
+	@PostMapping("/{reservationId}/rooms/{roomLineId}/assign-room")
+	public Reservation assignRoom(@PathVariable UUID reservationId, @PathVariable UUID roomLineId,
+			@RequestBody AssignRoomRequest in) {
+		return booking.assignRoom(reservationId, roomLineId, in.roomId());
+	}
+
+	@PostMapping("/{reservationId}/check-in")
+	public Reservation checkIn(@PathVariable UUID reservationId) {
+		return booking.checkIn(reservationId);
+	}
+
+	@PostMapping("/{reservationId}/check-out")
+	public Reservation checkOut(@PathVariable UUID reservationId) {
+		return booking.checkOut(reservationId);
+	}
+
 	/** Get-or-create, same idempotent semantics as the guest endpoint — used
 	 * by both admin consoles' "download invoice" action. */
 	@GetMapping("/{reservationId}/invoice")
@@ -56,5 +72,9 @@ public class AdminReservationRestController {
 
 	/** Transport-specific body for the cancel action. */
 	public record CancelRequest(String reasonCode, String reasonNote) {
+	}
+
+	/** Transport-specific body for the assign-room action. */
+	public record AssignRoomRequest(UUID roomId) {
 	}
 }

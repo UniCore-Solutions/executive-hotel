@@ -9,6 +9,7 @@ import { useTableState } from '@/hooks/useTableState';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { DataTable } from '@/components/data-table/DataTable';
 import { DataTablePagination } from '@/components/data-table/DataTablePagination';
+import { DataTableToolbar } from '@/components/data-table/DataTableToolbar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { reservationColumns, type ReservationRow } from '@/components/modules/reservations/columns';
 import { ReservationDetailSheet } from '@/components/modules/reservations/ReservationDetailSheet';
@@ -24,20 +25,39 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: ReservationStatus.NoShow, label: 'No-show' },
 ];
 
+// Real server-side search+sort — `adminReservations` gained `search`/`sort`
+// args (closing J-1, docs/ADMIN_REBUILD_PROGRESS.md) specifically so this
+// stays honest across every page, not just the currently-loaded 20 rows.
+const SORT_OPTIONS: { value: string; label: string }[] = [
+  { value: 'createdAt-desc', label: 'Newest first' },
+  { value: 'createdAt-asc', label: 'Oldest first' },
+  { value: 'checkInDate-asc', label: 'Check-in (earliest)' },
+  { value: 'checkInDate-desc', label: 'Check-in (latest)' },
+  { value: 'checkOutDate-asc', label: 'Check-out (earliest)' },
+  { value: 'checkOutDate-desc', label: 'Check-out (latest)' },
+  { value: 'totalAmount-desc', label: 'Highest total' },
+  { value: 'totalAmount-asc', label: 'Lowest total' },
+  { value: 'status-asc', label: 'Status (A–Z)' },
+];
+
 const PAGE_SIZE = 20;
 
 export default function ReservationsPage({ params }: { params: Promise<{ hotelId: string }> }) {
   const { hotelId } = use(params);
-  const { page, status, setPage, setStatus } = useTableState();
+  const { page, status, search, sort, setPage, setStatus, setSearch, setSort } = useTableState();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const refParam = searchParams.get('ref');
 
+  const effectiveSort = sort || 'createdAt-desc';
+
   const { data, loading, error, refetch } = useQuery(AdminReservationsDocument, {
     variables: {
       hotelId,
       status: status && status !== 'all' ? (status as ReservationStatus) : undefined,
+      search: search || undefined,
+      sort: effectiveSort,
       page: { page, size: PAGE_SIZE },
     },
   });
@@ -62,21 +82,44 @@ export default function ReservationsPage({ params }: { params: Promise<{ hotelId
     <>
       <PageHeader title="Reservations" description="Every booking against this hotel." />
 
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="w-full max-w-56">
-          <Select value={status || 'all'} onValueChange={setStatus}>
-            <SelectTrigger size="sm">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <div className="mb-4">
+        <DataTableToolbar
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search reference, guest name or email…"
+          filters={
+            <>
+              <div className="w-full max-w-56">
+                <Select value={status || 'all'} onValueChange={setStatus}>
+                  <SelectTrigger size="sm" aria-label="Filter by status">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STATUS_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-full max-w-56">
+                <Select value={effectiveSort} onValueChange={setSort}>
+                  <SelectTrigger size="sm" aria-label="Sort reservations">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SORT_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          }
+        />
       </div>
 
       {notFoundRef ? (
@@ -95,7 +138,7 @@ export default function ReservationsPage({ params }: { params: Promise<{ hotelId
         onRowClick={(row: ReservationRow) => setRefParam(row.reference)}
         emptyIcon={CalendarRange}
         emptyTitle="No reservations found"
-        emptyDescription="No bookings match the current filter."
+        emptyDescription={search ? 'Try a different reference, name or email.' : 'No bookings match the current filter.'}
       />
 
       {!loading && !error && total > 0 ? (

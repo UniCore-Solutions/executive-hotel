@@ -10,5 +10,6 @@ import com.hotelcollection.hotel.entity.Reservation;
 public record AdminDashboardView(UUID hotelId, String hotelName, long arrivalsToday,
 		long departuresToday, long inHouseToday, long soldOutTonight, double occupancyPct,
 		long availableTonight, BigDecimal revenueTotal, long pendingPayments,
-		long pendingInvoices, List<Reservation> recentReservations) {
+		long pendingInvoices, List<Reservation> recentReservations,
+		List<Reservation> arrivalsTodayList, List<Reservation> departuresTodayList) {
 }

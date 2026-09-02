@@ -13,11 +13,21 @@ import com.hotelcollection.hotel.dto.reservation.AdminGuestPage;
  */
 public interface ReservationAdminService {
 
-	AdminGuestPage guests(UUID hotelId, String query, PageInput page);
+	/** {@code sort} is {@code "<field>-<asc|desc>"}, field is {@code name} or
+	    {@code email} — the only two DB-level-sortable columns on {@link
+	    com.hotelcollection.hotel.dto.reservation.AdminGuestView}; anything
+	    else (including blank) leaves the result in its default order. */
+	AdminGuestPage guests(UUID hotelId, String query, String sort, PageInput page);
 
 	long countArrivals(UUID hotelId, java.time.LocalDate date);
 
 	long countDepartures(UUID hotelId, java.time.LocalDate date);
+
+	/** List form of {@link #countArrivals} — dashboard arrivals feed. */
+	List<Reservation> arrivalsList(UUID hotelId, java.time.LocalDate date);
+
+	/** List form of {@link #countDepartures} — dashboard departures feed. */
+	List<Reservation> departuresList(UUID hotelId, java.time.LocalDate date);
 
 	long countInHouse(UUID hotelId);
 

@@ -748,6 +748,127 @@ class AdminGraphqlIntegrationTest {
 		assertThat((List<?>) stats.get("recentReservations")).hasSize(1);
 	}
 
+	/** Real server-side search+sort on adminReservations (closes J-1),
+	    adminGuests and adminPayments — not a current-page reshuffle. */
+	@Test
+	void adminReservationsGuestsPaymentsSearchAndSort() throws Exception {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		String token = staffToken(uid(61), List.of(fx.hotelId()));
+
+		LocalDate checkInA = LocalDate.now().plusDays(10);
+		LocalDate checkInB = LocalDate.now().plusDays(20);
+		Map<String, Object> a = bookWithEmail(fx, checkInA, "sort-a-" + System.nanoTime(),
+				"sort-search-a@example.com");
+		Map<String, Object> b = bookWithEmail(fx, checkInB, "sort-b-" + System.nanoTime(),
+				"sort-search-b@example.com");
+		String referenceA = (String) a.get("reference");
+		String referenceB = (String) b.get("reference");
+
+		Map<String, Object> paidA = rest("POST", "/api/v1/payments",
+				Map.of("reservationId", a.get("id"), "amount", 1000.0,
+						"currencyCode", TestFixtures.CURRENCY, "provider", "mock",
+						"idempotencyKey", "sort-pay-a-" + System.nanoTime()), token);
+		assertThat(paidA.get("__status")).isEqualTo(201);
+		Map<String, Object> paidB = rest("POST", "/api/v1/payments",
+				Map.of("reservationId", b.get("id"), "amount", 2000.0,
+						"currencyCode", TestFixtures.CURRENCY, "provider", "mock",
+						"idempotencyKey", "sort-pay-b-" + System.nanoTime()), token);
+		assertThat(paidB.get("__status")).isEqualTo(201);
+
+		String reservationsQuery = """
+				query($hotelId: ID!, $search: String, $sort: String) {
+				  adminReservations(hotelId: $hotelId, search: $search, sort: $sort) {
+				    total items { reference checkInDate }
+				  }
+				}
+				""";
+
+		// search matches the guest email on one of the two, not the other
+		Map<String, Object> searchOnly = post(reservationsQuery,
+				Map.of("hotelId", fx.hotelId().toString(), "search", "sort-search-a"), token);
+		List<Map<String, Object>> searchItems = (List<Map<String, Object>>) ((Map<String, Object>) (
+				(Map<String, Object>) searchOnly.get("data")).get("adminReservations")).get("items");
+		assertThat(searchItems).hasSize(1);
+		assertThat(searchItems.get(0).get("reference")).isEqualTo(referenceA);
+
+		// sort=checkInDate-asc / -desc reorders both real matches, not a
+		// current-page-only reshuffle
+		Map<String, Object> sortedAsc = post(reservationsQuery,
+				Map.of("hotelId", fx.hotelId().toString(), "search", "sort-search", "sort", "checkInDate-asc"),
+				token);
+		List<Map<String, Object>> ascItems = (List<Map<String, Object>>) ((Map<String, Object>) (
+				(Map<String, Object>) sortedAsc.get("data")).get("adminReservations")).get("items");
+		assertThat(ascItems).hasSize(2);
+		assertThat(ascItems.get(0).get("reference")).isEqualTo(referenceA);
+		assertThat(ascItems.get(1).get("reference")).isEqualTo(referenceB);
+
+		Map<String, Object> sortedDesc = post(reservationsQuery,
+				Map.of("hotelId", fx.hotelId().toString(), "search", "sort-search", "sort", "checkInDate-desc"),
+				token);
+		List<Map<String, Object>> descItems = (List<Map<String, Object>>) ((Map<String, Object>) (
+				(Map<String, Object>) sortedDesc.get("data")).get("adminReservations")).get("items");
+		assertThat(descItems.get(0).get("reference")).isEqualTo(referenceB);
+
+		// an unrecognized sort field falls back to the documented default
+		// (createdAt desc) instead of erroring or passing an unsafe value
+		// through to the JPQL order by
+		Map<String, Object> badSort = post(reservationsQuery,
+				Map.of("hotelId", fx.hotelId().toString(), "search", "sort-search", "sort", "notAField-asc"),
+				token);
+		assertThat(badSort.get("errors")).isNull();
+
+		String guestsQuery = """
+				query($hotelId: ID!, $query: String, $sort: String) {
+				  adminGuests(hotelId: $hotelId, query: $query, sort: $sort) { total items { email } }
+				}
+				""";
+		Map<String, Object> guestSearch = post(guestsQuery,
+				Map.of("hotelId", fx.hotelId().toString(), "query", "sort-search-a"), token);
+		List<Map<String, Object>> guestItems = (List<Map<String, Object>>) ((Map<String, Object>) (
+				(Map<String, Object>) guestSearch.get("data")).get("adminGuests")).get("items");
+		assertThat(guestItems).hasSize(1);
+		assertThat(guestItems.get(0).get("email")).isEqualTo("sort-search-a@example.com");
+
+		Map<String, Object> guestSortAsc = post(guestsQuery,
+				Map.of("hotelId", fx.hotelId().toString(), "query", "sort-search", "sort", "email-asc"), token);
+		List<Map<String, Object>> guestAsc = (List<Map<String, Object>>) ((Map<String, Object>) (
+				(Map<String, Object>) guestSortAsc.get("data")).get("adminGuests")).get("items");
+		assertThat(guestAsc).hasSize(2);
+		assertThat(guestAsc.get(0).get("email")).isEqualTo("sort-search-a@example.com");
+
+		Map<String, Object> guestSortDesc = post(guestsQuery,
+				Map.of("hotelId", fx.hotelId().toString(), "query", "sort-search", "sort", "email-desc"), token);
+		List<Map<String, Object>> guestDesc = (List<Map<String, Object>>) ((Map<String, Object>) (
+				(Map<String, Object>) guestSortDesc.get("data")).get("adminGuests")).get("items");
+		assertThat(guestDesc.get(0).get("email")).isEqualTo("sort-search-b@example.com");
+
+		String paymentsQuery = """
+				query($hotelId: ID!, $search: String, $sort: String) {
+				  adminPayments(hotelId: $hotelId, search: $search, sort: $sort) { total items { amount } }
+				}
+				""";
+		Map<String, Object> paymentSearch = post(paymentsQuery,
+				Map.of("hotelId", fx.hotelId().toString(), "search", "sort-search-a"), token);
+		List<Map<String, Object>> paymentItems = (List<Map<String, Object>>) ((Map<String, Object>) (
+				(Map<String, Object>) paymentSearch.get("data")).get("adminPayments")).get("items");
+		assertThat(paymentItems).hasSize(1);
+		assertThat(((Number) paymentItems.get(0).get("amount")).doubleValue()).isEqualTo(1000.0);
+
+		Map<String, Object> paymentSortAsc = post(paymentsQuery,
+				Map.of("hotelId", fx.hotelId().toString(), "search", "sort-search", "sort", "amount-asc"), token);
+		List<Map<String, Object>> paymentAsc = (List<Map<String, Object>>) ((Map<String, Object>) (
+				(Map<String, Object>) paymentSortAsc.get("data")).get("adminPayments")).get("items");
+		assertThat(paymentAsc).hasSize(2);
+		assertThat(((Number) paymentAsc.get(0).get("amount")).doubleValue()).isEqualTo(1000.0);
+		assertThat(((Number) paymentAsc.get(1).get("amount")).doubleValue()).isEqualTo(2000.0);
+
+		Map<String, Object> paymentSortDesc = post(paymentsQuery,
+				Map.of("hotelId", fx.hotelId().toString(), "search", "sort-search", "sort", "amount-desc"), token);
+		List<Map<String, Object>> paymentDesc = (List<Map<String, Object>>) ((Map<String, Object>) (
+				(Map<String, Object>) paymentSortDesc.get("data")).get("adminPayments")).get("items");
+		assertThat(((Number) paymentDesc.get(0).get("amount")).doubleValue()).isEqualTo(2000.0);
+	}
+
 	@Test
 	void promotionsScopedByHotel() throws Exception {
 		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
@@ -914,11 +1035,187 @@ class AdminGraphqlIntegrationTest {
 		assertThat(notifications.get("errors")).isNull();
 	}
 
+	@Test
+	void assignRoomValidatesConflictsAndCrossHotelAccess() throws Exception {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		String token = staffToken(uid(200), List.of(fx.hotelId()));
+		LocalDate checkIn = LocalDate.now().plusDays(15);
+		LocalDate checkOut = checkIn.plusDays(3);
+
+		Map<String, Object> created1 = book(fx, checkIn, "assign-1-" + System.nanoTime());
+		String reservationId1 = (String) created1.get("id");
+		String roomLineId1 = (String) ((List<Map<String, Object>>) created1.get("roomLines"))
+				.get(0).get("id");
+
+		// cross-hotel staff cannot assign a room to this reservation
+		TestFixtures.HotelFixture other = fixtures.newBookableHotel();
+		Map<String, Object> outsiderAttempt = rest("POST",
+				"/api/v1/admin/reservations/" + reservationId1 + "/rooms/" + roomLineId1
+						+ "/assign-room",
+				Map.of("roomId", uid(1).toString()), staffToken(uid(201), List.of(other.hotelId())));
+		assertThat(restCode(outsiderAttempt)).isEqualTo("FORBIDDEN");
+
+		List<Map<String, Object>> eligible = restList("GET",
+				"/api/v1/admin/room-types/" + fx.roomType().getId() + "/rooms/eligible?checkIn="
+						+ checkIn + "&checkOut=" + checkOut,
+				null, token);
+		assertThat(eligible).hasSize(3);
+		String roomIdA = (String) eligible.get(0).get("id");
+		String roomIdB = (String) eligible.get(1).get("id");
+
+		Map<String, Object> assigned1 = rest("POST",
+				"/api/v1/admin/reservations/" + reservationId1 + "/rooms/" + roomLineId1
+						+ "/assign-room",
+				Map.of("roomId", roomIdA), token);
+		assertThat(assigned1.get("__status")).isEqualTo(200);
+		List<Map<String, Object>> lines1 = (List<Map<String, Object>>) assigned1.get("roomLines");
+		assertThat(lines1.get(0).get("roomId")).isEqualTo(roomIdA);
+
+		// a second, overlapping reservation cannot take the same physical room
+		Map<String, Object> created2 = book(fx, checkIn, "assign-2-" + System.nanoTime());
+		String reservationId2 = (String) created2.get("id");
+		String roomLineId2 = (String) ((List<Map<String, Object>>) created2.get("roomLines"))
+				.get(0).get("id");
+		Map<String, Object> conflicted = rest("POST",
+				"/api/v1/admin/reservations/" + reservationId2 + "/rooms/" + roomLineId2
+						+ "/assign-room",
+				Map.of("roomId", roomIdA), token);
+		assertThat(restCode(conflicted)).isEqualTo("CONFLICT");
+
+		// a different, still-free room works
+		Map<String, Object> assigned2 = rest("POST",
+				"/api/v1/admin/reservations/" + reservationId2 + "/rooms/" + roomLineId2
+						+ "/assign-room",
+				Map.of("roomId", roomIdB), token);
+		assertThat(assigned2.get("__status")).isEqualTo(200);
+
+		// only the third room remains eligible for the same overlapping range
+		List<Map<String, Object>> eligibleAfter = restList("GET",
+				"/api/v1/admin/room-types/" + fx.roomType().getId() + "/rooms/eligible?checkIn="
+						+ checkIn + "&checkOut=" + checkOut,
+				null, token);
+		assertThat(eligibleAfter).hasSize(1);
+		assertThat(eligibleAfter.get(0).get("id")).isNotEqualTo(roomIdA).isNotEqualTo(roomIdB);
+	}
+
+	@Test
+	void checkInRequiresAllRoomsAssignedThenChecksOutWithAuditTrail() throws Exception {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		String token = staffToken(uid(210), List.of(fx.hotelId()));
+		LocalDate checkIn = LocalDate.now().plusDays(20);
+
+		Map<String, Object> created = book(fx, checkIn, "checkin-" + System.nanoTime());
+		String reservationId = (String) created.get("id");
+		String roomLineId = (String) ((List<Map<String, Object>>) created.get("roomLines"))
+				.get(0).get("id");
+
+		// unpaid (pending) reservation cannot be checked in yet
+		Map<String, Object> tooEarly = rest("POST",
+				"/api/v1/admin/reservations/" + reservationId + "/check-in", Map.of(), token);
+		assertThat(restCode(tooEarly)).isEqualTo("CONFLICT");
+
+		// pay + capture -> reservation becomes confirmed
+		Map<String, Object> paid = rest("POST", "/api/v1/payments",
+				Map.of("reservationId", reservationId, "amount", 3360.0,
+						"currencyCode", TestFixtures.CURRENCY, "provider", "mock",
+						"idempotencyKey", "checkin-pay-" + System.nanoTime()), token);
+		assertThat(paid.get("__status")).isEqualTo(201);
+		Map<String, Object> captured = rest("POST",
+				"/api/v1/payments/" + paid.get("id") + "/capture", Map.of(), token);
+		assertThat(captured.get("__status")).isEqualTo(200);
+
+		// confirmed but no room assigned yet -> still blocked
+		Map<String, Object> blocked = rest("POST",
+				"/api/v1/admin/reservations/" + reservationId + "/check-in", Map.of(), token);
+		assertThat(restCode(blocked)).isEqualTo("CONFLICT");
+
+		List<Map<String, Object>> eligible = restList("GET",
+				"/api/v1/admin/room-types/" + fx.roomType().getId() + "/rooms/eligible?checkIn="
+						+ checkIn + "&checkOut=" + checkIn.plusDays(3),
+				null, token);
+		rest("POST",
+				"/api/v1/admin/reservations/" + reservationId + "/rooms/" + roomLineId
+						+ "/assign-room",
+				Map.of("roomId", eligible.get(0).get("id")), token);
+
+		Map<String, Object> checkedIn = rest("POST",
+				"/api/v1/admin/reservations/" + reservationId + "/check-in", Map.of(), token);
+		assertThat(checkedIn.get("__status")).isEqualTo(200);
+		assertThat(checkedIn.get("status")).isEqualTo("checked_in");
+
+		Integer checkedInAuditRows = jdbc.queryForObject(
+				"select count(*) from audit_logs where action = 'reservation.checked_in' and resource_id = ?",
+				Integer.class, UUID.fromString(reservationId));
+		assertThat(checkedInAuditRows).isEqualTo(1);
+
+		Map<String, Object> checkedOut = rest("POST",
+				"/api/v1/admin/reservations/" + reservationId + "/check-out", Map.of(), token);
+		assertThat(checkedOut.get("__status")).isEqualTo(200);
+		assertThat(checkedOut.get("status")).isEqualTo("checked_out");
+
+		Integer checkedOutAuditRows = jdbc.queryForObject(
+				"select count(*) from audit_logs where action = 'reservation.checked_out' and resource_id = ?",
+				Integer.class, UUID.fromString(reservationId));
+		assertThat(checkedOutAuditRows).isEqualTo(1);
+
+		// already checked out -> cannot check in again
+		Map<String, Object> reCheckIn = rest("POST",
+				"/api/v1/admin/reservations/" + reservationId + "/check-in", Map.of(), token);
+		assertThat(restCode(reCheckIn)).isEqualTo("CONFLICT");
+	}
+
+	@Test
+	void dashboardArrivalsAndDeparturesListsShowRealReservations() throws Exception {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		String token = staffToken(uid(230), List.of(fx.hotelId()));
+		LocalDate today = LocalDate.now();
+
+		Map<String, Object> arrival = book(fx, today, "dash-arrival-" + System.nanoTime());
+		String arrivalId = (String) arrival.get("id");
+
+		Map<String, Object> departure = bookCustomDates(fx, today.minusDays(2), today,
+				"dash-departure-" + System.nanoTime());
+		String departureId = (String) departure.get("id");
+
+		Map<String, Object> dash = post("""
+				query($hotelId: ID!) {
+				  adminDashboard(hotelId: $hotelId) {
+				    arrivalsTodayList { id }
+				    departuresTodayList { id }
+				  }
+				}
+				""", Map.of("hotelId", fx.hotelId().toString()), token);
+		assertThat(dash.get("errors")).isNull();
+		Map<String, Object> data = (Map<String, Object>) ((Map<String, Object>) dash.get("data"))
+				.get("adminDashboard");
+		List<Map<String, Object>> arrivals = (List<Map<String, Object>>) data.get("arrivalsTodayList");
+		List<Map<String, Object>> departures = (List<Map<String, Object>>) data.get("departuresTodayList");
+		assertThat(arrivals).extracting(r -> r.get("id")).contains(arrivalId);
+		assertThat(departures).extracting(r -> r.get("id")).contains(departureId);
+	}
+
 	// ---------------------------------------------------------------- helpers
 
 	private Map<String, Object> book(TestFixtures.HotelFixture fx, LocalDate checkIn, String key)
 			throws Exception {
 		return bookWithEmail(fx, checkIn, key, "graphql@example.com", null);
+	}
+
+	private Map<String, Object> bookCustomDates(TestFixtures.HotelFixture fx, LocalDate checkIn,
+			LocalDate checkOut, String key) throws Exception {
+		Map<String, Object> created = restWithHeaders("POST", "/api/v1/reservations", Map.of(
+				"hotelId", fx.hotelId().toString(),
+				"checkInDate", checkIn.toString(),
+				"checkOutDate", checkOut.toString(),
+				"adults", 2, "children", 0,
+				"currencyCode", TestFixtures.CURRENCY,
+				"guest", Map.of("firstName", "Graph", "lastName", "Ql", "email", "graphql@example.com"),
+				"rooms", List.of(Map.of("roomTypeId",
+						fx.roomType().getId().toString(), "ratePlanId",
+						fx.ratePlan().getId().toString())),
+				"idempotencyKey", key), null, Map.of("Idempotency-Key", key));
+		assertThat(created.get("__status")).isIn(200, 201);
+		return created;
 	}
 
 	private Map<String, Object> bookWithEmail(TestFixtures.HotelFixture fx, LocalDate checkIn,
