@@ -11,7 +11,7 @@ import { ErrorState } from '@/components/shared/ErrorState';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Money } from '@/components/shared/Money';
 import { MetricCard } from '@/components/modules/dashboard/MetricCard';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
 
 export default function DashboardPage({ params }: { params: Promise<{ hotelId: string }> }) {
   const { hotelId } = use(params);
@@ -50,7 +50,7 @@ export default function DashboardPage({ params }: { params: Promise<{ hotelId: s
                 <MetricCard
                   icon={Wallet}
                   label="Revenue (captured)"
-                  value={dashboard ? new Intl.NumberFormat('en-MA', { maximumFractionDigits: 0 }).format(dashboard.revenueTotal) + ' MAD' : '—'}
+                  value={dashboard ? formatMoney(dashboard.revenueTotal) : '—'}
                   tone="success"
                 />
               </>

@@ -28,8 +28,10 @@ function esc(s: string): string {
     .replace(/>/g, '&gt;');
 }
 
+// Whole MAD, no cents — matches formatMoney (lib/format.ts, the app's one
+// money formatter, §O) and the guest site's invoice/credit-note downloads.
 function money(n: number, currency: string): string {
-  return `${currency} ${Number(n ?? 0).toFixed(2)}`;
+  return `${currency} ${Math.round(n ?? 0).toLocaleString('en-US')}`;
 }
 
 export function buildInvoiceHtml(

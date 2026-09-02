@@ -29,8 +29,12 @@ function esc(s: string): string {
     .replace(/>/g, '&gt;');
 }
 
+// Whole MAD, no cents — matches every other price on the guest site
+// (lib/format.ts#fmtPrice) and admin-hotel's invoice/credit-note downloads.
+// The backend keeps exact BigDecimal precision; this is a display-only
+// rounding choice, applied consistently rather than per-page.
 function money(n: number, currency: string): string {
-  return `${currency} ${Number(n ?? 0).toFixed(2)}`;
+  return `${currency} ${Math.round(n ?? 0).toLocaleString('en-US')}`;
 }
 
 export function buildInvoiceHtml(

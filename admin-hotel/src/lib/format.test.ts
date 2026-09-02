@@ -2,13 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { formatMoney, formatDate, humanizeEnum, formatRelativeToToday } from './format';
 
 describe('formatMoney', () => {
-  it('formats MAD amounts with two decimal places', () => {
-    expect(formatMoney(1234.5)).toContain('1,234.50');
+  it('formats whole MAD amounts with a thousands separator, no cents', () => {
+    expect(formatMoney(1234.5)).toContain('1,235');
+    expect(formatMoney(1234.5)).not.toContain('.50');
     expect(formatMoney(1234.5)).toContain('MAD');
   });
 
   it('formats zero', () => {
-    expect(formatMoney(0)).toContain('0.00');
+    expect(formatMoney(0)).toContain('0');
+  });
+
+  it('never shows a decimal point — the exact bug this locks in against', () => {
+    // A real reported inconsistency: the same total showed as "5787.99" on
+    // an invoice download and "5788" elsewhere in the app. Every money
+    // display in this app must round to whole MAD, consistently.
+    expect(formatMoney(5787.99)).not.toContain('.');
   });
 });
 

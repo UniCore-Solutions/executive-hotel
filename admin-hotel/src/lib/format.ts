@@ -5,12 +5,16 @@
  * tables — see the investigation report, §I).
  */
 
+// Whole MAD, no cents — matches the guest site's display convention
+// (frontend-hotel's fmtMad/formatPrice) and what a real invoice/credit-note
+// download shows (lib/invoice.ts here and in frontend-hotel). The backend
+// keeps exact BigDecimal precision; this is a display-only rounding choice,
+// applied consistently everywhere money renders in this app.
 const MAD_FORMATTER = new Intl.NumberFormat('en-MA', {
   style: 'currency',
   currency: 'MAD',
   currencyDisplay: 'code',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
+  maximumFractionDigits: 0,
 });
 
 export function formatMoney(amount: number): string {
