@@ -178,6 +178,33 @@ services:
       - hotel-network
     restart: unless-stopped
 
+  admin:
+    build:
+      context: ./admin-hotel
+      target: runner
+    image: hotel-platform/admin:local
+    container_name: hotel-admin
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "3102"
+      HOSTNAME: 0.0.0.0
+      # BFF proxy target (server-side only; the browser never sees this host).
+      HOTEL_API_URL: http://backend:8180/graphql
+    ports:
+      - "${ADMIN_PORT:-3102}:3102"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3102/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    networks:
+      - hotel-network
+    restart: unless-stopped
+
 networks:
   hotel-network:
 
