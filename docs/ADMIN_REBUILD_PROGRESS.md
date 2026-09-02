@@ -15,6 +15,16 @@
 | **Next READY task** | E-NAV-2 — Hotels list search/filter/sort/create; or E5-T0x — Promotions (rate plans now exist, J-14 unblocked) |
 | **Verified against** | Live stack (`hotel-backend` healthy, Flyway V32), 2026-09-02 |
 
+**Outstanding follow-up**: GitHub Dependabot flagged 2 lodash advisories (high +
+moderate) in both `admin-hotel` and `backoffice-hotel`, caused by `@graphql-codegen/cli`
+pulling in `lodash@4.17.23` transitively (dev-tooling only, not shipped to users). Fixed
+via a `lodash` override to `^4.18.1` in both apps' `package.json` (commit `c3257e6`);
+`npm audit` now shows 0 vulnerabilities locally in both. **Not yet confirmed against the
+actual GitHub Security tab** — needs a human check at
+https://github.com/UniCore-Solutions/executive-hotel/security/dependabot once GitHub
+re-scans the updated lockfiles (no `gh`/API token available in this environment to check
+it directly).
+
 ## Summary
 
 - **20 tasks defined** across E1–E4 (Foundation, Reservations, Inventory, Dashboard) — all
