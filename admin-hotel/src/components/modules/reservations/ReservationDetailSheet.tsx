@@ -19,6 +19,7 @@ import { formatDate, formatDateTime, humanizeEnum } from '@/lib/format';
 import { adminGetInvoice, adminGetCreditNote } from '@/api/rest/endpoints/reservations';
 import { buildInvoiceHtml, buildCreditNoteHtml, downloadInvoiceHtml } from '@/lib/invoice';
 import { ApiError } from '@/lib/api';
+import { paymentStatusDisplay, refundStatusNote } from '@/lib/reservationStatus';
 import { useToast } from '@/context/ToastContext';
 import { CancelReservationDialog } from './CancelReservationDialog';
 import type { AdminReservationsQuery } from '@/graphql/generated/graphql';
@@ -26,30 +27,6 @@ import type { AdminReservationsQuery } from '@/graphql/generated/graphql';
 type Reservation = AdminReservationsQuery['adminReservations']['items'][number];
 
 const CANCELLABLE = new Set(['pending', 'confirmed', 'modified']);
-
-/**
- * Clarifies what the penalty/refund figures actually mean for this
- * reservation's payment status — a nonzero "Refund" amount alone doesn't say
- * whether that money has actually moved. Mirrors the wording used in the
- * guest-facing cancellation view (frontend-hotel's ReservationFlow) so a
- * guest and a staff member reading the same reservation see the same story.
- */
-function refundStatusNote(reservation: Reservation): string {
-  const status = reservation.paymentStatus.toLowerCase();
-  if (status === 'pending' || status === 'failed') {
-    return 'No payment was ever collected — nothing to refund.';
-  }
-  if (status === 'refunded') {
-    return 'Refunded in full.';
-  }
-  if (status === 'partially_refunded') {
-    return 'Partially refunded — a cancellation fee applied.';
-  }
-  if (reservation.cancellation && reservation.cancellation.refundAmount <= 0) {
-    return 'Non-refundable rate — no refund applies.';
-  }
-  return 'Refund not yet processed.';
-}
 
 export function ReservationDetailSheet({
   reservation,
@@ -68,6 +45,7 @@ export function ReservationDetailSheet({
   const { toast } = useToast();
   if (!reservation) return null;
 
+  const paymentDisplay = paymentStatusDisplay(reservation);
   const canCancel = CANCELLABLE.has(reservation.status.toLowerCase());
   // An invoice only ever exists for a reservation that reached 'confirmed'
   // (auto-issued on confirmation) or one that was cancelled after having
@@ -246,7 +224,7 @@ export function ReservationDetailSheet({
                 </div>
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-xs text-muted-foreground">Payment status</span>
-                  <StatusBadge domain="payment" value={reservation.paymentStatus} />
+                  <StatusBadge domain="payment" value={paymentDisplay.value} label={paymentDisplay.label} />
                 </div>
               </div>
             </section>
@@ -272,7 +250,7 @@ export function ReservationDetailSheet({
                     </div>
                   </div>
                   <p className="mt-2 flex items-center gap-1.5 text-xs">
-                    <StatusBadge domain="payment" value={reservation.paymentStatus} />
+                    <StatusBadge domain="payment" value={paymentDisplay.value} label={paymentDisplay.label} />
                     <span className="text-muted-foreground">{refundStatusNote(reservation)}</span>
                   </p>
                   <p className="mt-2 text-[11px] text-muted-foreground">

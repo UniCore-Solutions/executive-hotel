@@ -26,6 +26,12 @@ const PAYMENT_STATUS: Record<string, Tone> = {
   failed: 'critical',
   refunded: 'neutral',
   partially_refunded: 'warn',
+  // Not real backend enum values — synthesized display-only states from
+  // lib/reservationStatus.ts#paymentStatusDisplay, which disambiguates a
+  // bare 'pending' (see that file for why one raw status can mean three
+  // very different things to a guest).
+  due_at_property: 'info',
+  not_charged: 'neutral',
 };
 
 const ROOM_STATUS: Record<string, Tone> = {

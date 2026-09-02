@@ -2,6 +2,7 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Money } from '@/components/shared/Money';
 import { formatDate, formatRelativeToToday } from '@/lib/format';
+import { paymentStatusDisplay } from '@/lib/reservationStatus';
 import type { AdminReservationsQuery } from '@/graphql/generated/graphql';
 
 export type ReservationRow = AdminReservationsQuery['adminReservations']['items'][number];
@@ -53,7 +54,10 @@ export const reservationColumns: ColumnDef<ReservationRow, unknown>[] = [
   {
     id: 'payment',
     header: 'Payment',
-    cell: ({ row }) => <StatusBadge domain="payment" value={row.original.paymentStatus} />,
+    cell: ({ row }) => {
+      const { value, label } = paymentStatusDisplay(row.original);
+      return <StatusBadge domain="payment" value={value} label={label} />;
+    },
   },
   {
     id: 'total',
