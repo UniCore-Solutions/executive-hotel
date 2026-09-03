@@ -119,6 +119,33 @@ UNION ALL SELECT 'platforms     : ' || count(*) FROM platforms;
 SQL
 }
 
+# ------------------------------------------------------------------ volumes --
+volume_backup() {                       # volume_backup <volume> <backup-subdir> [output-file]
+  local volume="$1" subdir="$2" outfile="$3"
+  docker volume inspect "$volume" >/dev/null 2>&1 \
+    || die "Volume $volume not found — is the backend running?"
+
+  local ts; ts="$(date +%Y-%m-%d-%H%M%S)"
+  outfile="${outfile:-backups/${subdir}/backup-${ts}.tar.gz}"
+  [[ -e "$outfile" ]] && die "Refusing to overwrite existing file: $outfile"
+
+  mkdir -p "$(dirname "$outfile")"
+  info "Archiving $volume → $outfile"
+
+  docker run --rm \
+    -v "${volume}:/data:ro" \
+    -v "$(cd "$(dirname "$outfile")" && pwd):/backup" \
+    alpine tar czf "/backup/$(basename "$outfile")" -C /data .
+
+  [[ -s "$outfile" ]] || { rm -f "$outfile"; die "Archive produced an empty file — aborted"; }
+
+  local size; size="$(du -h "$outfile" | cut -f1)"
+  ok "Backup written: $outfile ($size)"
+
+  local latest; latest="$(ls -1t "backups/${subdir}/" 2>/dev/null | head -5)"
+  [[ -n "$latest" ]] && { printf '%s\n' "${DIM}Recent backups:${RST}"; printf '   %s\n' $latest; }
+}
+
 # -------------------------------------------------------------------- http ---
 http_status() {                         # http_status <url> [timeout]
   curl -sS -o /dev/null -w '%{http_code}' -m "${2:-5}" "$1" 2>/dev/null || echo 000
