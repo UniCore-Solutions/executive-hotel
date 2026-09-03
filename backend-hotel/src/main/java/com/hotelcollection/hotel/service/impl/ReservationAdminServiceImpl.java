@@ -104,7 +104,8 @@ public class ReservationAdminServiceImpl implements ReservationAdminService {
 	@Override
 	@Transactional(readOnly = true)
 	public long countArrivals(UUID hotelId, LocalDate date) {
-		return reservationRepository.countByHotelIdAndCheckInDate(hotelId, date);
+		return reservationRepository.countByHotelIdAndCheckInDateAndStatusNot(hotelId, date,
+				ReservationStatus.cancelled);
 	}
 
 	@Override
@@ -117,7 +118,8 @@ public class ReservationAdminServiceImpl implements ReservationAdminService {
 	@Override
 	@Transactional(readOnly = true)
 	public List<Reservation> arrivalsList(UUID hotelId, LocalDate date) {
-		return reservationRepository.findByHotelIdAndCheckInDateOrderByCreatedAtDesc(hotelId, date);
+		return reservationRepository.findByHotelIdAndCheckInDateAndStatusNotOrderByCreatedAtDesc(hotelId,
+				date, ReservationStatus.cancelled);
 	}
 
 	@Override

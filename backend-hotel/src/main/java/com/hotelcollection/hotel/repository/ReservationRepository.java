@@ -109,14 +109,15 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
 		return searchByHotelAndQuery(hotelId, status, query, pageable);
 	}
 
-	long countByHotelIdAndCheckInDate(UUID hotelId, java.time.LocalDate checkInDate);
+	long countByHotelIdAndCheckInDateAndStatusNot(UUID hotelId, java.time.LocalDate checkInDate,
+			ReservationStatus status);
 
 	long countByHotelIdAndCheckOutDateAndStatusNot(UUID hotelId, java.time.LocalDate checkOutDate,
 			ReservationStatus status);
 
-	/** List form of {@link #countByHotelIdAndCheckInDate} — dashboard arrivals feed. */
-	List<Reservation> findByHotelIdAndCheckInDateOrderByCreatedAtDesc(UUID hotelId,
-			java.time.LocalDate checkInDate);
+	/** List form of {@link #countByHotelIdAndCheckInDateAndStatusNot} — dashboard arrivals feed. */
+	List<Reservation> findByHotelIdAndCheckInDateAndStatusNotOrderByCreatedAtDesc(UUID hotelId,
+			java.time.LocalDate checkInDate, ReservationStatus status);
 
 	/** List form of {@link #countByHotelIdAndCheckOutDateAndStatusNot} — dashboard departures feed. */
 	List<Reservation> findByHotelIdAndCheckOutDateAndStatusNotOrderByCreatedAtDesc(UUID hotelId,
