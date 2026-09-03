@@ -22,7 +22,12 @@ import type { ApolloClient } from '@apollo/client';
  * registry — not rate-plan-specific.
  */
 export const REST_INVALIDATIONS: Record<string, string[]> = {
-  'reservations.cancel': ['adminReservations', 'adminDashboard'],
+  // Cancelling releases the room lines' held inventory (BookingServiceImpl
+  // #doCancel -> InventoryService#release) — `adminHotel` backs both the
+  // Availability tab and the Room Types workspace, so without it staff can
+  // cancel a reservation and still see the old (higher) sold count until an
+  // unrelated action or a hard reload happens to evict the cache.
+  'reservations.cancel': ['adminReservations', 'adminDashboard', 'adminHotel'],
   'reservations.assignRoom': ['adminReservations', 'adminDashboard'],
   'reservations.checkIn': ['adminReservations', 'adminDashboard'],
   'reservations.checkOut': ['adminReservations', 'adminDashboard'],

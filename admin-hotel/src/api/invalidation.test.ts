@@ -27,10 +27,9 @@ describe('REST_INVALIDATIONS', () => {
 describe('invalidateGraphql', () => {
   it('evicts every registered field for a known operation key, then garbage-collects once', () => {
     const { apollo, evict, gc } = fakeApollo();
-    invalidateGraphql(apollo, 'reservations.cancel');
-    expect(evict).toHaveBeenCalledWith({ fieldName: 'adminReservations' });
-    expect(evict).toHaveBeenCalledWith({ fieldName: 'adminDashboard' });
-    expect(evict).toHaveBeenCalledTimes(2);
+    invalidateGraphql(apollo, 'roomTypes.create');
+    expect(evict).toHaveBeenCalledWith({ fieldName: 'adminHotel' });
+    expect(evict).toHaveBeenCalledTimes(1);
     expect(gc).toHaveBeenCalledTimes(1);
   });
 
@@ -39,5 +38,19 @@ describe('invalidateGraphql', () => {
     invalidateGraphql(apollo, 'some.unregistered.mutation');
     expect(evict).not.toHaveBeenCalled();
     expect(gc).toHaveBeenCalledTimes(1);
+  });
+
+  // Regression coverage: cancelling a reservation releases its held
+  // inventory (BookingServiceImpl#doCancel -> InventoryService#release),
+  // and `adminHotel` backs both the Availability tab and the Room Types
+  // workspace. Without evicting it too, staff could cancel a reservation
+  // and still see the pre-cancellation (higher) sold count in-session.
+  it('evicts adminHotel (not just the reservations list/dashboard) on reservations.cancel, since cancelling releases inventory', () => {
+    const { apollo, evict } = fakeApollo();
+    invalidateGraphql(apollo, 'reservations.cancel');
+    expect(evict).toHaveBeenCalledWith({ fieldName: 'adminReservations' });
+    expect(evict).toHaveBeenCalledWith({ fieldName: 'adminDashboard' });
+    expect(evict).toHaveBeenCalledWith({ fieldName: 'adminHotel' });
+    expect(evict).toHaveBeenCalledTimes(3);
   });
 });
