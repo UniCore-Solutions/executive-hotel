@@ -92,9 +92,12 @@ public class ReservationGraphQLController {
 	public Map<ReservationRoom, String> roomLineImages(Collection<ReservationRoom> lines) {
 		Map<UUID, List<Media>> media = catalog.mediaByRoomTypeIds(
 				lines.stream().map(ReservationRoom::getRoomTypeId).collect(Collectors.toSet()));
-		return lines.stream().collect(Collectors.toMap(l -> l,
-				l -> media.getOrDefault(l.getRoomTypeId(), List.of()).stream()
-						.findFirst().map(Media::getUrl).orElse(null)));
+		Map<ReservationRoom, String> result = new HashMap<>();
+		for (ReservationRoom line : lines) {
+			result.put(line, media.getOrDefault(line.getRoomTypeId(), List.of()).stream()
+					.findFirst().map(Media::getUrl).orElse(null));
+		}
+		return result;
 	}
 
 	// The assigned physical room (back-office check-in flow): roomLines
@@ -106,16 +109,22 @@ public class ReservationGraphQLController {
 		Map<UUID, String> numbers = catalog.roomNumbersByIds(lines.stream()
 				.map(ReservationRoom::getRoomId).filter(java.util.Objects::nonNull)
 				.collect(Collectors.toSet()));
-		return lines.stream().collect(Collectors.toMap(l -> l,
-				l -> l.getRoomId() == null ? null : numbers.get(l.getRoomId())));
+		Map<ReservationRoom, String> result = new HashMap<>();
+		for (ReservationRoom line : lines) {
+			result.put(line, line.getRoomId() == null ? null : numbers.get(line.getRoomId()));
+		}
+		return result;
 	}
 
 	@BatchMapping(typeName = "ReservationRoomLine", field = "ratePlanName")
 	public Map<ReservationRoom, String> roomLineRatePlans(Collection<ReservationRoom> lines) {
 		Map<UUID, String> names = pricing.ratePlanNamesByIds(
 				lines.stream().map(ReservationRoom::getRatePlanId).collect(Collectors.toSet()));
-		return lines.stream().collect(Collectors.toMap(l -> l,
-				l -> names.get(l.getRatePlanId())));
+		Map<ReservationRoom, String> result = new HashMap<>();
+		for (ReservationRoom line : lines) {
+			result.put(line, names.get(line.getRatePlanId()));
+		}
+		return result;
 	}
 
 	// Cancellation terms: resolved from the current rate catalog so the
