@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { setSessionCookie } from '@/lib/session';
+import { isHttpsRequest, setSessionCookie } from '@/lib/session';
 
 const BACKEND_REST_URL =
   (process.env.HOTEL_API_URL ?? 'http://localhost:8180/graphql').replace(/\/graphql\/?$/, '') +
@@ -41,7 +41,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         { status: 401 },
       );
     }
-    await setSessionCookie(body.token);
+    await setSessionCookie(body.token, isHttpsRequest(request));
     return NextResponse.json({ me: body.me });
   } catch {
     return NextResponse.json({ error: 'Could not reach the platform.' }, { status: 502 });
