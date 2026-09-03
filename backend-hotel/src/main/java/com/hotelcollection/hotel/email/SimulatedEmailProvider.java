@@ -8,12 +8,13 @@ import org.springframework.stereotype.Component;
 
 /**
  * Default {@link EmailProvider}: nothing is actually delivered. The rendered
- * message is logged in full and a synthesized {@code SIM-XXXXXXXX} reference
- * is returned, so the {@code notifications} row this backs still ends up
- * {@code sent} with a real-looking provider reference — exactly the posture
- * {@code PaymentServiceImpl}'s {@code MOCK-XXXXXXXX} capture reference takes
- * for the card gateway. Replace this bean with a real provider (Resend, SMTP)
- * when credentials exist; nothing else in the notification pipeline changes.
+ * message is logged (attachments named, not dumped) and a synthesized
+ * {@code SIM-XXXXXXXX} reference is returned, so the {@code notifications}
+ * row this backs still ends up {@code sent} with a real-looking provider
+ * reference — the same posture {@code PaymentServiceImpl}'s
+ * {@code MOCK-XXXXXXXX} capture reference takes for the card gateway.
+ * Selected via {@code app.email.provider=simulated} (the default) — safe to
+ * leave active in any environment with no real provider credentials.
  */
 @Component
 public class SimulatedEmailProvider implements EmailProvider {
@@ -25,11 +26,19 @@ public class SimulatedEmailProvider implements EmailProvider {
 		String reference = "SIM-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 		log.info("""
 				SIMULATED EMAIL (not actually delivered) ref={}
-				  to:      {}
-				  subject: {}
+				  to:          {}
+				  subject:     {}
+				  attachments: {}
 				  ---
 				{}
-				  ---""", reference, message.to(), message.subject(), message.body());
+				  ---""", reference, message.to(), message.subject(),
+				message.attachments().stream().map(EmailAttachment::filename).toList(),
+				message.htmlBody());
 		return new SendResult(true, reference, null);
+	}
+
+	@Override
+	public ProviderType type() {
+		return ProviderType.SIMULATED;
 	}
 }

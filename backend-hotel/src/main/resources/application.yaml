@@ -46,6 +46,20 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: "com.hotelcollection.hotel.*"
+  # SMTP transport for app.email.provider=smtp (email/SmtpEmailProvider). Gmail's
+  # SMTP relay is the reference target (smtp.gmail.com:587 + an app password),
+  # but nothing here is Gmail-specific — any SMTP host works. Harmless to leave
+  # configured even when app.email.provider=simulated (the default): a
+  # JavaMailSender bean gets created, but nothing connects until something
+  # actually calls send().
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
 
 app:
   security:
@@ -70,6 +84,32 @@ app:
     base-url: ${MEDIA_BASE_URL:http://localhost:8180}
   documents:
     storage-path: ${DOCUMENTS_STORAGE_PATH:./data/documents}
+  email:
+    # simulated (default): logs the rendered email, never delivers — safe with
+    # no credentials configured anywhere. smtp: delivers through spring.mail.*
+    # above (email/SmtpEmailProvider). Adding another provider (SendGrid, SES,
+    # Mailgun, …) is a new EmailProvider implementation + a new enum value in
+    # EmailProvider.ProviderType + this switching to its name — no business
+    # service, Kafka consumer or template changes.
+    provider: ${EMAIL_PROVIDER:simulated}
+    from-address: ${EMAIL_FROM_ADDRESS:no-reply@hotel-platform.local}
+  # Base URL of the guest site, used only to build links inside emails
+  # (manage-booking, retry-payment, account) — the backend never serves these
+  # pages itself.
+  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+  otp:
+    # How long a code stays enterable (registration verification and guest
+    # reservation lookup both use this).
+    code-ttl-minutes: ${OTP_CODE_TTL_MINUTES:10}
+    # Minimum gap between two codes issued for the same (email, purpose) —
+    # defense in depth against email-bombing beyond RateLimitFilter's
+    # per-IP budget.
+    resend-cooldown-seconds: ${OTP_RESEND_COOLDOWN_SECONDS:60}
+    max-attempts: ${OTP_MAX_ATTEMPTS:5}
+    # Once verified, how long the reservation-lookup grant (OtpService#isGrantValid)
+    # stays usable — longer than code-ttl-minutes on purpose: entering the
+    # code is the hard part, browsing afterward shouldn't need re-verifying.
+    lookup-grant-minutes: ${OTP_LOOKUP_GRANT_MINUTES:30}
   outbox:
     relay-interval-ms: ${OUTBOX_RELAY_INTERVAL_MS:1000}
     batch-size: 50

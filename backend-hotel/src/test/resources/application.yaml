@@ -16,6 +16,21 @@ app:
     base-url: http://localhost:8180
   documents:
     storage-path: ${DOCUMENTS_STORAGE_PATH:./target/test-data/documents}
+  email:
+    provider: ${EMAIL_PROVIDER:simulated}
+    from-address: no-reply@hotel-platform.test
+  otp:
+    code-ttl-minutes: 10
+    # Disabled by default: most tests re-issue a code directly (via
+    # OtpService#issue, which returns the plaintext) to capture a known value
+    # for a code the flow under test already sent once — the same "issue
+    # twice" pattern a real cooldown would legitimately block. The one test
+    # that asserts the cooldown itself (OtpResendCooldownIntegrationTest)
+    # re-enables it via @TestPropertySource, same idiom RateLimitIntegrationTest
+    # uses for app.security.rate-limit-enabled.
+    resend-cooldown-seconds: 0
+    max-attempts: 5
+    lookup-grant-minutes: 30
   outbox:
     relay-interval-ms: 600000
     batch-size: 50
@@ -48,6 +63,13 @@ spring:
         generate_statistics: true
   thymeleaf:
     mode: XML
+  # Present so spring-boot-starter-mail's MailSenderAutoConfiguration creates
+  # a JavaMailSender bean (SmtpEmailProvider needs one to exist, even though
+  # the default test provider is "simulated" and never calls send()). No
+  # credentials — nothing in the suite actually connects.
+  mail:
+    host: smtp.gmail.com
+    port: 587
   flyway:
     enabled: true
     locations: classpath:db/migration

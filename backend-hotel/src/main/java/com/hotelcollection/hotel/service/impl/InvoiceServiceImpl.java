@@ -229,6 +229,22 @@ public class InvoiceServiceImpl implements InvoiceService {
 		return new GeneratedDocument(getOrGenerateCreditNotePdf(note), filename(note.getCreditNoteNumber()));
 	}
 
+	@Override
+	@Transactional
+	public GeneratedDocument getInvoicePdfForNotification(UUID reservationId) {
+		Reservation reservation = booking.getById(reservationId);
+		Invoice invoice = getOrCreate(reservation);
+		return new GeneratedDocument(getOrGenerateInvoicePdf(invoice), filename(invoice.getInvoiceNumber()));
+	}
+
+	@Override
+	@Transactional
+	public GeneratedDocument getCreditNotePdfForNotification(UUID reservationId) {
+		CreditNote note = creditNoteRepository.findByReservationId(reservationId)
+				.orElseThrow(() -> DomainException.notFound("no credit note exists for this reservation"));
+		return new GeneratedDocument(getOrGenerateCreditNotePdf(note), filename(note.getCreditNoteNumber()));
+	}
+
 	/**
 	 * Idempotent, concurrency-safe: locks the invoice row, reuses an
 	 * already-stored PDF if the file is still actually present (regenerates

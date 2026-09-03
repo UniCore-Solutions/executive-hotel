@@ -17,10 +17,12 @@ import org.springframework.test.context.ContextConfiguration;
 
 import com.hotelcollection.hotel.dto.identity.LoginInput;
 import com.hotelcollection.hotel.dto.identity.RegisterInput;
+import com.hotelcollection.hotel.dto.identity.VerifyRegistrationInput;
 import com.hotelcollection.hotel.dto.reservation.CreateReservationInput;
 import com.hotelcollection.hotel.dto.reservation.GuestInput;
 import com.hotelcollection.hotel.dto.reservation.RoomInput;
 import com.hotelcollection.hotel.entity.Guest;
+import com.hotelcollection.hotel.entity.OtpPurpose;
 import com.hotelcollection.hotel.entity.Reservation;
 import com.hotelcollection.hotel.entity.User;
 import com.hotelcollection.hotel.exception.DomainException;
@@ -29,6 +31,7 @@ import com.hotelcollection.hotel.repository.UserRepository;
 import com.hotelcollection.hotel.security.CurrentUser;
 import com.hotelcollection.hotel.service.AuthService;
 import com.hotelcollection.hotel.service.BookingService;
+import com.hotelcollection.hotel.service.OtpService;
 
 /**
  * SILENT ACCOUNT PROVISIONING — accountless bookings create a passwordless
@@ -49,6 +52,8 @@ class AccountProvisioningIntegrationTest {
 	BookingService booking;
 	@Autowired
 	AuthService auth;
+	@Autowired
+	OtpService otpService;
 	@Autowired
 	UserRepository userRepository;
 	@Autowired
@@ -83,9 +88,9 @@ class AccountProvisioningIntegrationTest {
 		assertThatThrownBy(() -> auth.login(new LoginInput(email, "secret123")))
 				.isInstanceOf(DomainException.class);
 
-		// registration completes the SAME account
-		CurrentUser me = auth.register(
-				new RegisterInput("Silent", "Booker", email, "secret123")).me();
+		// registration completes the SAME account (now pending_verification —
+		// not yet a usable session until the OTP is confirmed)
+		CurrentUser me = registerAndVerify(new RegisterInput("Silent", "Booker", email, "secret123"));
 		assertThat(me.userId()).isEqualTo(provisioned.getId());
 
 		User completed = userRepository.findByEmailIgnoreCase(email).orElseThrow();
@@ -105,7 +110,9 @@ class AccountProvisioningIntegrationTest {
 	@Test
 	void registerWithExistingActiveEmailIsStillRejected() {
 		String email = "active." + System.nanoTime() + "@example.com";
-		auth.register(new RegisterInput("First", "Active", email, "secret123"));
+		// Must actually reach 'active' — a merely pending_verification account
+		// is legitimately allowed to re-register (e.g. they lost the code).
+		registerAndVerify(new RegisterInput("First", "Active", email, "secret123"));
 
 		assertThatThrownBy(() -> auth.register(
 				new RegisterInput("Other", "Person", email, "another123")))
@@ -133,8 +140,7 @@ class AccountProvisioningIntegrationTest {
 		String email = "linked." + System.nanoTime() + "@example.com";
 		String ref = bookAccountless(fx, email);
 
-		CurrentUser me = auth.register(
-				new RegisterInput("Linked", "Guest", email, "secret123")).me();
+		CurrentUser me = registerAndVerify(new RegisterInput("Linked", "Guest", email, "secret123"));
 
 		// the registration completed the provisioned account — the guest
 		// record stays the SAME (no duplicate), just activated + linked
@@ -150,6 +156,22 @@ class AccountProvisioningIntegrationTest {
 			assertThat(mine.get(0).getReference()).isEqualTo(ref);
 			return null;
 		});
+	}
+
+	/**
+	 * Registers (now returns only a "check your email" pending result — no
+	 * usable session) and immediately completes verification, returning the
+	 * resulting session. {@code OtpService.issue} returns the plaintext code
+	 * to its caller for exactly this reason — re-issuing here captures a
+	 * known code (superseding the one register() already sent silently)
+	 * without weakening anything real callers rely on: production code
+	 * always discards that return value.
+	 */
+	private CurrentUser registerAndVerify(RegisterInput in) {
+		String email = in.email().trim().toLowerCase();
+		auth.register(in);
+		String code = otpService.issue(OtpPurpose.registration_verification, email, in.firstName(), null, null);
+		return auth.verifyRegistration(new VerifyRegistrationInput(email, code)).me();
 	}
 
 	/** Runs the action authenticated as the given actor. */

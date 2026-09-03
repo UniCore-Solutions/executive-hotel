@@ -202,6 +202,12 @@ Toolchain note: **`mvn` is not on PATH** — use `./mvnw`. JDK 21 and Node 24 ar
 
 **Backend**
 - Auth: register/login, bcrypt(12), HS256 JWT with fail-fast secret validation, rate limiting.
+- **Mandatory OTP verification (V37)**: registration is blocking — `register()` sends a
+  code and returns no session until `POST /api/v1/auth/register/verify` confirms it
+  (account stays `pending_verification` until then); guest reservation lookup
+  (no account) requires the same code-in-email proof before `verifiedReservation`
+  reveals anything, replacing reference+email alone. See the 2026-09-03 OTP update
+  below for the full design and a real transaction-rollback bug it caught.
 - **Silent account provisioning (V27)**: accountless bookings create passwordless
   `provisioned` user accounts linked to the guest; registration with the same email
   completes the account (password set, status active) and pre-registration bookings appear
@@ -271,8 +277,8 @@ are seeded — bookings are made live through the API.
 | **Guest content sourcing** | booking funnel is live; home renders backend `FeaturedRooms`/`FeaturedHotels` while the backend is healthy | legacy `/hotel`, `/index-2`, FAQ, offers, header/footer and the home hero facts still render `src/data/index.ts`. Legacy `/hotel` room links (`roomId=executive-suite` …) are **dead** — verified live. `/offers` advertises 5 promo codes that do not exist in the DB. |
 | **Reviews** | create + moderate + list, proof-of-stay check | the check requires `checked_out`, which no code path can produce → guests can never review |
 | **Reservation lifecycle** | `confirmed` and `cancelled` transitions | `pending`, `modified`, `checked_in`, `checked_out`, `no_show` are declared in the enum and never set |
-| **Eventing** | full outbox + Kafka producer | zero consumers; `event_consumption` unused |
-| **Notifications** | read API + tables | **no writer anywhere**; the back-office page will always be empty |
+| **Eventing** | full outbox + Kafka producer + a real consumer (`EmailEventConsumer`, since 2026-09-03) | only one consumer exists so far — nothing else reacts to the bus yet |
+| **Notifications** | read API + tables + a real async writer (`NotificationServiceImpl`, via Kafka, since 2026-09-03) | delivery is `simulated` (logged, not sent) unless `EMAIL_PROVIDER=smtp` is configured with real SMTP credentials |
 | **Promotions** | percentage + fixed_amount; `stay_x_pay_y` soft-fails (`Quote.valid:false` + message) instead of throwing — fixed 2026-08-27 (later) | `stay_x_pay_y`'s actual pricing logic is still unimplemented, only its failure mode changed |
 | **RBAC** | roles + hotel scope | `permissions` / `role_permissions` empty; `Permission` entity has no repository and no usages |
 
@@ -295,8 +301,10 @@ None of these touch the canonical hotel / availability / reservation flow: a bac
 failure there propagates (no mock fallbacks — `catalog.ts`, `canonicalHotel.ts`,
 `homepage.ts` all throw).
 
-Email/SMS is not mocked — it **does not exist**. No `JavaMailSender`, no provider, no
-SMTP config, no template rendering.
+Email is real and async (since 2026-09-03 — see the Update block near the top of this
+file and `docs/ARCHITECTURE.md` §5a); `SimulatedEmailProvider` (the default) is the one
+deliberately-mocked piece — it logs the rendered email and never delivers. SMS still
+does not exist at all.
 
 ---
 
@@ -338,15 +346,19 @@ Remaining known scope, in order:
 
 1. **Check-in / check-out mutations.** They unblock the reservation lifecycle *and* the
    review proof-of-stay, which are both currently unreachable.
-2. **Resolve the Kafka dead end** — either add a consumer (notifications is the obvious
-   candidate, and would give `NotificationQueryService` a writer) or drop the hard
-   `depends_on` so the backend can boot without a broker.
+2. ~~Resolve the Kafka dead end~~ **Done (2026-09-03)** — `EmailEventConsumer` is a
+   real consumer, and `NotificationQueryService` has a real writer. See the Update
+   block near the top of this file and `docs/ARCHITECTURE.md` §5a.
 3. **Rewrite the stale Playwright e2e suite** against the canonical single-hotel flow
    (search → availability → book → verify inventory → sell-out).
 4. **Reconcile `AGENTS.md` in both sub-projects** — both describe structures that no
    longer exist. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §Documentation.
-5. **Newsletter/password-reset/contact remain local or canned** — blocked on there being
-   no email provider anywhere in the repo.
+5. **Newsletter/password-reset/contact remain local or canned.** An email provider now
+   exists (item 2), and so does an OTP flow (see the 2026-09-03 OTP update below) —
+   registration email-verification and guest reservation lookup both use it.
+   Password-reset itself is still not wired to it: `services/auth.ts`'s `reset()`
+   returns a canned "not available yet" message. Newsletter/contact were never about
+   transactional email in the first place.
 
 > **Update 2026-09-01 — new admin console (`admin-hotel/`), foundation + first three
 > modules.** Per `docs/ADMIN_REBUILD_PROGRESS.md`: a new Next.js 16 admin console was
@@ -481,3 +493,184 @@ Remaining known scope, in order:
 >   `admin-hotel` 279/279 vitest. New integration coverage: eager generation, on-demand
 >   generate-or-reuse, regeneration after the stored file is deleted, guest wrong-email
 >   rejection, staff cross-hotel rejection (403), credit-note-not-yet-issued (404).
+
+> **Update 2026-09-03 (later) — event-driven email notification system (Kafka).** The
+> synchronous email path the previous update quietly introduced (`NotificationService`
+> calling `EmailProvider` directly, in-transaction, from `BookingServiceImpl`) is
+> replaced with the fully async, provider-agnostic architecture requested: business
+> services publish facts to the existing transactional outbox; a new
+> `EmailEventConsumer` (**the first `@KafkaListener` in this codebase** — closes A2/A3)
+> reacts and drives email delivery entirely outside any business transaction. Full
+> design in `docs/ARCHITECTURE.md` §5a.
+> - **Reused, not rebuilt:** the outbox/Kafka producer pipeline (`EventOutbox`,
+>   `OutboxEventPublisher`, `OutboxRelay`, `KafkaOutboxPublisher`, topic convention
+>   `hotelcollection.<type>.v<n>`) — all pre-existing and untouched. The
+>   previously-unused `event_consumption` table (schema since V8) is now the
+>   idempotency ledger. `EmailProvider`/`SimulatedEmailProvider`/`NotificationService`/
+>   `Notification` (added in a prior session, `c3f4b5b`) are kept and extended, not
+>   replaced — same entity, same table, same "log-only by default" provider posture.
+> - **New events:** `user.registered` (`AuthServiceImpl#register`, platform-wide,
+>   `hotelId=null`). **Fixed a gap** in existing events: `booking.confirmed` previously
+>   only published from the payment-capture path (`markFullyPaid`) — a pay-at-property
+>   reservation, confirmed immediately at creation, fired no such event at all.
+>   Centralizing the publish inside `BookingServiceImpl#onReservationConfirmed` (called
+>   from both paths) closes that gap for free.
+> - **Provider abstraction:** `EmailProvider` (`to/subject/htmlBody/attachments` +
+>   `ProviderType`) → `EmailProviderFactory`/`EmailProviderFactoryImpl` (fails fast at
+>   startup if `app.email.provider` names a type with no registered bean) →
+>   `SimulatedEmailProvider` (default, logs only) or `SmtpEmailProvider` (new — generic
+>   `JavaMailSender`-based SMTP adapter; Gmail is a configuration value
+>   `MAIL_HOST=smtp.gmail.com` + an app password, never a code dependency). Adding
+>   SendGrid/SES/Mailgun later is one more `EmailProvider` implementation + enum value —
+>   no business service, consumer or template changes, verified by a dedicated
+>   provider-switching unit test (`EmailProviderFactoryImplTest`).
+> - **Email types:** welcome (`user.registered`), booking confirmation + invoice (both
+>   from `booking.confirmed`, tracked/retried independently), cancellation
+>   (`booking.cancelled`), refund (`payment.refunded`), payment-failed
+>   (`payment.failed`, judged a useful addition beyond the mandatory list — lets a
+>   guest whose card declined know their room hold is still open). Invoice/credit-note
+>   PDFs are attached via two new narrow `InvoiceService` entry points
+>   (`getInvoicePdfForNotification`/`getCreditNotePdfForNotification`) that reuse the
+>   existing idempotent generate-or-reuse logic — **never regenerated inside the email
+>   path**. No OTP email: no OTP/email-verification flow exists anywhere in this
+>   codebase to deliver one for (see `NotificationService`'s class comment) — building
+>   that generation/validation/rate-limiting logic is a distinct authentication feature,
+>   out of scope here.
+> - **Idempotency/retry/DLQ:** `event_consumption` keyed per email type (e.g.
+>   `"email:booking_confirmation"`, `"email:invoice"`) so one event's several emails
+>   dedupe and retry independently; checked before work, recorded after a successful
+>   send. `KafkaConsumerConfig` (new) retries a transport failure with exponential
+>   backoff (~15s total) then routes to `<topic>.DLT`; a `DomainException` (deterministic
+>   business outcome) skips straight to the DLT.
+> - **6 Thymeleaf templates** (`templates/email/*.html`, XML mode like the existing
+>   invoice templates) — separate from `NotificationServiceImpl`'s Java, auto-escaped.
+> - **Migration V36**: `notifications.event_id`/`correlation_id` (nullable,
+>   observability only — idempotency itself is `event_consumption`, not this).
+> - **Frontend:** no changes — there was never any client-side email sending to remove.
+> - Verified: **250/250 backend tests (was 240), all 7 ArchUnit rules** (Testcontainers,
+>   Maven container — real Postgres + real Kafka, no mocks). New coverage: provider
+>   switching (unit), welcome/confirmation/invoice/cancellation/refund/payment-failed
+>   happy paths end to end through the real outbox→Kafka→consumer pipeline, and a
+>   duplicate-delivery idempotency test (replays a real processed envelope directly into
+>   the consumer, asserts exactly one `notifications` row and one `event_consumption`
+>   record). KNOWN_ISSUES A2/A3 deleted as resolved.
+
+> **Update 2026-09-03 (later still) — premium email templates, theme system, and a
+> transaction bug found live.** The 6 wired emails (welcome, booking confirmation,
+> invoice, cancellation, refund, payment-failed) plus a 7th design-only one (OTP) were
+> redesigned from plain text-in-a-`<div>` markup to a proper branded HTML email system,
+> and one real bug in the previous update surfaced and was fixed along the way.
+> - **Theme + data, not loose variables.** Every template now receives exactly two
+>   Thymeleaf variables — `theme` (`dto/email/EmailTheme`: colors/fonts fixed to
+>   `frontend-hotel`'s actual navy/gold/paper palette, `src/app/globals.css`'s `@theme`
+>   block, so the emails read as the same product as the guest site; hotel
+>   name/logo/address/phone/email are real data) and `data` (a per-email
+>   `*EmailData` record — `WelcomeEmailData`, `BookingConfirmationEmailData`,
+>   `InvoiceEmailData`, `CancellationEmailData`, `RefundEmailData`,
+>   `PaymentFailedEmailData`, `OtpEmailData` — already-formatted content, the same
+>   "authoritative data in, presentation-only template out" split
+>   `DocumentGenerationServiceImpl`/`InvoiceDocumentData` already uses for invoice PDFs).
+> - **Shared layout**: `templates/email/fragments/layout.html` (header/footer/button
+>   Thymeleaf fragments) gives all 7 templates one visual identity from one file.
+>   Markup is table-based with inline styles throughout (not the app's Tailwind
+>   classes — email clients, Outlook desktop especially, don't run a CSS framework);
+>   one `@media (max-width:620px)` block per template is progressive enhancement only.
+> - **Logo**: resolved via new `MediaRepository` queries
+>   (`findByHotelIdAndCategory`/`findByPlatformIdAndCategory`, `category='logo'`) —
+>   hotel-scoped first, then platform-scoped (matches the actual seed data, where the
+>   logo is a platform-level asset), then a graceful text-only header when neither
+>   exists. The seeded logo URL (`https://example.com/logo.png`) is a fixture
+>   placeholder that won't actually resolve — a real deployment would seed a real one;
+>   the header degrades to text if the image 404s, by design.
+> - **A real bug found live, not just in tests**: the welcome email's theme resolution
+>   originally tried `catalog.canonicalHotel()` (for nicer real-hotel branding) wrapped
+>   in try/catch, reasoning a caught exception would be harmless. It wasn't —
+>   `canonicalHotel()` is `@Transactional` and joins the caller's transaction; when it
+>   throws, Spring marks that transaction rollback-only at the AOP boundary *before* the
+>   exception reaches any try/catch in the caller. `sendWelcomeEmail` then appeared to
+>   return normally but failed at commit with `UnexpectedRollbackException`, which the
+>   Kafka consumer correctly treated as a retryable transport failure — so it retried
+>   uselessly and no welcome email ever sent. Caught by live testing (a real
+>   `POST /api/v1/auth/register` against the rebuilt stack produced no email), not by
+>   the test suite alone, though the suite reproduced it once pointed at it
+>   (`EmailNotificationIntegrationTest.welcomeEmailSendsOnRegistration`, flaky —
+>   depended on how many other hotels earlier tests in the class had already created).
+>   Fixed by not routing a platform-wide email through a call that can poison the
+>   transaction: welcome now resolves a static `EmailTheme.forPlatform(...)` outright,
+>   which is also the architecturally correct choice for an email with no `hotelId`.
+> - **Preview/testing**: `EmailTemplatePreviewTest` renders all 7 templates with
+>   realistic + edge-case data (long/injected names, missing optional fields, different
+>   currencies) via a bare `SpringTemplateEngine` (no Spring context, no send — same
+>   posture `DocumentGenerationServiceImplTest` already takes) to
+>   `target/email-previews/*.html`; a generated preview gallery was also published as a
+>   Claude Artifact for visual QA (session-local, not part of the repo).
+> - **Verified live** on the rebuilt Docker stack, real Gmail SMTP, full guest journey:
+>   register → book → pay/capture → cancel produced all 5 triggered emails (welcome,
+>   confirmation, invoice-with-PDF, cancellation, refund), each `sent`/`smtp` with no
+>   errors in `notifications`, no duplicate `event_consumption` rows, and a clean
+>   backend log (no warnings/errors, no leaked SMTP credentials or protocol transcript —
+>   `mail.debug` is not enabled).
+> - Verified: **264/264 backend tests (was 250), all 7 ArchUnit rules** (Testcontainers,
+>   Maven container).
+
+> **Update 2026-09-03 (later still) — mandatory OTP verification: registration
+> (blocking) and guest reservation lookup (replaces reference+email alone).** The
+> "OTP" template from the previous update was design-only until now; both real flows
+> are built end to end and live-verified. Two decisions were made explicitly by the
+> user before implementation: registration is **blocking** (no session until the code
+> is confirmed — closes item 5's "email-verification needs a token/OTP flow that does
+> not exist yet" below) and reservation lookup **replaces** reference+email as proof,
+> rather than layering on top of it.
+> - **Backend (Flyway V37, `otp_codes`)**: a purpose-scoped (`registration_verification`
+>   · `reservation_lookup`), SHA-256-hashed OTP table (`OtpService`/`OtpServiceImpl`) —
+>   `issue`/`verify`/`isGrantValid`, anti-enumeration (identical response whether or not
+>   the target matches anything), a resend cooldown, and a per-code max-attempts lockout.
+>   `AuthServiceImpl.register()` now returns `RegistrationPendingResult` (202, no
+>   session) and sets `users.status = 'pending_verification'`; a new
+>   `POST /api/v1/auth/register/verify` confirms the code, flips the account `active`,
+>   sets `email_verified_at`, and **only then** publishes `user.registered` (the welcome
+>   email fires on real verification, not on the initial request).
+>   `POST /api/v1/auth/register/resend` re-issues silently. Reservation lookup gained a
+>   parallel `verifiedReservation` GraphQL query + REST `POST
+>   .../lookup/otp` / `.../lookup/otp/verify` pair; the existing `reservation(reference,
+>   email)` query and `getByReferenceAndEmail` are deliberately untouched — they still
+>   back the same-session payment-status poller and cancellation, which must not be
+>   OTP-gated.
+> - **A real, security-critical bug found via the test suite, not by inspection**:
+>   `OtpService.verify()`'s wrong-code path saves an incremented `attempts` count, then
+>   throws — `@Transactional(noRollbackFor = DomainException.class)` alone stopped
+>   *its own* rollback, but every real caller (`AuthServiceImpl#verifyRegistration`,
+>   `BookingServiceImpl`'s lookup verify) is itself `@Transactional` with the *default*
+>   rollback rule and no `noRollbackFor` of its own — with the default `REQUIRED`
+>   propagation, the caller's own rollback-on-exception undid the save anyway the
+>   moment the exception reached its boundary, so the attempt counter could never
+>   actually reach the lockout threshold (unlimited brute-force guessing against any
+>   code). Fixed by making `verify()` run in its own transaction
+>   (`propagation = Propagation.REQUIRES_NEW`) — the attempt count and the verified
+>   marker now commit unconditionally, independent of what the caller does with the
+>   exception afterward. Caught by `OtpVerificationIntegrationTest
+>   .tooManyWrongAttemptsLocksOutTheCurrentCode`, which failed with "expected: CONFLICT
+>   but was: VALIDATION" on the 6th attempt even after the first (insufficient) fix.
+> - **Frontend**: `AccountFlow.tsx`'s register tab gained an OTP-entry step (code input,
+>   verify, resend, "use a different email"); `SessionContext`'s `register()` no longer
+>   establishes a session — `verifyRegistration()`/`resendRegistrationOtp()` do.
+>   `ReservationFlow.tsx`'s self-service lookup is now a two-step
+>   `lookup → otp → view` (was a single-step read); the deep-link "Manage booking" path
+>   still auto-fills reference/email but now also auto-requests the code rather than
+>   reading directly. New BFF routes `POST /api/auth/register/verify` (sets the session
+>   cookie — this is the step that actually signs the guest in, `register` itself no
+>   longer does) and `POST /api/auth/register/resend`.
+> - **Verified live** on the rebuilt Docker stack, real Gmail SMTP, real HTTP (no
+>   backend-code shortcuts — codes were recovered by matching each OTP row's stored
+>   SHA-256 hash against a local brute force, the same proof-of-correctness technique
+>   `OtpService.issue()`'s test-only plaintext return uses, applied against the live
+>   database instead): register → 202 pending → wrong code → 400 with `attempts`
+>   persisted in Postgres → correct code → 200 with a working token → `me` query
+>   succeeds → `user.registered` published only now → welcome email `sent`. Reservation
+>   lookup: request → 202 → wrong code → 400 with `attempts` persisted → correct code →
+>   `lookupToken` → `verifiedReservation` returns the real reservation; the unrelated
+>   `reservation(reference, email)` query still resolves directly (poller unaffected);
+>   the grant correctly rejects when replayed against a different reservation reference.
+> - Verified: **273/273 backend tests (was 264), all 7 ArchUnit rules** (Testcontainers,
+>   Maven container). Guest frontend: `tsc` clean, 0 eslint errors, **120/120 vitest**
+>   (was 85/85).

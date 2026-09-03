@@ -12,6 +12,15 @@ export interface AuthResult {
   session?: Session;
 }
 
+/** {@link register}'s result: no `user`/`session` (the account isn't usable
+    yet), just enough to drive the OTP-entry step. */
+export interface RegisterResult {
+  ok: boolean;
+  message?: string;
+  email?: string;
+  otpExpiresInMinutes?: number;
+}
+
 interface MeResponse {
   id: string;
   email: string;
@@ -77,11 +86,16 @@ export async function login(email: string, password: string): Promise<AuthResult
   }
 }
 
+/**
+ * Sends an OTP to the given email — the account stays unusable until
+ * {@link verifyRegistration} confirms the code, so this never yields a
+ * session (there is no `user`/`session` on success, unlike {@link login}).
+ */
 export async function register(input: {
   name: string;
   email: string;
   password: string;
-}): Promise<AuthResult> {
+}): Promise<RegisterResult> {
   try {
     const nameParts = input.name.trim().split(/\s+/);
     const firstName = nameParts[0] ?? '';
@@ -91,13 +105,51 @@ export async function register(input: {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ firstName, lastName, email: input.email, password: input.password }),
     });
+    const body = await res.json().catch(() => null);
     if (!res.ok) {
-      const body = await res.json().catch(() => null);
       return { ok: false, message: body?.error ?? 'Registration failed.' };
     }
+    return { ok: true, email: body?.email, otpExpiresInMinutes: body?.otpExpiresInMinutes };
+  } catch {
+    return { ok: false, message: 'Network error. Please try again.' };
+  }
+}
+
+/** Confirms the OTP sent by {@link register} and, on success, establishes
+    the real session — this is the step that actually signs the guest in. */
+export async function verifyRegistration(email: string, code: string): Promise<AuthResult> {
+  try {
+    const res = await fetch('/api/auth/register/verify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email, code }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      return { ok: false, message: body?.error ?? 'That code is incorrect or has expired.' };
+    }
     const session = await fetchSession();
-    if (!session) return { ok: false, message: 'Registered, but could not load your profile.' };
+    if (!session) return { ok: false, message: 'Verified, but could not load your profile.' };
     return { ok: true, user: { email: session.email, name: session.name }, session };
+  } catch {
+    return { ok: false, message: 'Network error. Please try again.' };
+  }
+}
+
+/** Re-sends the registration OTP. Always resolves ok on a normal cooldown-
+    free call; a `message` on failure explains why (e.g. "please wait"). */
+export async function resendRegistrationOtp(email: string): Promise<AuthResult> {
+  try {
+    const res = await fetch('/api/auth/register/resend', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      return { ok: false, message: body?.error ?? 'Could not resend the code. Please try again.' };
+    }
+    return { ok: true };
   } catch {
     return { ok: false, message: 'Network error. Please try again.' };
   }

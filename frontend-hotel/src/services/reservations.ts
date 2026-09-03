@@ -10,10 +10,17 @@ import type {
   ReservationLookupQuery,
   ReservationLookupQueryVariables,
   ReservationLookupInput,
+  VerifiedReservationLookupQuery,
+  VerifiedReservationLookupQueryVariables,
+  VerifiedReservationLookupInput,
   ReservationStatus,
   PaymentStatus,
 } from '@/graphql/generated/graphql';
-import { MyReservationsDocument, ReservationLookupDocument } from '@/graphql/generated/graphql';
+import {
+  MyReservationsDocument,
+  ReservationLookupDocument,
+  VerifiedReservationLookupDocument,
+} from '@/graphql/generated/graphql';
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 
@@ -180,6 +187,35 @@ export const reservations = {
     }
     const data = await gqlRequest(ReservationLookupDocument, variables);
     return requireFound((data as ReservationLookupQuery).reservation);
+  },
+
+  /**
+   * OTP-gated counterpart to {@link find} — for the "check my reservation,
+   * no account" self-service flow only (ReservationFlow.tsx). Requires a
+   * {@code lookupToken} from a verified OTP (see
+   * {@code api/rest/endpoints.ts}'s {@code verifyReservationLookupOtp}).
+   * Every other caller (the same-session payment-status poller, the
+   * confirmation page) keeps using {@link find} — see BookingService's
+   * "OTP-gated self-service lookup" section on the backend for why.
+   */
+  async findVerified(reference: string, email: string, lookupToken: string): Promise<BackendReservation> {
+    const input: VerifiedReservationLookupInput = { reference, email, lookupToken };
+    const variables = { input } as VerifiedReservationLookupQueryVariables;
+    const client = getApolloClient();
+    if (client) {
+      try {
+        const { data } = await client.query({
+          query: VerifiedReservationLookupDocument,
+          variables,
+          fetchPolicy: 'no-cache',
+        });
+        return requireFound((data as VerifiedReservationLookupQuery).verifiedReservation);
+      } catch (err) {
+        throw toGraphqlClientError(err);
+      }
+    }
+    const data = await gqlRequest(VerifiedReservationLookupDocument, variables);
+    return requireFound((data as VerifiedReservationLookupQuery).verifiedReservation);
   },
 
   /** Create a reservation via REST (POST /api/v1/reservations). Transaction

@@ -9,3 +9,12 @@ query ReservationLookup($input: ReservationLookupInput!) {
     ...ReservationSummary
   }
 }
+
+# OTP-gated counterpart of ReservationLookup — used only by the "check my
+# reservation" self-service flow (ReservationFlow.tsx), never by the
+# same-session payment-status poller, which keeps using ReservationLookup.
+query VerifiedReservationLookup($input: VerifiedReservationLookupInput!) {
+  verifiedReservation(input: $input) {
+    ...ReservationSummary
+  }
+}

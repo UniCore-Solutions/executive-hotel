@@ -204,7 +204,7 @@ anonymous caller.
 
 Auth itself is a REST write (API rule) — there are no GraphQL auth mutations.
 
-## 5. Eventing (implemented, then dead-ends)
+## 5. Eventing — outbox, Kafka, and (since 2026-09-03) a real consumer
 
 Textbook transactional outbox, correctly built:
 
@@ -218,15 +218,130 @@ Textbook transactional outbox, correctly built:
 - `KafkaOutboxPublisher` sends synchronously with a 10 s `get()` per envelope.
 - Topic = `hotelcollection.<eventType>.v<version>`.
 
-**Event types published (exhaustive, verified against `eventPublisher.publish` call sites
-2026-08-31): `booking.created`, `booking.confirmed`, `booking.cancelled`,
-`payment.created`, `payment.captured`, `payment.failed`.**
+**Event types published (verified against `eventPublisher.publish` call sites
+2026-09-03): `booking.created`, `booking.confirmed`, `booking.cancelled`,
+`payment.created`, `payment.captured`, `payment.failed`, `payment.refunded`,
+`user.registered`.**
 `booking.created` fires when the reservation is taken as a *payment hold*;
-`booking.confirmed` only later, from `markFullyPaid`, once payment actually captures.
+`booking.confirmed` fires from `BookingServiceImpl#onReservationConfirmed` — a single
+method now called from both the pay-at-property path (`create`, immediately) and the
+payment-capture path (`markFullyPaid`), closing a prior gap where only the latter
+actually published the event. `user.registered` is platform-wide (`hotelId` null),
+published from `AuthServiceImpl#register`.
 
-**There is not a single `@KafkaListener` in the repository**, and `event_consumption`
-(the idempotent-consumer table) has never been written. Kafka is nonetheless a
-**hard startup dependency** of the backend container (`depends_on: kafka: service_healthy`).
+**`EmailEventConsumer` (`service/impl/`) is the first `@KafkaListener` in this
+repository.** It subscribes to `booking.confirmed`, `booking.cancelled`,
+`payment.refunded`, `payment.failed` and `user.registered`, and turns each into one or
+more emails via `NotificationService` → `EmailProviderFactory` → an `EmailProvider`
+(`SimulatedEmailProvider` by default; `SmtpEmailProvider` — a provider-neutral SMTP
+adapter, pointed at Gmail's relay via config only, never a compile-time Gmail
+dependency — when `app.email.provider=smtp`). See §5a.
+
+Kafka remains a **hard startup dependency** of the backend container
+(`depends_on: kafka: service_healthy`) — now for a real reason, not just the producer.
+
+### 5a. Email notification pipeline
+
+```
+business service ──eventPublisher.publish──► event_outbox (same tx)
+                                                    │
+                                          OutboxRelay (1s poll)
+                                                    ▼
+                                    hotelcollection.<type>.v1 (Kafka)
+                                                    │
+                                          EmailEventConsumer
+                                    (routes event type → NotificationService method(s))
+                                                    ▼
+                                          NotificationServiceImpl
+                    ┌── event_consumption idempotency guard (per email type) ──┐
+                    │  render templates/email/*.html (Thymeleaf)               │
+                    │  attach invoice/credit-note PDF when applicable          │
+                    │  (InvoiceService — reused, never regenerated here)       │
+                    └──────────────────────────┬──────────────────────────────┘
+                                                ▼
+                                    EmailProviderFactory.resolve()
+                                                ▼
+                        EmailProvider  (SimulatedEmailProvider | SmtpEmailProvider)
+                                                ▼
+                                    notifications row (sent/failed)
+```
+
+- **Idempotency:** `event_consumption` (schema since V8, unwritten until now) — one row
+  per `(consumerGroup, eventId)`, `consumerGroup` scoped per email type
+  (`"email:booking_confirmation"`, `"email:invoice"`, …) so one event's several emails
+  are tracked, retried and deduplicated independently. Checked before work, recorded
+  after a successful send, in the same transaction as the `notifications` row.
+- **Retry/DLQ:** `KafkaConsumerConfig` — a thrown exception (transport failure) retries
+  with exponential backoff (~15s total), then the record is published to
+  `<topic>.DLT` and the offset commits so one poison message can't block the partition.
+  `DomainException` (a deterministic business outcome) skips retries and goes straight
+  to the DLT.
+- **Business services never call `NotificationService` directly** — only
+  `EventPublisher.publish(...)`. An email provider's latency or failure can therefore
+  never affect a booking/payment/registration transaction. See `NotificationService`'s
+  class javadoc.
+- **No OTP/email-verification flow exists anywhere in this codebase** — nothing to wire
+  delivery to. `templates/email/otp.html` + `OtpEmailData` exist, themed and ready, but
+  no `NotificationService` method or event type calls them — building the OTP
+  generation/validation/rate-limiting logic itself is a distinct authentication feature,
+  out of scope here.
+
+### 5b. Email presentation — theme, data records, fragments
+
+Every template receives exactly two top-level Thymeleaf variables, never a grab-bag of
+loose values:
+
+```
+EmailTheme (colors, fonts, hotel name/logo, footer contact)
+        +
+<Type>EmailData (already-formatted, email-specific content — no arithmetic
+                  or date/money formatting happens in a template)
+        |
+        v
+   templates/email/<name>.html
+        │  th:replace's shared header/footer/button fragments from
+        │  templates/email/fragments/layout.html — one visual identity,
+        │  one place to change it
+        v
+   final HTML (table-based, inline-styled — bulletproof email markup,
+               not the app's Tailwind classes)
+```
+
+- **`EmailTheme`** (`dto/email/`) — colors/fonts are fixed constants (mirroring
+  `frontend-hotel`'s actual navy/gold/paper palette, `src/app/globals.css` `@theme`
+  block, so the emails read as the same product as the guest site); hotel
+  name/logo/address/phone/email are real data, resolved once per send in
+  `NotificationServiceImpl`:
+  - Hotel-scoped emails (confirmation/invoice/cancellation/refund/payment-failed):
+    `EmailTheme.forHotel(...)` from `CatalogQueryService.getHotel(reservation.getHotelId())`.
+  - The welcome email (platform-wide, no `hotelId`): tries
+    `CatalogQueryService.canonicalHotel()` for the branded result, but — since that
+    call enforces a production invariant (exactly one active hotel) this email has no
+    business depending on — catches any failure and falls back to a generic
+    `EmailTheme.forPlatform(...)` rather than letting a welcome email retry/dead-letter
+    over it.
+  - **Logo** resolution: `MediaRepository` — hotel-scoped `media` row
+    (`category='logo'`) first, then platform-scoped (matches the actual seed data,
+    where the logo is a platform-level asset), then no logo at all — the header
+    fragment renders a text-only mark rather than a broken image in that case.
+- **`<Type>EmailData` records** (`dto/email/` — `WelcomeEmailData`,
+  `BookingConfirmationEmailData`, `InvoiceEmailData`, `CancellationEmailData`,
+  `RefundEmailData`, `PaymentFailedEmailData`, `OtpEmailData`) — the same
+  "authoritative backend data in, presentation-only template out" split
+  `DocumentGenerationServiceImpl` already uses for invoice PDFs (`InvoiceDocumentData`).
+- **Email-safe HTML**: `role="presentation"` tables (not divs), inline styles on every
+  element (no external/`<style>`-block dependency for anything that must render —
+  the one `<style>` block per template is a `@media (max-width:620px)` progressive
+  enhancement only), a bulletproof table+td button pattern, HTML entities for
+  typographic characters (`&#8594;`, `&#183;`, `&#10003;`) instead of relying on a
+  specific charset beyond the declared UTF-8. Deliberately *not* the app's Tailwind
+  classes — email clients (Outlook desktop especially) don't run a CSS framework.
+- **Preview/testing**: `EmailTemplatePreviewTest` (`src/test/java/.../email/`) renders
+  every template with realistic + edge-case data (long names, missing optional fields,
+  different currencies, an HTML-injection escaping proof) with a bare
+  `SpringTemplateEngine` — no Spring context, no send — and writes the output to
+  `target/email-previews/*.html` for a developer to open directly. Not a production
+  endpoint.
 
 ## 6. Frontend architectures
 
@@ -354,7 +469,7 @@ Hotel  (one active — Executive Hotel, Lisbon)
 |---|---|---|
 | ADR-008, `architecture.md`, backend `AGENTS.md` | hexagonal modular monolith | flat layered; hexagonal packages banned by ArchUnit |
 | ADR-003 / ADR-004 | Cloudinary media / Resend email | both correctly marked **"proposed (pending approval)"** — neither implemented; listed here so they are not mistaken for current design |
-| backend `AGENTS.md` | `EmailProvider` / `PaymentProvider` ports | neither interface exists |
-| ADR-002 / `events-design.md` | event-driven consumers | producer only |
+| backend `AGENTS.md` | `EmailProvider` / `PaymentProvider` ports | `EmailProvider` exists (`email/`, since 2026-09-03); `PaymentProvider` still doesn't |
+| ADR-002 / `events-design.md` | event-driven consumers | `EmailEventConsumer` (since 2026-09-03) — see §5a |
 | root `README.md` | back-office in the default stack | profile-gated off |
 | `database/collection-schema*.sql` | the schema | never executed; Flyway V1–V26 is the schema |

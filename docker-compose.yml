@@ -99,6 +99,13 @@ services:
       # it under the prod profile (docker-compose.prod.yml sets that profile).
       PAYMENT_AUTO_SETTLE_ENABLED: ${PAYMENT_AUTO_SETTLE_ENABLED:-true}
       PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:-}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-simulated}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-no-reply@hotel-platform.local}
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
       JAVA_TOOL_OPTIONS: ${JVM_OPTS:-}
     ports:
       - "${BACKEND_PORT:-8180}:8180"

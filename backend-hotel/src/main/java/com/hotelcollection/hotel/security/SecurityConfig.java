@@ -96,13 +96,22 @@ public class SecurityConfig {
 						.requestMatchers("/actuator/prometheus").permitAll()
 						.requestMatchers("/graphql", "/graphiql", "/graphiql/**").permitAll()
 						.requestMatchers("/media/**").permitAll()
-						.requestMatchers("/api/v1/auth/login", "/api/v1/auth/register").permitAll()
+						.requestMatchers("/api/v1/auth/login", "/api/v1/auth/register",
+								"/api/v1/auth/register/verify", "/api/v1/auth/register/resend").permitAll()
 						.requestMatchers("/api/v1/reservations",
 								"/api/v1/reservations/*/cancel",
 								"/api/v1/reservations/*/invoice",
 								"/api/v1/reservations/*/invoice/pdf",
 								"/api/v1/reservations/*/credit-note",
-								"/api/v1/reservations/*/credit-note/pdf").permitAll()
+								"/api/v1/reservations/*/credit-note/pdf",
+								// Guest self-service lookup (no account): OTP-gated — see
+								// BookingService#requestReservationLookupOtp/
+								// #verifyReferenceEmailOtp. The filter chain stays open
+								// the same way as the other reference+email endpoints
+								// above; the OTP requirement is enforced inside the
+								// service, not here.
+								"/api/v1/reservations/*/lookup/otp",
+								"/api/v1/reservations/*/lookup/otp/verify").permitAll()
 						// Accountless booking: payments are created/captured with
 						// the guest email as proof of possession. The filter chain
 						// stays open like the reservation endpoints; PaymentService

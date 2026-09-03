@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { isHttpsRequest, setSessionCookie } from '@/lib/session';
 
 const BACKEND_BASE = (process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:8180/graphql').replace(
   /\/graphql\/?$/,
@@ -7,6 +6,11 @@ const BACKEND_BASE = (process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:8180/gra
 );
 const AUTH_URL = `${BACKEND_BASE}/api/v1/auth`;
 
+/**
+ * Sends an OTP to the given email — no session yet. The account stays
+ * `pending_verification` until POST /api/auth/register/verify succeeds; see
+ * that route for the step that actually sets the session cookie.
+ */
 export async function POST(request: Request): Promise<NextResponse> {
   let input: { firstName?: string; lastName?: string; email?: string; password?: string };
   try {
@@ -40,9 +44,6 @@ export async function POST(request: Request): Promise<NextResponse> {
       { status: res.status === 500 ? 502 : res.status }
     );
   }
-  // See login/route.ts: the client re-fetches the full profile via
-  // GET /api/auth/me right after this call succeeds.
-  const data: { token: string } = await res.json();
-  await setSessionCookie(data.token, isHttpsRequest(request));
-  return NextResponse.json({ ok: true });
+  const data: { email: string; otpExpiresInMinutes: number } = await res.json();
+  return NextResponse.json({ ok: true, email: data.email, otpExpiresInMinutes: data.otpExpiresInMinutes });
 }

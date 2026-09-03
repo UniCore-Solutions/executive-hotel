@@ -55,7 +55,36 @@ public class ReservationRestController {
 				in.reasonCode(), in.reasonNote()));
 	}
 
+	/**
+	 * Guest self-service lookup, OTP-gated (replaces reference+email alone as
+	 * proof — see {@code BookingService}'s "OTP-gated self-service lookup"
+	 * section). Always the same generic response, whether or not
+	 * {@code reference}+{@code email} actually match anything, so this can
+	 * never be used to test which pairs are real.
+	 */
+	@PostMapping("/{reference}/lookup/otp")
+	public ResponseEntity<Void> requestLookupOtp(@PathVariable String reference, @RequestBody LookupOtpRequest in) {
+		bookingService.requestReservationLookupOtp(reference, in.email());
+		return ResponseEntity.accepted().build();
+	}
+
+	@PostMapping("/{reference}/lookup/otp/verify")
+	public LookupOtpVerifyResult verifyLookupOtp(@PathVariable String reference,
+			@RequestBody LookupOtpVerifyRequest in) {
+		java.util.UUID lookupToken = bookingService.verifyReservationLookupOtp(reference, in.email(), in.code());
+		return new LookupOtpVerifyResult(lookupToken);
+	}
+
 	/** Transport-specific body for the cancel action (reference comes from the path). */
 	public record CancelRequest(String email, String reasonCode, String reasonNote) {
+	}
+
+	public record LookupOtpRequest(String email) {
+	}
+
+	public record LookupOtpVerifyRequest(String email, String code) {
+	}
+
+	public record LookupOtpVerifyResult(java.util.UUID lookupToken) {
 	}
 }

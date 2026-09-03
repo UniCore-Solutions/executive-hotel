@@ -3,6 +3,7 @@ package com.hotelcollection.hotel.service.impl;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -10,14 +11,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.hotelcollection.hotel.service.AuthService;
+import com.hotelcollection.hotel.service.EventPublisher;
 import com.hotelcollection.hotel.service.GuestProvisioningService;
+import com.hotelcollection.hotel.service.OtpService;
+import com.hotelcollection.hotel.entity.OtpPurpose;
 import com.hotelcollection.hotel.entity.Role;
 import com.hotelcollection.hotel.entity.User;
 import com.hotelcollection.hotel.entity.UserRole;
 import com.hotelcollection.hotel.dto.identity.AuthPayload;
 import com.hotelcollection.hotel.dto.identity.LoginInput;
 import com.hotelcollection.hotel.dto.identity.RegisterInput;
+import com.hotelcollection.hotel.dto.identity.RegistrationPendingResult;
+import com.hotelcollection.hotel.dto.identity.ResendRegistrationOtpInput;
 import com.hotelcollection.hotel.dto.identity.UpdateProfileInput;
+import com.hotelcollection.hotel.dto.identity.VerifyRegistrationInput;
 import com.hotelcollection.hotel.exception.DomainException;
 import com.hotelcollection.hotel.repository.RoleRepository;
 import com.hotelcollection.hotel.repository.UserRepository;
@@ -29,27 +36,34 @@ import com.hotelcollection.hotel.util.Validation;
 @Service
 public class AuthServiceImpl implements AuthService {
 
+	private static final int OTP_EXPIRES_IN_MINUTES = 10;
+
 	private final UserRepository userRepository;
 	private final UserRoleRepository userRoleRepository;
 	private final RoleRepository roleRepository;
 	private final GuestProvisioningService guestProvisioning;
 	private final PasswordEncoder passwordEncoder;
 	private final JwtService jwtService;
+	private final EventPublisher eventPublisher;
+	private final OtpService otpService;
 
 	public AuthServiceImpl(UserRepository userRepository, UserRoleRepository userRoleRepository,
 			RoleRepository roleRepository, GuestProvisioningService guestProvisioning,
-			PasswordEncoder passwordEncoder, JwtService jwtService) {
+			PasswordEncoder passwordEncoder, JwtService jwtService, EventPublisher eventPublisher,
+			OtpService otpService) {
 		this.userRepository = userRepository;
 		this.userRoleRepository = userRoleRepository;
 		this.roleRepository = roleRepository;
 		this.guestProvisioning = guestProvisioning;
 		this.passwordEncoder = passwordEncoder;
 		this.jwtService = jwtService;
+		this.eventPublisher = eventPublisher;
+		this.otpService = otpService;
 	}
 
 	@Override
 	@Transactional
-	public AuthPayload register(RegisterInput in) {
+	public RegistrationPendingResult register(RegisterInput in) {
 		String normalizedEmail = in.email() == null ? null : in.email().trim().toLowerCase();
 		if (normalizedEmail == null || normalizedEmail.isBlank()) {
 			throw DomainException.validation("email is required");
@@ -63,11 +77,14 @@ public class AuthServiceImpl implements AuthService {
 
 		// Account completion: an accountless booking provisioned a passwordless
 		// 'provisioned' user for this email — registration completes it (sets
-		// the password, activates it, refreshes the profile) instead of
-		// creating a duplicate. Any other existing account keeps the generic
-		// no-enumeration error.
+		// the password, refreshes the profile) instead of creating a
+		// duplicate. Any other existing account keeps the generic
+		// no-enumeration error. A 'pending_verification' account re-registering
+		// (e.g. they lost the code) is allowed too — it just resets the
+		// password and issues a fresh code, same as a brand-new attempt.
 		User existing = userRepository.findByEmailIgnoreCase(normalizedEmail).orElse(null);
-		if (existing != null && !"provisioned".equals(existing.getStatus())) {
+		if (existing != null && !"provisioned".equals(existing.getStatus())
+				&& !"pending_verification".equals(existing.getStatus())) {
 			throw DomainException.validation("registration failed — please check your details");
 		}
 
@@ -79,7 +96,10 @@ public class AuthServiceImpl implements AuthService {
 		user.setPasswordHash(passwordEncoder.encode(in.password()));
 		user.setFirstName(in.firstName());
 		user.setLastName(in.lastName());
-		user.setStatus("active");
+		// Not usable yet — see verifyRegistration. findActiveWithRoles (login)
+		// only ever returns 'active' users, so this alone is what blocks
+		// sign-in until the code is confirmed; no extra guard needed there.
+		user.setStatus("pending_verification");
 		user.setUpdatedAt(Instant.now());
 		userRepository.save(user);
 
@@ -102,11 +122,66 @@ public class AuthServiceImpl implements AuthService {
 		guestProvisioning.provisionOrLink(user.getId(), in.firstName(), in.lastName(),
 				normalizedEmail);
 
-		// Re-read with roles: the in-memory userRoles collection is never
-		// populated by saving assignments (mappedBy side) — the token must
-		// carry the guest role.
+		otpService.issue(OtpPurpose.registration_verification, normalizedEmail, in.firstName(), user.getId(), null);
+		return new RegistrationPendingResult(normalizedEmail, OTP_EXPIRES_IN_MINUTES);
+	}
+
+	@Override
+	@Transactional
+	public AuthPayload verifyRegistration(VerifyRegistrationInput in) {
+		String normalizedEmail = in.email() == null ? null : in.email().trim().toLowerCase();
+		if (normalizedEmail == null || normalizedEmail.isBlank()) {
+			throw DomainException.validation("email is required");
+		}
+		// Verifies (and consumes) the code before touching the account, same
+		// order as every other proof-then-act flow in this codebase.
+		otpService.verify(OtpPurpose.registration_verification, normalizedEmail, in.code(), null);
+
+		User user = userRepository.findByEmailIgnoreCase(normalizedEmail)
+				.orElseThrow(() -> DomainException.notFound("account not found"));
+		if ("pending_verification".equals(user.getStatus())) {
+			user.setStatus("active");
+			user.setEmailVerifiedAt(Instant.now());
+			user.setUpdatedAt(Instant.now());
+			userRepository.save(user);
+
+			// Platform-wide fact (no single hotel owns a registration) — consumed
+			// asynchronously by EmailEventConsumer to send the welcome email; see
+			// NotificationService's class comment for why this is an event, not a
+			// direct call. Fires only now — once the account is genuinely usable —
+			// not at register() time.
+			eventPublisher.publish("user.registered", 1, null, "user:" + user.getId(),
+					Map.of("userId", user.getId(), "email", normalizedEmail, "firstName", user.getFirstName()), null);
+		} else if (!"active".equals(user.getStatus())) {
+			// Verified a code for an account that isn't pending verification
+			// and isn't already active either (e.g. 'provisioned' — should be
+			// unreachable, since register() always moves it to
+			// pending_verification first) — a genuine state inconsistency.
+			throw DomainException.conflict("account is not pending verification");
+		}
+		// else: already active — idempotent re-verification (e.g. a retried
+		// request) just issues a fresh token below.
+
 		User withRoles = userRepository.findByIdWithRoles(user.getId()).orElse(user);
 		return new AuthPayload(issueToken(withRoles), currentUserOf(withRoles));
+	}
+
+	@Override
+	@Transactional
+	public void resendRegistrationOtp(ResendRegistrationOtpInput in) {
+		String normalizedEmail = in.email() == null ? null : in.email().trim().toLowerCase();
+		if (normalizedEmail == null || normalizedEmail.isBlank()) {
+			return;
+		}
+		User user = userRepository.findByEmailIgnoreCase(normalizedEmail).orElse(null);
+		if (user == null || !"pending_verification".equals(user.getStatus())) {
+			// No account, or nothing left to verify — silent no-op either
+			// way, so this endpoint can never be used to test which emails
+			// are registered.
+			return;
+		}
+		otpService.issue(OtpPurpose.registration_verification, normalizedEmail, user.getFirstName(), user.getId(),
+				null);
 	}
 
 	@Override

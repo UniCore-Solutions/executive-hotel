@@ -34,6 +34,7 @@ import com.hotelcollection.hotel.dto.reservation.ReservationPageResult;
 import com.hotelcollection.hotel.dto.reservation.RoomInput;
 import com.hotelcollection.hotel.service.InventoryService;
 import com.hotelcollection.hotel.entity.CancellationReason;
+import com.hotelcollection.hotel.entity.OtpPurpose;
 import com.hotelcollection.hotel.service.CatalogQueryService;
 import com.hotelcollection.hotel.entity.Guest;
 import com.hotelcollection.hotel.util.ReferenceGenerator;
@@ -104,10 +105,6 @@ public class BookingServiceImpl implements BookingService {
 	@Lazy
 	private com.hotelcollection.hotel.service.InvoiceService invoiceService;
 
-	@org.springframework.beans.factory.annotation.Autowired
-	@Lazy
-	private com.hotelcollection.hotel.service.NotificationService notificationService;
-
 	// Same reason again — PaymentServiceImpl already constructor-injects
 	// BookingService, so this is a second circular pair broken the same way.
 	@org.springframework.beans.factory.annotation.Autowired
@@ -121,6 +118,10 @@ public class BookingServiceImpl implements BookingService {
 
 	@org.springframework.beans.factory.annotation.Autowired
 	private com.hotelcollection.hotel.repository.RoomRepository roomRepository;
+
+	// Same 11-param cap — no circular dependency, just no room left.
+	@org.springframework.beans.factory.annotation.Autowired
+	private com.hotelcollection.hotel.service.OtpService otpService;
 
 	/** Reservation statuses that hold a physical room — used by the
 	 * assign-room conflict check and the eligible-rooms picker. A cancelled
@@ -586,11 +587,6 @@ public class BookingServiceImpl implements BookingService {
 			history.setToStatus(ReservationStatus.confirmed);
 			history.setChangedAt(Instant.now());
 			reservation.getStatusHistory().add(history);
-			eventPublisher.publish("booking.confirmed", 1, reservation.getHotelId(),
-					"reservation:" + reservation.getReference(),
-					Map.of("reference", reservation.getReference(), "hotelId", reservation.getHotelId(),
-							"totalAmount", reservation.getTotalAmount()),
-					null);
 			onReservationConfirmed(reservation);
 		}
 		reservation.setUpdatedAt(Instant.now());
@@ -600,25 +596,34 @@ public class BookingServiceImpl implements BookingService {
 	/**
 	 * Runs once, the moment a reservation first becomes {@code confirmed} —
 	 * either immediately (pay-at-property, from {@link #create}) or on
-	 * payment capture (from here). Auto-issues the invoice (previously
-	 * on-demand only and never actually triggered by any real flow — see
-	 * docs audit §F) and sends the guest a confirmation email. Neither
-	 * failure is allowed to roll back the reservation/payment transaction
-	 * that got us here: both services already swallow their own errors
-	 * internally and log, but this call is defended too in case a future
-	 * change there forgets to.
+	 * payment capture (from here). Publishes {@code booking.confirmed}
+	 * (previously only published from here — {@link #create}'s
+	 * pay-at-property path never fired it, so a confirmed-at-booking
+	 * reservation had no outbox event to react to; centralizing the publish
+	 * here closes that gap for both paths) and auto-issues the invoice
+	 * (previously on-demand only and never actually triggered by any real
+	 * flow — see docs audit §F). The invoice failure is not allowed to roll
+	 * back the reservation/payment transaction that got us here.
+	 *
+	 * <p>Sending the guest a confirmation email (and an invoice email) is
+	 * <em>not</em> done here — that used to be a direct, synchronous
+	 * {@code NotificationService} call in this method. It is now
+	 * {@code EmailEventConsumer} reacting asynchronously to the
+	 * {@code booking.confirmed} event published below, exactly so an email
+	 * provider's latency or failure can never touch this transaction. See
+	 * {@link com.hotelcollection.hotel.service.NotificationService}'s class
+	 * comment.
 	 */
 	private void onReservationConfirmed(Reservation reservation) {
+		eventPublisher.publish("booking.confirmed", 1, reservation.getHotelId(),
+				"reservation:" + reservation.getReference(),
+				Map.of("reference", reservation.getReference(), "hotelId", reservation.getHotelId(),
+						"totalAmount", reservation.getTotalAmount()),
+				null);
 		try {
 			invoiceService.issueInvoiceForConfirmedReservation(reservation.getId());
 		} catch (Exception ex) {
 			log.warn("failed to auto-issue invoice for reservation {}", reservation.getReference(), ex);
-		}
-		try {
-			notificationService.notifyBookingConfirmed(reservation);
-		} catch (Exception ex) {
-			log.warn("failed to send booking-confirmed notification for reservation {}",
-					reservation.getReference(), ex);
 		}
 	}
 
@@ -775,19 +780,16 @@ public class BookingServiceImpl implements BookingService {
 						"currencyCode", reservation.getCurrencyCode()),
 				actor == null ? null : "user:" + actor.userId());
 
-		// Both effects are secondary to the cancellation itself succeeding —
-		// neither may roll back a cancellation that has already committed
-		// its status change and released inventory.
+		// Secondary to the cancellation itself succeeding — must not roll
+		// back a cancellation that has already committed its status change
+		// and released inventory. The cancellation email itself is not sent
+		// from here: EmailEventConsumer sends it asynchronously, reacting to
+		// the booking.cancelled event published above (same reasoning as
+		// booking confirmation — see NotificationService's class comment).
 		try {
 			paymentService.refund(reservation.getId(), cancellation.getRefundAmount());
 		} catch (Exception ex) {
 			log.warn("failed to process refund for reservation {}", reservation.getReference(), ex);
-		}
-		try {
-			notificationService.notifyBookingCancelled(reservation, cancellation);
-		} catch (Exception ex) {
-			log.warn("failed to send booking-cancelled notification for reservation {}",
-					reservation.getReference(), ex);
 		}
 		// Documents the adjustment against the reservation's invoice, if it
 		// had one — a no-op when it never confirmed. Secondary to the
@@ -924,5 +926,36 @@ public class BookingServiceImpl implements BookingService {
 		}
 		return roomRepository.findAvailableRooms(roomTypeId, checkIn, checkOut,
 				OCCUPYING_STATUSES, null);
+	}
+
+	// ---------------------------------------------------------------- OTP-gated self-service lookup
+
+	@Override
+	@Transactional
+	public void requestReservationLookupOtp(String reference, String email) {
+		reservationRepository.findByReferenceAndGuestEmailWithLines(reference, email).ifPresent(reservation ->
+				otpService.issue(OtpPurpose.reservation_lookup, email,
+						reservation.getGuest().getFirstName(), null, reservation.getId()));
+		// No else: a non-match is silently ignored — this endpoint must
+		// never be usable to test which reference+email pairs are real.
+	}
+
+	@Override
+	@Transactional
+	public UUID verifyReservationLookupOtp(String reference, String email, String code) {
+		Reservation reservation = getByReferenceAndEmail(reference, email);
+		return otpService.verify(OtpPurpose.reservation_lookup, email, code,
+				reservation.getId());
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Reservation getByReferenceAndEmailVerified(String reference, String email, UUID lookupToken) {
+		Reservation reservation = getByReferenceAndEmail(reference, email);
+		if (!otpService.isGrantValid(lookupToken, OtpPurpose.reservation_lookup,
+				email, reservation.getId())) {
+			throw DomainException.forbidden("please verify the code sent to your email");
+		}
+		return reservation;
 	}
 }

@@ -1,6 +1,12 @@
 extend type Query {
 	myReservations: [Reservation!]!
 	reservation(input: ReservationLookupInput!): Reservation
+	# OTP-gated self-service lookup: reference+email alone (the reservation
+	# query above) is not sufficient for this one — lookupToken must be a
+	# verified grant from POST /api/v1/reservations/{reference}/lookup/otp/verify.
+	# reservation(...) stays as-is on purpose: it still backs cancellation and
+	# the same-session payment-status poller right after booking.
+	verifiedReservation(input: VerifiedReservationLookupInput!): Reservation
 	adminReservations(hotelId: ID!, status: ReservationStatus, search: String, sort: String, page: PageInput): ReservationPage!
 	adminGuests(hotelId: ID!, query: String, sort: String, page: PageInput): AdminGuestPage!
 }
@@ -129,6 +135,12 @@ type ReservationPage {
 input ReservationLookupInput {
 	reference: String!
 	email: String!
+}
+
+input VerifiedReservationLookupInput {
+	reference: String!
+	email: String!
+	lookupToken: ID!
 }
 
 input CreateReservationInput {

@@ -21,8 +21,10 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.ContextConfiguration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hotelcollection.hotel.entity.OtpPurpose;
 import com.hotelcollection.hotel.security.CurrentUser;
 import com.hotelcollection.hotel.security.JwtService;
+import com.hotelcollection.hotel.service.OtpService;
 
 /**
  * REST surface (/api/v1) over real HTTP: auth round-trip, reservation
@@ -42,10 +44,29 @@ class RestApiIntegrationTest {
 	TestFixtures fixtures;
 	@Autowired
 	JwtService jwtService;
+	@Autowired
+	OtpService otpService;
 
 	private final ObjectMapper objectMapper = new ObjectMapper();
 	private final HttpClient http = HttpClient.newBuilder()
 			.connectTimeout(Duration.ofSeconds(10)).build();
+
+	/** Registers a real user and completes OTP verification over HTTP,
+	 * returning a genuinely working session token. Re-issuing via
+	 * {@link OtpService} captures a known code, superseding the one
+	 * register() already sent silently. */
+	private String registerAndGetToken(String firstName, String lastName, String email) throws Exception {
+		HttpResponse<String> registered = post("/api/v1/auth/register",
+				Map.of("firstName", firstName, "lastName", lastName, "email", email,
+						"password", "secret123"),
+				null);
+		assertThat(registered.statusCode()).isEqualTo(202);
+		String code = otpService.issue(OtpPurpose.registration_verification, email, firstName, null, null);
+		HttpResponse<String> verified = post("/api/v1/auth/register/verify",
+				Map.of("email", email, "code", code), null);
+		assertThat(verified.statusCode()).isEqualTo(200);
+		return objectMapper.readTree(verified.body()).get("token").asText();
+	}
 
 	private HttpResponse<String> post(String path, Object body, String bearer) throws Exception {
 		HttpRequest.Builder builder = HttpRequest.newBuilder()
@@ -119,12 +140,27 @@ class RestApiIntegrationTest {
 	void authRoundTrip() throws Exception {
 		String email = "rita-" + System.nanoTime() + "@example.com";
 
+		// register → 202, account pending until the OTP is verified
 		HttpResponse<String> registered = post("/api/v1/auth/register",
 				Map.of("firstName", "Rita", "lastName", "Guest", "email", email,
 						"password", "secret123"),
 				null);
-		assertThat(registered.statusCode()).isEqualTo(201);
-		String token = objectMapper.readTree(registered.body()).get("token").asText();
+		assertThat(registered.statusCode()).isEqualTo(202);
+		assertThat(objectMapper.readTree(registered.body()).get("email").asText()).isEqualTo(email);
+
+		// wrong code → VALIDATION envelope, account still not usable
+		HttpResponse<String> wrongCode = post("/api/v1/auth/register/verify",
+				Map.of("email", email, "code", "000000"), null);
+		assertThat(wrongCode.statusCode()).isEqualTo(400);
+		assertThat(objectMapper.readTree(wrongCode.body()).get("code").asText())
+				.isEqualTo("VALIDATION");
+
+		// correct code → 200 with a real, usable session
+		String code = otpService.issue(OtpPurpose.registration_verification, email, "Rita", null, null);
+		HttpResponse<String> verified = post("/api/v1/auth/register/verify",
+				Map.of("email", email, "code", code), null);
+		assertThat(verified.statusCode()).isEqualTo(200);
+		String token = objectMapper.readTree(verified.body()).get("token").asText();
 		assertThat(token).isNotBlank();
 
 		HttpResponse<String> login = post("/api/v1/auth/login",
@@ -291,12 +327,7 @@ class RestApiIntegrationTest {
 		assertThat(anon.statusCode()).isEqualTo(401);
 
 		// authenticated but no completed stay → FORBIDDEN envelope
-		HttpResponse<String> registered = post("/api/v1/auth/register",
-				Map.of("firstName", "Leo", "lastName", "Guest",
-						"email", "leo-" + System.nanoTime() + "@example.com",
-						"password", "secret123"),
-				null);
-		String token = objectMapper.readTree(registered.body()).get("token").asText();
+		String token = registerAndGetToken("Leo", "Guest", "leo-" + System.nanoTime() + "@example.com");
 		HttpResponse<String> denied = post("/api/v1/hotels/" + fx.hotelId() + "/reviews",
 				Map.of("reservationId", "00000000-0000-0000-0000-000000000000", "rating", 5, "title", "Nice", "comment", "Great stay"),
 				token);

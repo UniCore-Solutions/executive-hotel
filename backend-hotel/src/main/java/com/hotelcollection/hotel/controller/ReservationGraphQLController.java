@@ -17,6 +17,7 @@ import org.springframework.stereotype.Controller;
 import com.hotelcollection.hotel.dto.PageInput;
 import com.hotelcollection.hotel.dto.reservation.ReservationLookupInput;
 import com.hotelcollection.hotel.dto.reservation.ReservationPageResult;
+import com.hotelcollection.hotel.dto.reservation.VerifiedReservationLookupInput;
 import com.hotelcollection.hotel.entity.Guest;
 import com.hotelcollection.hotel.entity.Media;
 import com.hotelcollection.hotel.entity.RatePlan;
@@ -58,6 +59,13 @@ public class ReservationGraphQLController {
 	@QueryMapping
 	public Reservation reservation(@Argument ReservationLookupInput input) {
 		return booking.getByReferenceAndEmail(input.reference(), input.email());
+	}
+
+	/** OTP-gated counterpart to {@link #reservation} — see
+	 * {@code BookingService}'s "OTP-gated self-service lookup" section. */
+	@QueryMapping
+	public Reservation verifiedReservation(@Argument VerifiedReservationLookupInput input) {
+		return booking.getByReferenceAndEmailVerified(input.reference(), input.email(), input.lookupToken());
 	}
 
 	@QueryMapping

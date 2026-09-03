@@ -22,6 +22,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.ContextConfiguration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hotelcollection.hotel.entity.OtpPurpose;
 import com.hotelcollection.hotel.repository.HotelRepository;
 import com.hotelcollection.hotel.repository.ReviewRepository;
 import com.hotelcollection.hotel.repository.ExperienceRepository;
@@ -71,6 +72,8 @@ class GraphqlApiIntegrationTest {
 	ReservationRepository reservationRepository;
 	@Autowired
 	GuestRepository guestRepository;
+	@Autowired
+	com.hotelcollection.hotel.service.OtpService otpService;
 
 	private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -233,12 +236,7 @@ class GraphqlApiIntegrationTest {
 	@Test
 	void loginAndRegisterWorkOverRest() throws Exception {
 		String email = "guest-" + System.nanoTime() + "@example.com";
-		Map<String, Object> registered = rest("POST", "/api/v1/auth/register",
-				Map.of("firstName", "Zahra", "lastName", "Bennani",
-						"email", email, "password", "secret123"),
-				null);
-		assertThat(registered.get("__status")).isEqualTo(201);
-		String token = (String) registered.get("token");
+		String token = (String) registerAndVerify(email, "Zahra", "Bennani").get("token");
 		assertThat(token).isNotBlank();
 
 		Map<String, Object> me = post("{ me { email roles } }", null, token);
@@ -249,12 +247,7 @@ class GraphqlApiIntegrationTest {
 	@Test
 	void meExposesNamePhoneAndProfileUpdatePersistsThem() throws Exception {
 		String email = "profile-" + System.nanoTime() + "@example.com";
-		Map<String, Object> registered = rest("POST", "/api/v1/auth/register",
-				Map.of("firstName", "Youssef", "lastName", "Amrani",
-						"email", email, "password", "secret123"),
-				null);
-		assertThat(registered.get("__status")).isEqualTo(201);
-		String token = (String) registered.get("token");
+		String token = (String) registerAndVerify(email, "Youssef", "Amrani").get("token");
 
 		Map<String, Object> updated = rest("POST", "/api/v1/auth/me/profile",
 				Map.of("firstName", "Youssef", "lastName", "Amrani", "phone", "+212600112233"),
@@ -571,11 +564,7 @@ class GraphqlApiIntegrationTest {
 
 		// review creation is a WRITE → REST (POST /api/v1/hotels/{id}/reviews)
 		String email = "reviewer-" + System.nanoTime() + "@example.com";
-		Map<String, Object> reg = rest("POST", "/api/v1/auth/register",
-				Map.of("firstName", "Rania", "lastName", "Idrissi",
-						"email", email, "password", "secret123"),
-				null);
-		assertThat(reg.get("__status")).isEqualTo(201);
+		Map<String, Object> reg = registerAndVerify(email, "Rania", "Idrissi");
 		String token = (String) reg.get("token");
 		String userId = (String) ((Map<String, Object>) reg.get("me")).get("userId");
 		seedCompletedStay(fx.hotelId(), UUID.fromString(userId));
@@ -635,12 +624,26 @@ class GraphqlApiIntegrationTest {
 	}
 
 	private String register(String email) throws Exception {
-		Map<String, Object> body = rest("POST", "/api/v1/auth/register",
-				Map.of("firstName", "Zahra", "lastName", "Bennani",
+		return (String) registerAndVerify(email, "Zahra", "Bennani").get("token");
+	}
+
+	/** Registers a real user and completes OTP verification over HTTP,
+	 * returning the real {@code AuthPayload} body ({@code token} + {@code me}).
+	 * Re-issuing via {@link com.hotelcollection.hotel.service.OtpService}
+	 * captures a known code, superseding the one register() already sent
+	 * silently. */
+	private Map<String, Object> registerAndVerify(String email, String firstName, String lastName)
+			throws Exception {
+		Map<String, Object> reg = rest("POST", "/api/v1/auth/register",
+				Map.of("firstName", firstName, "lastName", lastName,
 						"email", email, "password", "secret123"),
 				null);
-		assertThat(body.get("__status")).isEqualTo(201);
-		return (String) body.get("token");
+		assertThat(reg.get("__status")).isEqualTo(202);
+		String code = otpService.issue(OtpPurpose.registration_verification, email, firstName, null, null);
+		Map<String, Object> verified = rest("POST", "/api/v1/auth/register/verify",
+				Map.of("email", email, "code", code), null);
+		assertThat(verified.get("__status")).isEqualTo(200);
+		return verified;
 	}
 
 	private void seedReview(UUID hotelId, short rating) {

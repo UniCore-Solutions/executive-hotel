@@ -116,7 +116,7 @@ Full traces in [DATA_FLOW.md](DATA_FLOW.md).
 | Concern | Reality |
 |---|---|
 | Payment gateway | No PSP. `PaymentServiceImpl` persists real payments and "captures" with a `MOCK-XXXXXXXX` reference. |
-| Email / SMS | **No implementation at all** — no `JavaMailSender`, no provider, no SMTP config. `notifications` / `notification_templates` tables are never written. |
+| Email | **Real, async, provider-agnostic** (since 2026-09-03) — `EmailEventConsumer` (Kafka) → `NotificationService` → `EmailProviderFactory` → `EmailProvider`. `app.email.provider=simulated` (default) logs and never delivers; `=smtp` delivers through `spring.mail.*` (Gmail's relay is the reference target, config-only — no Gmail dependency in code). See ARCHITECTURE.md §5a. SMS: still no implementation. |
 | Media CDN | Local disk only. |
 | Image hosts | Fixture images hot-link `images.unsplash.com`, `cf.bstatic.com`, `aw-d.tripcdn.com` (allow-listed in `next.config.ts` CSP). |
 | Analytics / chatbot | Feature-flagged off (`NEXT_PUBLIC_ENABLE_*=false`); no vendor code. |

@@ -64,4 +64,18 @@ public interface MediaRepository extends JpaRepository<Media, UUID> {
 	@Query("delete from Media m where m.hotelId = :hotelId and m.isPrimary = true")
 	void deletePrimaryByHotelId(@Param("hotelId") UUID hotelId);
 	void deleteAll();
+
+	/** Logo resolution for email branding ({@code NotificationServiceImpl}) —
+	 * hotel-scoped logo first, primary one preferred if more than one exists. */
+	@Query("select m from Media m where m.hotelId = :hotelId and m.category = :category "
+			+ "order by m.isPrimary desc, m.sortOrder")
+	List<Media> findByHotelIdAndCategory(@Param("hotelId") UUID hotelId, @Param("category") String category);
+
+	/** Same as {@link #findByHotelIdAndCategory}, platform-scoped — the
+	 * fallback when a hotel has no logo of its own (matches this platform's
+	 * actual seed data: the logo is a platform-level asset today). */
+	@Query("select m from Media m where m.platformId = :platformId and m.category = :category "
+			+ "order by m.isPrimary desc, m.sortOrder")
+	List<Media> findByPlatformIdAndCategory(@Param("platformId") UUID platformId,
+			@Param("category") String category);
 }

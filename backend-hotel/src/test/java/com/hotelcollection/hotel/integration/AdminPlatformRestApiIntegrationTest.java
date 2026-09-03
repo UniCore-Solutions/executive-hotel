@@ -43,6 +43,8 @@ class AdminPlatformRestApiIntegrationTest {
 	PlatformRepository platforms;
 	@Autowired
 	JwtService jwtService;
+	@Autowired
+	org.springframework.jdbc.core.JdbcTemplate jdbc;
 
 	private final ObjectMapper objectMapper = new ObjectMapper();
 	private final HttpClient http = HttpClient.newBuilder()
@@ -79,16 +81,21 @@ class AdminPlatformRestApiIntegrationTest {
 		return objectMapper.readValue(response.body(), Map.class);
 	}
 
-	/** Registers a real user and issues a token carrying the real id — audit_logs
-	    references the users table. */
+	/** Registers a real user and issues a token carrying the real id —
+	 * audit_logs references the users table. register() now only sends an
+	 * OTP (no session) — this helper never needs a real one anyway (it
+	 * mints its own token with whatever roles the case under test wants),
+	 * so it just reads the id straight from the database instead of
+	 * completing verification. */
 	private String tokenWithRoles(List<String> roles) throws Exception {
 		String email = "admin-platform-rest-" + System.nanoTime() + "@example.com";
 		HttpResponse<String> registered = send("POST", "/api/v1/auth/register",
 				Map.of("firstName", "Admin", "lastName", "Platform", "email", email,
 						"password", "secret123"),
 				null);
-		assertThat(registered.statusCode()).isEqualTo(201);
-		String userId = objectMapper.readTree(registered.body()).get("me").get("userId").asText();
+		assertThat(registered.statusCode()).isEqualTo(202);
+		String userId = jdbc.queryForObject(
+				"select id from users where lower(email) = lower(?)", String.class, email);
 		return jwtService.issue(new CurrentUser(UUID.fromString(userId), email, roles, List.of(),
 				Instant.now()));
 	}

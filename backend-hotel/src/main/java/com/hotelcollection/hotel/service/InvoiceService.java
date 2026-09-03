@@ -76,4 +76,17 @@ public interface InvoiceService {
 	 * internally). {@code NOT_FOUND} if no credit note exists for this
 	 * reservation. */
 	GeneratedDocument getCreditNotePdfForStaff(UUID reservationId);
+
+	/**
+	 * System-triggered entry point (the email Kafka consumer, attaching the
+	 * invoice to a confirmation/invoice email) — no guest/staff proof
+	 * required, mirroring {@link #issueInvoiceForConfirmedReservation}'s
+	 * posture: there is no {@code CurrentUser} in a Kafka listener. Same
+	 * idempotent generate-or-reuse semantics as {@link #getInvoicePdfForGuest}.
+	 */
+	GeneratedDocument getInvoicePdfForNotification(UUID reservationId);
+
+	/** Same system-triggered posture as {@link #getInvoicePdfForNotification}.
+	 * {@code NOT_FOUND} if no credit note exists for this reservation. */
+	GeneratedDocument getCreditNotePdfForNotification(UUID reservationId);
 }

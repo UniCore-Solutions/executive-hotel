@@ -96,7 +96,7 @@ fictional part is the card capture.
 
 ---
 
-## 4. Outbox → Kafka — REAL bus, ⚠ dead end
+## 4. Outbox → Kafka → email consumer — REAL, end to end
 
 ```
 business tx ──INSERT event_outbox(status='pending')──┐   (@Transactional MANDATORY:
@@ -111,9 +111,14 @@ OutboxRelay.recoverStaleClaims @Scheduled(30s)
   releases rows stuck in 'publishing' older than 5 min
 
   ──► topic  hotelcollection.<eventType>.v<version>
-        ⚠ zero @KafkaListener in the repository — nothing ever reads these.
-        ⚠ `event_consumption` (the idempotent-consumer table) has never been written.
-        ⚠ yet the backend container will not start unless Kafka is healthy.
+        └─► EmailEventConsumer (@KafkaListener, the first in this repository)
+              routes booking.confirmed / booking.cancelled / payment.refunded /
+              payment.failed / user.registered to NotificationService
+              → renders templates/email/*.html → EmailProviderFactory.resolve()
+              → EmailProvider.send() → notifications row (sent/failed)
+              idempotent via event_consumption (finally written); retry + a
+              <topic>.DLT dead-letter topic on transport failure
+              (see ARCHITECTURE.md §5a for the full diagram)
 ```
 
 ---
@@ -128,8 +133,71 @@ LoginForm → SessionContext.login()
   → /api/graphql + /api/rest BFF proxies inject `Authorization: Bearer` from the cookie
 ```
 
-⚠ No email provider exists: password reset, newsletter and contact forms are honest
-"not available" states — no canned success, no localStorage pretending.
+### 5a. Registration — OTP-blocking (since Flyway V37)
+
+Registration no longer issues a session directly — it only sends a code, and the
+account is unusable (`users.status = 'pending_verification'`) until that code is
+confirmed:
+
+```
+AccountFlow (register tab) → SessionContext.register()
+  → services/auth.ts  fetch POST /api/auth/register   (same-origin BFF, no cookie set)
+    → BFF → REST POST :8180/api/v1/auth/register → AuthServiceImpl.register()
+      → users row created/updated as 'pending_verification'
+      → OtpService.issue(registration_verification) → NotificationService.sendOtpEmail()
+    ← 202 RegistrationPendingResult { email, otpExpiresInMinutes } — no token
+  UI shows the OTP-entry step
+
+AccountFlow (OTP step) → SessionContext.verifyRegistration(email, code)
+  → services/auth.ts  fetch POST /api/auth/register/verify   (same-origin BFF)
+    → BFF → REST POST :8180/api/v1/auth/register/verify
+      → OtpService.verify() (own transaction — REQUIRES_NEW, see below)
+      → users.status → 'active', email_verified_at set
+      → publishes user.registered (welcome email — see §4) — only now, not at register()
+    ← 200 AuthPayload { token, me }
+  → BFF setSessionCookie(token): httpOnly `guest_session` cookie
+  → services/auth.ts re-fetches GET /api/auth/me to populate SessionContext
+```
+
+`POST /api/auth/register/resend` re-issues a code, silently, whether or not the email
+has anything pending (anti-enumeration).
+
+**Security note**: `OtpService.verify()` runs in its own transaction
+(`Propagation.REQUIRES_NEW`), not the caller's. Every real caller
+(`AuthServiceImpl#verifyRegistration`, `BookingServiceImpl`'s reservation-lookup verify,
+§5b) is itself `@Transactional` with the default rollback rule; with the default
+`REQUIRED` propagation, a wrong-code save (the incremented `attempts` counter) would
+join the caller's physical transaction and get silently undone by the caller's own
+rollback-on-exception the moment the exception reached its boundary — defeating the
+attempt-lockout for every OTP purpose, not just this one. `REQUIRES_NEW` makes the
+attempt count and the verified marker commit unconditionally, independent of what the
+caller does with the exception afterward.
+
+### 5b. Guest reservation lookup — OTP-gated (since Flyway V37)
+
+Replaces reference+email alone as proof (used only by the no-account "check my
+reservation" self-service flow — never by the same-session payment-status poller or
+cancellation, which keep reading `reservation(reference, email)` / `getByReferenceAndEmail`
+directly):
+
+```
+ReservationFlow (lookup step) → requestOtp(reference, email)
+  → REST POST :8180/api/v1/reservations/{reference}/lookup/otp
+    → BookingServiceImpl → OtpService.issue(reservation_lookup)
+  ← 202, always the same response whether or not reference+email match anything
+
+ReservationFlow (otp step) → doVerifyOtp(code)
+  → REST POST :8180/api/v1/reservations/{reference}/lookup/otp/verify
+    → BookingServiceImpl → OtpService.verify(reservation_lookup) → grantId
+  ← 200 { lookupToken }
+  → GraphQL query verifiedReservation(reference, email, lookupToken)
+    → OtpService.isGrantValid(lookupToken, reservation_lookup, email, reservationId)
+    → returns the reservation only if the grant matches this exact reference+email
+```
+
+⚠ Password reset, newsletter and contact forms remain honest "not available" states —
+an email provider and an OTP mechanism both now exist (§4, this section), but nothing
+wires them to password-reset yet.
 
 ## 6. Back-office auth — REAL, correct
 

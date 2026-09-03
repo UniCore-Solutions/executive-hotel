@@ -11,9 +11,12 @@ import { useModal } from '@/context/ModalContext';
 import { useApollo } from '@/api/apollo/provider';
 import { REST_INVALIDATIONS, invalidateGraphql } from '@/api/invalidation';
 import { reservations, type BackendReservation } from '@/services/reservations';
-import { GraphqlClientError } from '@/services/graphqlClient';
 import { getExtras } from '@/services/extras';
-import { downloadCreditNotePdf } from '@/api/rest/endpoints';
+import {
+  downloadCreditNotePdf,
+  requestReservationLookupOtp,
+  verifyReservationLookupOtp,
+} from '@/api/rest/endpoints';
 import { ApiError } from '@/api/rest/client';
 import { downloadBytes } from '@/lib/download';
 import { fmt, fromISODate, inStayWindow } from '@/lib/dates';
@@ -157,7 +160,7 @@ export default function ReservationFlow() {
     () => String(searchParams?.get('email') ?? '').trim().toLowerCase(),
     [searchParams]
   );
-  const [status, setStatus] = useState<'lookup' | 'view'>('lookup');
+  const [status, setStatus] = useState<'lookup' | 'otp' | 'view'>('lookup');
   const [res, setRes] = useState<BackendReservation | null>(null);
   const [refInput, setRefInput] = useState(deepRef);
   const [emailInput, setEmailInput] = useState(deepEmail);
@@ -167,6 +170,19 @@ export default function ReservationFlow() {
   });
   const [busy, setBusy] = useState(false);
   const [creditNoteBusy, setCreditNoteBusy] = useState(false);
+
+  // OTP-gated lookup: reference+email alone only earns a code emailed to
+  // that address — pendingLookup holds the pair the code was requested for,
+  // reused when the guest submits it.
+  const [pendingLookup, setPendingLookup] = useState<{ reference: string; email: string } | null>(
+    null
+  );
+  const [otpCode, setOtpCode] = useState('');
+  const [otpBusy, setOtpBusy] = useState(false);
+  const [otpMsg, setOtpMsg] = useState<{ text: string; ok: boolean | null }>({
+    text: '',
+    ok: null,
+  });
 
   const [extrasDefs, setExtrasDefs] = useState<Extra[]>([]);
   useEffect(() => {
@@ -178,25 +194,27 @@ export default function ReservationFlow() {
   const checkingIn =
     !!res && res.status === 'confirmed' && inStayWindow(res.checkInDate, res.checkOutDate);
 
-  const performLookup = async (ref: string, email: string, opts?: { scroll?: boolean }) => {
+  /** Step 1: reference+email earns a code emailed to that address — never a
+   * direct read. Always the same outcome whether or not they actually
+   * match anything (the backend responds identically either way), so the
+   * message here must never imply a match/no-match distinction. */
+  const requestOtp = async (ref: string, email: string, opts?: { scroll?: boolean }) => {
     setBusy(true);
     try {
-      const r = await reservations.find(ref, email);
-      setLookupMsg({ text: '', ok: null });
-      setRes(r);
-      setStatus('view');
+      await requestReservationLookupOtp(ref, email);
+      setPendingLookup({ reference: ref, email });
+      setOtpCode('');
+      setOtpMsg({
+        text: `If ${ref} and that email match a reservation, we've sent a 6-digit code to ${email}.`,
+        ok: null,
+      });
+      setStatus('otp');
       if (opts?.scroll) window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (err) {
-      // A miss throws NOT_FOUND (reservations.find never resolves to null);
-      // its message is already guest-appropriate, so surface it directly.
-      if (err instanceof GraphqlClientError && err.code === 'NOT_FOUND') {
-        setLookupMsg({ text: err.message, ok: false });
-      } else {
-        setLookupMsg({
-          text: 'Something went wrong looking up your reservation. Please try again.',
-          ok: false,
-        });
-      }
+    } catch {
+      setLookupMsg({
+        text: 'Something went wrong. Please try again.',
+        ok: false,
+      });
     } finally {
       setBusy(false);
     }
@@ -204,38 +222,138 @@ export default function ReservationFlow() {
 
   const doLookup = async (e: React.FormEvent) => {
     e.preventDefault();
-    const ref = refInput.trim();
-    const email = emailInput.trim();
+    const ref = refInput.trim().toUpperCase();
+    const email = emailInput.trim().toLowerCase();
     if (!ref || !email) {
       setLookupMsg({ text: 'Please enter both your reference and email address.', ok: false });
       return;
     }
-    await performLookup(ref, email, { scroll: true });
+    await requestOtp(ref, email, { scroll: true });
+  };
+
+  /** Step 2: confirms the code, then performs the actual (now OTP-gated) read. */
+  const doVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingLookup) return;
+    const code = otpCode.trim();
+    if (!code) {
+      setOtpMsg({ text: 'Enter the 6-digit code from your email.', ok: false });
+      return;
+    }
+    setOtpBusy(true);
+    try {
+      const { lookupToken } = await verifyReservationLookupOtp(
+        pendingLookup.reference,
+        pendingLookup.email,
+        code
+      );
+      const r = await reservations.findVerified(pendingLookup.reference, pendingLookup.email, lookupToken);
+      setRes(r);
+      setLookupMsg({ text: '', ok: null });
+      setOtpMsg({ text: '', ok: null });
+      setStatus('view');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      const text =
+        err instanceof ApiError && err.code === 'CONFLICT'
+          ? 'Too many incorrect attempts for this code — request a new one below.'
+          : 'Incorrect or expired code. Please try again.';
+      setOtpMsg({ text, ok: false });
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
+  const resendOtp = async () => {
+    if (!pendingLookup) return;
+    setOtpBusy(true);
+    try {
+      await requestReservationLookupOtp(pendingLookup.reference, pendingLookup.email);
+      setOtpMsg({ text: 'A new code is on its way.', ok: true });
+    } catch (err) {
+      const text =
+        err instanceof ApiError && err.code === 'CONFLICT'
+          ? 'Please wait a little longer before requesting another code.'
+          : 'Could not resend the code. Please try again.';
+      setOtpMsg({ text, ok: false });
+    } finally {
+      setOtpBusy(false);
+    }
   };
 
   // Deep link carries both ref + email (e.g. from the confirmation page's
-  // "Manage booking" button) — resolve it automatically, once, instead of
-  // making the guest re-enter what the link already told us.
+  // "Manage booking" button) — still OTP-gated (a bookmarked/forwarded link
+  // is no stronger a proof than typing the same two values manually), but
+  // pre-filling + auto-requesting the code saves the guest re-entering them.
   const autoLookedUp = useRef(false);
   useEffect(() => {
     if (autoLookedUp.current || !deepRef || !deepEmail || res) return;
     autoLookedUp.current = true;
-    performLookup(deepRef, deepEmail);
+    requestOtp(deepRef, deepEmail);
   }, [deepRef, deepEmail, res]);
 
   const showOther = () => {
     setStatus('lookup');
+    setPendingLookup(null);
     setLookupMsg({ text: 'Enter your details below.', ok: null });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  if (status === 'otp' && pendingLookup) {
+    return (
+      <div id="lookup-otp" className="border-navy/10 rounded-3xl border bg-white p-6 lg:p-8">
+        <h2 className="font-display text-navy text-xl font-semibold">Check your email</h2>
+        <p className="text-navy/55 mt-1 text-sm">
+          Enter the 6-digit code we sent to <span className="text-navy font-medium">{pendingLookup.email}</span> to
+          view this reservation.
+        </p>
+        <form id="lookup-otp-form" className="mt-5 flex flex-wrap items-end gap-3" onSubmit={doVerifyOtp} noValidate>
+          <div>
+            <Label htmlFor="lk-otp-code">Verification code</Label>
+            <Input
+              id="lk-otp-code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={otpCode}
+              onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="123456"
+              className="w-40 tracking-[0.3em]"
+            />
+          </div>
+          <Button type="submit" disabled={otpBusy} className="py-3.5">
+            {otpBusy ? 'Verifying…' : 'Verify'}
+          </Button>
+          <Button type="button" variant="ghost" disabled={otpBusy} onClick={resendOtp} className="py-3.5">
+            Resend code
+          </Button>
+        </form>
+        <p
+          id="lookup-otp-msg"
+          className={`mt-3 min-h-5 text-sm font-medium ${otpMsg.ok === false ? 'text-clay' : otpMsg.ok === true ? 'text-success' : 'text-navy/45'}`}
+          role="status"
+        >
+          {otpMsg.text}
+        </p>
+        <button
+          type="button"
+          onClick={showOther}
+          className="text-navy/45 hover:text-navy mt-4 text-xs font-medium underline underline-offset-2"
+        >
+          Use a different reference or email
+        </button>
+      </div>
+    );
+  }
 
   if (status === 'lookup' || !res) {
     return (
       <div id="lookup" className="border-navy/10 rounded-3xl border bg-white p-6 lg:p-8">
         <h2 className="font-display text-navy text-xl font-semibold">Find your stay</h2>
         <p className="text-navy/55 mt-1 text-sm">
-          Enter the reference from your confirmation and the email used at booking. No account
-          needed.
+          Enter the reference from your confirmation and the email used at booking. We&apos;ll
+          email you a code to confirm it&apos;s you — no account needed.
         </p>
         <form
           id="lookup-form"
@@ -265,7 +383,7 @@ export default function ReservationFlow() {
             />
           </div>
           <Button type="submit" disabled={busy} className="py-3.5">
-            {busy ? 'Looking…' : 'Find my stay'}
+            {busy ? 'Sending code…' : 'Find my stay'}
           </Button>
         </form>
         <p

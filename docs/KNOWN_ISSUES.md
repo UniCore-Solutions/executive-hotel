@@ -49,23 +49,6 @@ failures — all rules green, plus the new `NO_GRAPHQL_MUTATIONS` rule). The
   re-labelled. `AGENTS.md` was **not** updated.
 - **Next:** commit ADR-009 and rewrite `backend-hotel/AGENTS.md` §Architecture.
 
-### A2 — Kafka is a hard startup dependency with zero consumers
-- **Problem:** the outbox → Kafka pipeline is fully built and correct, but no
-  `@KafkaListener` exists anywhere; `event_consumption` has never been written; and
-  `docker-compose.yml` gates the backend on `kafka: service_healthy`.
-- **Evidence:** `grep -rn "@KafkaListener"` → 0 hits; `event_consumption` row count 0;
-  `docker-compose.yml` backend `depends_on`.
-- **Affected:** backend availability, local dev startup time.
-- **Severity:** Medium — pure operational cost for zero delivered behaviour.
-- **Next:** either add the first consumer or relax `depends_on`.
-
-### A3 — Dead read path: notifications have no writer
-- **Problem:** `NotificationQueryService` + `adminNotifications` + a back-office page all
-  read `notifications`; nothing in the codebase ever inserts one.
-- **Evidence:** `grep -rn "notificationRepository.save\|new Notification()"` → 0 hits;
-  `notifications` and `notification_templates` row counts 0.
-- **Severity:** Medium — a shipped screen that can never show anything.
-
 ### A4 — Unreachable reservation states
 - **Problem:** `ReservationStatus` declares `pending, confirmed, modified, cancelled,
   checked_in, checked_out, no_show`; only `confirmed` and `cancelled` are ever assigned.
@@ -141,10 +124,10 @@ failures — all rules green, plus the new `NO_GRAPHQL_MUTATIONS` rule). The
 ## Data
 
 ### E1 — Orphaned tables
-- `permissions`, `role_permissions` (see A5), `notification_templates`, `notifications`
-  (A3), `check_ins` (A4), `event_consumption` (A2),
+- `permissions`, `role_permissions` (see A5), `notification_templates`, `check_ins` (A4),
   `promotion_eligible_rate_plans`, `promotion_eligible_room_types`, `rate_restrictions`
-  — all empty, none written by any code path.
+  — all empty, none written by any code path. (`notifications` and `event_consumption`
+  are no longer on this list — see `EmailEventConsumer`/`NotificationServiceImpl`.)
 - **Severity:** Low individually; collectively they make the schema look more complete
   than the application is.
 
@@ -161,8 +144,9 @@ failures — all rules green, plus the new `NO_GRAPHQL_MUTATIONS` rule). The
 ### DOC1 — `AGENTS.md` files are materially wrong in both sub-projects
 - **`backend-hotel/AGENTS.md`:** describes the non-existent hexagonal module tree;
   says the contract is one `schema.graphqls` (it is split per domain); says migrations
-  run `V1__…V18__` (V22 now); says `ModuleArchitectureTest` has 7 rules (5); claims
-  `EmailProvider` and `PaymentProvider` ports exist (neither does); calls
+  run `V1__…V18__` (V22 now); says `ModuleArchitectureTest` has 7 rules (7, since
+  2026-09-01 — this was itself a stale claim in this file); claims `PaymentProvider`
+  ports exist (it doesn't — `EmailProvider` now does, see `email/`); calls
   `database/collection-schema.sql` the current schema.
 - **`frontend-hotel/AGENTS.md`:** points at `src/components/cards/` (does not exist);
   describes `src/services/pricing.ts` as the home of "quote math, promo rules,

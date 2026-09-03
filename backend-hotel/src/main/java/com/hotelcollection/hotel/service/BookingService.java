@@ -124,4 +124,31 @@ public interface BookingService {
 	 * Staff of the room type's hotel only.
 	 */
 	List<Room> eligibleRooms(UUID roomTypeId, LocalDate checkIn, LocalDate checkOut);
+
+	// ---------------------------------------------------------------- OTP-gated self-service lookup
+	//
+	// getByReferenceAndEmail (above) is deliberately left as-is — it still
+	// backs cancellation and the same-session payment-status poller right
+	// after booking, neither of which should need an OTP round trip. These
+	// three back a *separate* GraphQL query (verifiedReservation) that the
+	// "check my reservation later, no account" guest flow uses instead.
+
+	/**
+	 * Emails a one-time code if {@code reference}+{@code email} match a real
+	 * reservation — but responds identically either way (a silent no-op on a
+	 * miss), so this can never be used to test which reference+email pairs
+	 * are real. Rate-limited (RateLimitFilter, the {@code /api/v1/reservations}
+	 * budget) and, per email, by {@code OtpService}'s own resend cooldown.
+	 */
+	void requestReservationLookupOtp(String reference, String email);
+
+	/** Confirms the code {@link #requestReservationLookupOtp} sent.
+	 * @return a short-lived grant id — pass it to {@link #getByReferenceAndEmailVerified}. */
+	UUID verifyReservationLookupOtp(String reference, String email, String code);
+
+	/** The OTP-gated read: {@code reference}+{@code email} must match (same
+	 * as {@link #getByReferenceAndEmail}) <em>and</em> {@code lookupToken}
+	 * must be a currently-valid grant from {@link #verifyReservationLookupOtp}
+	 * for this exact reservation — FORBIDDEN otherwise. */
+	Reservation getByReferenceAndEmailVerified(String reference, String email, UUID lookupToken);
 }

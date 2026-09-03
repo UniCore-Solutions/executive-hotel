@@ -68,6 +68,8 @@ class BookingFlowIntegrationTest {
 	TestFixtures fixtures;
 	@Autowired
 	AuthService authService;
+	@Autowired
+	com.hotelcollection.hotel.service.OtpService otpService;
 
 	private static final String GUEST_EMAIL = "amine@example.com";
 
@@ -467,8 +469,15 @@ class BookingFlowIntegrationTest {
 		// booked_by_user_id has an FK to users(id) — a real registered account is
 		// required here (unlike the payment-only actors elsewhere in this file,
 		// which never get written into that column).
-		CurrentUser owner = authService
-				.register(new RegisterInput("Amine", "El Idrissi", GUEST_EMAIL, "secret123")).me();
+		// register() now only sends a code (no usable session) — complete
+		// verification immediately, capturing a known code via OtpService's
+		// re-issue (production callers discard that return value; see
+		// AccountProvisioningIntegrationTest#registerAndVerify for the same idiom).
+		authService.register(new RegisterInput("Amine", "El Idrissi", GUEST_EMAIL, "secret123"));
+		String otpCode = otpService.issue(com.hotelcollection.hotel.entity.OtpPurpose.registration_verification,
+				GUEST_EMAIL, "Amine", null, null);
+		CurrentUser owner = authService.verifyRegistration(
+				new com.hotelcollection.hotel.dto.identity.VerifyRegistrationInput(GUEST_EMAIL, otpCode)).me();
 		CreateResult created = as(owner,
 				() -> bookingService.create(input(fx, "pay-owned-" + System.nanoTime(), checkIn, 2)));
 		assertThat(created.reservation().getBookedByUserId()).isEqualTo(owner.userId());

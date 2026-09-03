@@ -22,7 +22,8 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const NAME_RE = /^[A-Za-zÀ-ÿ' -]+$/;
 
 export default function AccountFlow() {
-  const { session, login, register, logout, updateProfile } = useSession();
+  const { session, login, register, verifyRegistration, resendRegistrationOtp, logout, updateProfile } =
+    useSession();
   const { toast } = useToast();
   const { open } = useModal();
   const { fmt } = useCurrency();
@@ -46,6 +47,15 @@ export default function AccountFlow() {
   const [regBusy, setRegBusy] = useState(false);
   const [regLabel, setRegLabel] = useState('Create account');
   const [regMsg, setRegMsg] = useState<{ text: string; cls: string }>({ text: '', cls: '' });
+
+  // Registration is OTP-gated: register() only sends a code, the account
+  // stays unusable until regOtp confirms it — pendingRegister holds the
+  // email the code was sent to, reused when the guest submits it.
+  const [regStep, setRegStep] = useState<'form' | 'otp'>('form');
+  const [pendingRegister, setPendingRegister] = useState<{ email: string } | null>(null);
+  const [regOtpCode, setRegOtpCode] = useState('');
+  const [regOtpBusy, setRegOtpBusy] = useState(false);
+  const [regOtpMsg, setRegOtpMsg] = useState<{ text: string; cls: string }>({ text: '', cls: '' });
 
   const [bookings, setBookings] = useState<BackendReservation[]>([]);
 
@@ -108,6 +118,9 @@ export default function AccountFlow() {
     setTab(next);
     setAuthMsg({ text: '', cls: '' });
     setRegMsg({ text: '', cls: '' });
+    setRegStep('form');
+    setPendingRegister(null);
+    setRegOtpMsg({ text: '', cls: '' });
   };
 
   const doLogin = async (e: React.FormEvent) => {
@@ -184,18 +197,54 @@ export default function AccountFlow() {
     setRegLabel('Creating account…');
     const out = await register({ name: `${first} ${last}`.trim(), email, password: pass });
     setRegBusy(false);
+    setRegLabel('Create account');
     if (!out.ok) {
       setRegMsg({ text: out.message ?? '', cls: 'text-clay' });
-      setRegLabel('Create account');
       return;
     }
     setRegMsg({ text: '', cls: '' });
+    setPendingRegister({ email });
+    setRegOtpCode('');
+    setRegOtpMsg({
+      text: `We've sent a 6-digit code to ${email}. Enter it below to finish creating your account.`,
+      cls: 'text-navy/55',
+    });
+    setRegStep('otp');
+  };
+
+  const doVerifyRegOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingRegister) return;
+    const code = regOtpCode.trim();
+    if (!code) {
+      setRegOtpMsg({ text: 'Enter the 6-digit code from your email.', cls: 'text-clay' });
+      return;
+    }
+    setRegOtpBusy(true);
+    const out = await verifyRegistration(pendingRegister.email, code);
+    setRegOtpBusy(false);
+    if (!out.ok) {
+      setRegOtpMsg({ text: out.message ?? '', cls: 'text-clay' });
+      return;
+    }
+    setRegOtpMsg({ text: '', cls: '' });
     toast({
       message: 'Your account is ready — welcome to the Executive Boutique collection.',
       type: 'ok',
       title: 'Welcome',
     });
-    setRegLabel('Account created ✓');
+  };
+
+  const resendRegOtp = async () => {
+    if (!pendingRegister) return;
+    setRegOtpBusy(true);
+    const out = await resendRegistrationOtp(pendingRegister.email);
+    setRegOtpBusy(false);
+    setRegOtpMsg(
+      out.ok
+        ? { text: 'A new code is on its way.', cls: 'text-emerald-700' }
+        : { text: out.message ?? 'Could not resend the code. Please try again.', cls: 'text-clay' }
+    );
   };
 
   const doForgot = async (e: React.MouseEvent) => {
@@ -546,6 +595,67 @@ export default function AccountFlow() {
             </TabsContent>
           ) : (
             <TabsContent value="register">
+              {regStep === 'otp' && pendingRegister ? (
+                <div id="register-otp">
+                  <h2 className="font-display text-navy mt-6 text-lg font-semibold">
+                    Check your email
+                  </h2>
+                  <p className="text-navy/55 mt-1 text-sm">
+                    Enter the 6-digit code we sent to{' '}
+                    <span className="text-navy font-medium">{pendingRegister.email}</span> to finish
+                    creating your account.
+                  </p>
+                  <form
+                    className="mt-5 flex flex-wrap items-end gap-3"
+                    onSubmit={doVerifyRegOtp}
+                    noValidate
+                  >
+                    <div>
+                      <Label htmlFor="r-otp-code">Verification code</Label>
+                      <Input
+                        id="r-otp-code"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        maxLength={6}
+                        value={regOtpCode}
+                        onChange={(e) => setRegOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="123456"
+                        className="w-40 tracking-[0.3em]"
+                      />
+                    </div>
+                    <Button type="submit" disabled={regOtpBusy} className="py-3.5">
+                      {regOtpBusy ? 'Verifying…' : 'Verify'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={regOtpBusy}
+                      onClick={resendRegOtp}
+                      className="py-3.5"
+                    >
+                      Resend code
+                    </Button>
+                  </form>
+                  <p
+                    role="status"
+                    className={`mt-3 min-h-5 text-sm font-medium ${regOtpMsg.cls || ''}`}
+                  >
+                    {regOtpMsg.text}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setRegStep('form');
+                      setPendingRegister(null);
+                    }}
+                    className="text-navy/55 -ml-3 mt-1 text-xs underline underline-offset-2"
+                  >
+                    Use a different email
+                  </Button>
+                </div>
+              ) : (
               <form
                 className="mt-7 grid gap-x-4 gap-y-5 sm:grid-cols-2"
                 onSubmit={doRegister}
@@ -690,6 +800,7 @@ export default function AccountFlow() {
                   .
                 </p>
               </form>
+              )}
             </TabsContent>
           )}
         </Tabs>

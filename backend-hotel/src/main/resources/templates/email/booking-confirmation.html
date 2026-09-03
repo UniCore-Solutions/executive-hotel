@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<!--
+  Rendered server-side by NotificationServiceImpl. XML/XHTML mode (see
+  templates/email/fragments/layout.html). Variables: theme (EmailTheme),
+  data (BookingConfirmationEmailData).
+-->
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title th:text="'Reservation ' + ${data.reference} + ' confirmed'">Reservation confirmed</title>
+  <style>
+    @media only screen and (max-width: 620px) {
+      .email-container { width: 100% !important; }
+      .email-content { padding-left: 26px !important; padding-right: 26px !important; }
+      .info-row td { display: block !important; width: 100% !important; padding-bottom: 2px !important; }
+    }
+  </style>
+</head>
+<body style="margin:0;padding:0;background-color:#f7f4ee;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f7f4ee;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" class="email-container" cellpadding="0" cellspacing="0"
+               style="width:600px;max-width:600px;background-color:#ffffff;border-radius:12px;overflow:hidden;">
+          <tr>
+            <td th:replace="~{email/fragments/layout :: header(${theme})}"></td>
+          </tr>
+          <tr>
+            <td class="email-content" style="padding:44px 48px 12px 48px;">
+              <p style="margin:0 0 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                        font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#3c6e52;">
+                &#10003; Reservation confirmed
+              </p>
+              <h1 style="margin:0 0 16px 0;font-family:Georgia,'Times New Roman',Times,serif;
+                         font-size:27px;line-height:1.25;color:#20242c;font-weight:400;">
+                Booking Confirmed
+              </h1>
+              <p style="margin:0 0 28px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                        font-size:16px;line-height:1.6;color:#5b6472;">
+                Thank you, <strong style="color:#20242c;" th:text="${data.firstName}">Guest</strong>.
+                We look forward to welcoming you to <span th:text="${theme.hotelName}">Hotel Name</span>.
+              </p>
+
+              <!-- Reference, prominent, its own line -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:18px;">
+                <tr>
+                  <td style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                             font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#5b6472;padding-bottom:4px;">
+                    Booking reference
+                  </td>
+                </tr>
+                <tr>
+                  <td style="font-family:Georgia,'Times New Roman',Times,serif;font-size:22px;color:#142639;letter-spacing:0.02em;"
+                      th:text="${data.reference}">RC-000000</td>
+                </tr>
+              </table>
+
+              <!-- Stay details card -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                     style="border:1px solid #e6e2da;border-radius:10px;background-color:#f7f4ee;">
+                <tr class="info-row">
+                  <td style="padding:16px 20px 8px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                             font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#5b6472;width:38%;">
+                    Stay
+                  </td>
+                  <td style="padding:16px 20px 8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                             font-size:15px;font-weight:600;color:#20242c;text-align:right;">
+                    <span th:text="${data.checkInDisplay}">15 Sep 2026</span> &#8594; <span th:text="${data.checkOutDisplay}">18 Sep 2026</span>
+                  </td>
+                </tr>
+                <tr class="info-row">
+                  <td style="padding:8px 20px;border-top:1px solid #e6e2da;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                             font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#5b6472;">
+                    Length of stay
+                  </td>
+                  <td style="padding:8px 20px 8px 0;border-top:1px solid #e6e2da;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                             font-size:15px;color:#20242c;text-align:right;" th:text="${data.nightsDisplay}">2 nights</td>
+                </tr>
+                <tr class="info-row">
+                  <td style="padding:8px 20px;border-top:1px solid #e6e2da;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                             font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#5b6472;">
+                    Room
+                  </td>
+                  <td style="padding:8px 20px 8px 0;border-top:1px solid #e6e2da;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                             font-size:15px;color:#20242c;text-align:right;" th:text="${data.roomTypeName}">Deluxe Room</td>
+                </tr>
+                <tr class="info-row">
+                  <td style="padding:8px 20px;border-top:1px solid #e6e2da;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                             font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#5b6472;">
+                    Guests
+                  </td>
+                  <td style="padding:8px 20px 8px 0;border-top:1px solid #e6e2da;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                             font-size:15px;color:#20242c;text-align:right;" th:text="${data.guestsDisplay}">2 Adults</td>
+                </tr>
+                <tr class="info-row" th:if="${data.arrivalSlot != null}">
+                  <td style="padding:8px 20px 16px 20px;border-top:1px solid #e6e2da;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                             font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#5b6472;">
+                    Arrival window
+                  </td>
+                  <td style="padding:8px 20px 16px 0;border-top:1px solid #e6e2da;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                             font-size:15px;color:#20242c;text-align:right;" th:text="${data.arrivalSlot}">15:00–18:00</td>
+                </tr>
+              </table>
+
+              <!-- Payment summary -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;">
+                <tr>
+                  <td style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+                             font-size:14px;color:#5b6472;">
+                    Total
+                  </td>
+                  <td style="text-align:right;font-family:Georgia,'Times New Roman',Times,serif;font-size:20px;color:#20242c;"
+                      th:text="${data.totalDisplay}">MAD 0</td>
+                </tr>
+                <tr>
+                  <td colspan="2" style="padding-top:8px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td th:style="'padding:4px 12px;border-radius:999px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;' +
+                                       (${data.paid} ? 'background-color:#3c6e52;color:#ffffff;' : 'background-color:#f7f4ee;color:#5b6472;border:1px solid #e6e2da;')"
+                            th:text="${data.paymentStatusDisplay}">Paid</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <table th:replace="~{email/fragments/layout :: button(${theme}, ${data.manageBookingUrl}, 'View your reservation')}"></table>
+            </td>
+          </tr>
+          <tr>
+            <td th:replace="~{email/fragments/layout :: footer(${theme})}"></td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

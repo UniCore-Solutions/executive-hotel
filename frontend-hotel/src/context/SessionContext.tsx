@@ -10,7 +10,11 @@ export interface SessionContextValue {
   refresh: () => Promise<void>;
   setSession: (u: Session | null) => void;
   login: (email: string, password: string) => Promise<auth.AuthResult>;
-  register: (input: { name: string; email: string; password: string }) => Promise<auth.AuthResult>;
+  /** Sends a registration OTP — never establishes a session; see
+      {@link verifyRegistration}. */
+  register: (input: { name: string; email: string; password: string }) => Promise<auth.RegisterResult>;
+  verifyRegistration: (email: string, code: string) => Promise<auth.AuthResult>;
+  resendRegistrationOtp: (email: string) => Promise<auth.AuthResult>;
   updateProfile: (input: { firstName?: string; lastName?: string; phone?: string }) => Promise<auth.AuthResult>;
   logout: () => Promise<void>;
 }
@@ -42,11 +46,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (r.ok && r.session) setSessionState(r.session);
     return r;
   }, []);
-  const register = useCallback(async (input: { name: string; email: string; password: string }) => {
-    const r = await auth.register(input);
+  const register = useCallback(
+    (input: { name: string; email: string; password: string }) => auth.register(input),
+    []
+  );
+  const verifyRegistration = useCallback(async (email: string, code: string) => {
+    const r = await auth.verifyRegistration(email, code);
     if (r.ok && r.session) setSessionState(r.session);
     return r;
   }, []);
+  const resendRegistrationOtp = useCallback((email: string) => auth.resendRegistrationOtp(email), []);
   const updateProfile = useCallback(
     async (input: { firstName?: string; lastName?: string; phone?: string }) => {
       const r = await auth.updateProfile(input);
@@ -61,8 +70,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ session, refresh, setSession, login, register, updateProfile, logout }),
-    [session, refresh, setSession, login, register, updateProfile, logout]
+    () => ({
+      session,
+      refresh,
+      setSession,
+      login,
+      register,
+      verifyRegistration,
+      resendRegistrationOtp,
+      updateProfile,
+      logout,
+    }),
+    [
+      session,
+      refresh,
+      setSession,
+      login,
+      register,
+      verifyRegistration,
+      resendRegistrationOtp,
+      updateProfile,
+      logout,
+    ]
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

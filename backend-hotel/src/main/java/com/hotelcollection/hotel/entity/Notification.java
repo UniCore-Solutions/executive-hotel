@@ -61,4 +61,10 @@ public class Notification {
 
 	@Column(nullable = false)
 	private Instant createdAt;
+
+	/** The outbox/Kafka event that triggered this send — observability only;
+	 * see V36. Idempotency itself is enforced by {@link EventConsumption}. */
+	private UUID eventId;
+
+	private String correlationId;
 }

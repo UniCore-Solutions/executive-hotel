@@ -38,6 +38,8 @@ public class User {
 
 	private String status;
 
+	private Instant emailVerifiedAt;
+
 	private Instant lastLoginAt;
 
 	private Instant createdAt;

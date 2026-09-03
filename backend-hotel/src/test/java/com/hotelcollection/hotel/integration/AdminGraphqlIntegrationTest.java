@@ -53,6 +53,8 @@ class AdminGraphqlIntegrationTest {
 	ReviewRepository reviewRepository;
 	@Autowired
 	org.springframework.jdbc.core.JdbcTemplate jdbc;
+	@Autowired
+	com.hotelcollection.hotel.service.OtpService otpService;
 
 	private final ObjectMapper objectMapper = new ObjectMapper();
 	private final HttpClient http = HttpClient.newBuilder()
@@ -67,7 +69,11 @@ class AdminGraphqlIntegrationTest {
 	}
 
 	/** Registers a real user (audit_logs.cancelled_by_user_id / actor_user_id
-	 * reference users) and issues a staff token carrying the real id. */
+	 * reference users) and issues a staff token carrying the real id.
+	 * register() now only sends an OTP (no session) — this test never needs
+	 * a real one anyway (it mints its own token with whatever roles/hotels
+	 * the case under test wants), so it just reads the id straight from the
+	 * database instead of completing verification. */
 	private String issueToken(UUID userId, List<String> roles, List<UUID> hotelIds)
 			throws Exception {
 		String email = "staff-" + userId + "-" + System.nanoTime() + "@example.com";
@@ -75,8 +81,9 @@ class AdminGraphqlIntegrationTest {
 				Map.of("firstName", "Staff", "lastName", "User",
 						"email", email, "password", "secret123"),
 				null);
-		assertThat(reg.get("__status")).isEqualTo(201);
-		String registeredId = (String) ((Map<String, Object>) reg.get("me")).get("userId");
+		assertThat(reg.get("__status")).isEqualTo(202);
+		String registeredId = jdbc.queryForObject(
+				"select id from users where lower(email) = lower(?)", String.class, email);
 		return jwtService.issue(new CurrentUser(UUID.fromString(registeredId), email, roles,
 				hotelIds, Instant.now()));
 	}
@@ -1267,13 +1274,26 @@ class AdminGraphqlIntegrationTest {
 		return parsed;
 	}
 
+	/** Registers a real owner and completes OTP verification over HTTP to get
+	 * a genuinely working session token (unlike {@link #issueToken}, callers
+	 * of this one act "as" that user, so a self-minted token isn't enough).
+	 * Re-issuing via {@link OtpService} captures a known code, superseding
+	 * the one register() already sent silently — see
+	 * AccountProvisioningIntegrationTest#registerAndVerify for the same
+	 * pattern. */
 	private String registerOwner(String email) throws Exception {
-		Map<String, Object> body = rest("POST", "/api/v1/auth/register",
+		Map<String, Object> reg = rest("POST", "/api/v1/auth/register",
 				Map.of("firstName", "Zahra", "lastName", "Bennani",
 						"email", email, "password", "secret123"),
 				null);
-		assertThat(body.get("__status")).isEqualTo(201);
-		return (String) body.get("token");
+		assertThat(reg.get("__status")).isEqualTo(202);
+		String code = otpService.issue(
+				com.hotelcollection.hotel.entity.OtpPurpose.registration_verification,
+				email, "Zahra", null, null);
+		Map<String, Object> verified = rest("POST", "/api/v1/auth/register/verify",
+				Map.of("email", email, "code", code), null);
+		assertThat(verified.get("__status")).isEqualTo(200);
+		return (String) verified.get("token");
 	}
 
 	private void seedReview(UUID hotelId, short rating, String comment) {

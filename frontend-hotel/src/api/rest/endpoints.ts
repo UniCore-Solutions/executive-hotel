@@ -94,6 +94,29 @@ export async function cancelReservation(input: {
   return response.data as ReservationCancelled;
 }
 
+/**
+ * Guest self-service reservation lookup, OTP-gated (replaces reference+email
+ * alone as proof). request() always resolves the same way whether or not
+ * reference+email actually match anything — never branch UI copy on its
+ * result beyond "check your email", or the backend's anti-enumeration
+ * design is undone at this layer.
+ */
+export async function requestReservationLookupOtp(reference: string, email: string): Promise<void> {
+  await restClient.post(`/v1/reservations/${encodeURIComponent(reference)}/lookup/otp`, { email });
+}
+
+export async function verifyReservationLookupOtp(
+  reference: string,
+  email: string,
+  code: string
+): Promise<{ lookupToken: string }> {
+  const response = await restClient.post(
+    `/v1/reservations/${encodeURIComponent(reference)}/lookup/otp/verify`,
+    { email, code }
+  );
+  return response.data as { lookupToken: string };
+}
+
 export interface PaymentCreated {
   id: string;
   status: string;

@@ -13,18 +13,29 @@ Three deployables, then the backend's internal application services.
   REST = WRITE/ACTION — see [API_GUIDELINES.md](API_GUIDELINES.md)), `/graphiql` (dev only),
   `/api/v1/{auth,reservations,payments,media,admin,hotels/*/reviews}` (REST — the only write path),
   `/actuator/{health,info,prometheus}`, `/media/**` (static uploads).
-- **Database** — PostgreSQL 16 `hotel_platform`, Flyway V1–V22, `ddl-auto: validate`.
+- **Database** — PostgreSQL 16 `hotel_platform`, Flyway V1–V36, `ddl-auto: validate`.
 - **Inbound** — both frontends over HTTP.
-- **Outbound** — PostgreSQL (JPA), Kafka (outbox relay, fire-and-forget), local
-  filesystem (media). **No other external calls exist.**
-- **Events produced** — `booking.confirmed`, `booking.cancelled`, `payment.created`,
-  `payment.captured` → `hotelcollection.<type>.v1`.
-- **Events consumed** — none.
+- **Outbound** — PostgreSQL (JPA), Kafka (outbox relay producer + the email consumer),
+  local filesystem (media, documents), SMTP when `app.email.provider=smtp` (off by
+  default — see below). **No other external calls exist.**
+- **Events produced** — `booking.created`, `booking.confirmed`, `booking.cancelled`,
+  `payment.created`, `payment.captured`, `payment.failed`, `payment.refunded`,
+  `user.registered` → `hotelcollection.<type>.v1`.
+- **Events consumed** — `booking.confirmed`, `booking.cancelled`, `payment.refunded`,
+  `payment.failed`, `user.registered`, by `EmailEventConsumer` (the first
+  `@KafkaListener` in this codebase) → `NotificationService`, which renders a
+  Thymeleaf template and sends through whichever `EmailProvider` is configured
+  (`SimulatedEmailProvider` by default; `SmtpEmailProvider` — a generic SMTP adapter,
+  Gmail-compatible via config only — when `app.email.provider=smtp`). Idempotent via
+  the previously-unused `event_consumption` table, keyed per email type so one event's
+  several emails (e.g. booking.confirmed → confirmation + invoice) retry independently;
+  retry/backoff + a `<topic>.DLT` dead-letter topic via `KafkaConsumerConfig`.
 - **Auth** — stateless JWT bearer; `/graphql` open at the filter chain, authorization
   inside services.
 - **Status** — substantially complete and real.
-- **Known problems** — Kafka is a hard startup dependency with no consumer;
-  no email; mock payment capture; `stay_x_pay_y` promos throw.
+- **Known problems** — mock payment capture; `stay_x_pay_y` promos throw; no OTP/email-
+  verification flow exists anywhere in the app (the email architecture can deliver an
+  OTP the moment one does — see the class comment on `NotificationService`).
 
 ---
 
@@ -129,18 +140,17 @@ go through these interfaces** (ArchUnit-enforced).
 | `PlatformService` | hero + featured-experience CMS blocks by platform slug | **Real** |
 | `AdminDashboardService` | arrivals/departures/in-house/occupancy/revenue aggregation | **Real** |
 | `AuditService` | writes `audit_logs` on every admin mutation | **Real** (table empty only because no admin writes have run here) |
-| `NotificationQueryService` | **read-only** listing of `notifications` | **Dead read path** — nothing in the codebase ever writes a `Notification` |
+| `NotificationQueryService` | **read-only** listing of `notifications` for the back-office | **Real** — no longer dead; `NotificationService` (below) is a real writer |
+| `NotificationService` | Renders + sends every outbound email (welcome, booking confirmation, invoice, cancellation, refund, payment-failed) via `EmailProviderFactory`; writes one `notifications` row per send. Premium, branded HTML templates (`templates/email/*.html` + shared `fragments/layout.html`), fed a resolved `EmailTheme` (real hotel name/logo/contact, fixed brand palette) + a per-type `*EmailData` record — see ARCHITECTURE.md §5b | **Real** — called only from `EmailEventConsumer`, never from a business service directly |
+| `EmailProviderFactory` → `EmailProviderFactoryImpl` | Resolves the configured `EmailProvider` (`SimulatedEmailProvider` / `SmtpEmailProvider`) from `app.email.provider`; fails fast at startup if misconfigured | **Real** |
 | `ReferenceQueryService` | countries, currencies, cancellation reasons, tax/fee types | **Real** |
 | `EventPublisher` → `OutboxEventPublisher` | writes `event_outbox` inside the business transaction | **Real** |
-| `OutboxPublisher` → `KafkaOutboxPublisher` + `OutboxRelay` | claim → publish → settle, stale-claim recovery | **Real bus, no consumer** |
+| `OutboxPublisher` → `KafkaOutboxPublisher` + `OutboxRelay` | claim → publish → settle, stale-claim recovery | **Real bus** — `EmailEventConsumer` is the first (and so far only) consumer |
 | `GuestProvisioningService` | links guest records to user accounts | **Real** |
 
-### Two service-level traps worth knowing
+### One service-level trap worth knowing
 
-1. **`NotificationQueryService` has no writer.** `notifications` and
-   `notification_templates` are never inserted into by any code path. The back-office
-   notifications page will always be empty.
-2. **`ReviewService` proof-of-stay is unreachable.** It requires a reservation in
-   `checked_out` status; the only status transitions implemented are
-   `→ confirmed` (create) and `→ cancelled` (cancel). There is no check-in or check-out
-   mutation, so no reservation can ever reach `checked_out` through the product.
+**`ReviewService` proof-of-stay is unreachable from the guest side.** It requires a
+reservation in `checked_out` status; that transition exists now (staff-driven check-in/
+check-out, `admin-hotel`), but only when staff actually check a guest out through the
+admin console — no guest-facing or date-triggered path reaches it.
