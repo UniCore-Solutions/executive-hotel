@@ -13,7 +13,7 @@ B :=
 F :=
 
 .PHONY: help setup build start dev prod stop restart status logs test e2e lint clean \
-        db-start db-stop db-reset db-migrate backup restore health
+        db-start db-stop db-reset db-migrate backup backup-all restore health
 
 help: ## list available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -71,6 +71,9 @@ db-migrate: ## re-run backend boot to apply pending Flyway migrations
 
 backup: ## database backup (make backup B=--gzip)
 	./scripts/db-backup.sh $(B)
+
+backup-all: ## database + documents + media backup, best-effort
+	./scripts/backup-all.sh
 
 restore: ## database restore (make restore F=<file> plus append --yes if desired)
 	./scripts/db-restore.sh $(F)
