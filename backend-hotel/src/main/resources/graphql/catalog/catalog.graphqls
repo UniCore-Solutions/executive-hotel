@@ -203,6 +203,7 @@ type AdminHotel {
 	restaurants: [Restaurant!]!
 	faqs: [Faq!]!
 	extras: [Extra!]!
+	policies: [HotelPolicy!]!
 }
 
 type AdminHotelPage {

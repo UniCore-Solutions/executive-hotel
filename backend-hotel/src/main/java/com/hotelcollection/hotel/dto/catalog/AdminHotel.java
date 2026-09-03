@@ -10,13 +10,17 @@ import com.hotelcollection.hotel.entity.Experience;
 import com.hotelcollection.hotel.entity.Extra;
 import com.hotelcollection.hotel.entity.Faq;
 import com.hotelcollection.hotel.entity.Hotel;
+import com.hotelcollection.hotel.entity.HotelPolicy;
 import com.hotelcollection.hotel.entity.Media;
 import com.hotelcollection.hotel.entity.Restaurant;
 
-/** Back-office hotel workspace: everything a screen needs in one query. */
+/** Back-office hotel workspace: everything a screen needs in one query.
+    Includes policies directly (unlike the guest-facing hotelDetails query
+    this used to be sourced from) so staff can manage a draft/inactive
+    hotel's settings before or after it's live — see AdminGraphQLController. */
 public record AdminHotel(UUID id, String name, String status, Hotel hotel,
 		List<AdminRoomTypeView> roomTypes, List<AdminRatePlanView> ratePlans,
 		List<Availability> availability, List<Amenity> amenities, List<Media> media,
 		List<Experience> experiences, List<Restaurant> restaurants, List<Faq> faqs,
-		List<Extra> extras) {
+		List<Extra> extras, List<HotelPolicy> policies) {
 }

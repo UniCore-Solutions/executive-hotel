@@ -37,12 +37,6 @@ query AdminHotelSettings($hotelId: ID!) {
       isPrimary
       sortOrder
     }
-  }
-  # AdminHotel has no `policies` field (see docs/ADMIN_REBUILD_PROGRESS.md, backend
-  # gap NEW-4) — the only query exposing HotelPolicy rows is the guest-facing
-  # hotelDetails query, which is permitAll and safe to read from here too since
-  # policies are public guest-facing content.
-  hotelDetails(id: $hotelId) {
     policies {
       id
       hotelId

@@ -22,6 +22,7 @@ import com.hotelcollection.hotel.entity.Hotel;
 import com.hotelcollection.hotel.entity.RoomType;
 import com.hotelcollection.hotel.security.CurrentUserAccessor;
 import com.hotelcollection.hotel.security.CurrentUser;
+import com.hotelcollection.hotel.service.HotelPolicyQueryService;
 import com.hotelcollection.hotel.service.MediaQueryService;
 import com.hotelcollection.hotel.service.RateQueryService;
 import com.hotelcollection.hotel.service.ReservationAdminService;
@@ -43,11 +44,12 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 	private final ReservationAdminService reservations;
 	private final BillingAdminService billing;
 	private final CurrentUserAccessor currentUser;
+	private final HotelPolicyQueryService policies;
 
 	public AdminDashboardServiceImpl(CatalogQueryService catalog, RateQueryService rate,
 			AvailabilityService availability, MediaQueryService media,
 			ReservationAdminService reservations, BillingAdminService billing,
-			CurrentUserAccessor currentUser) {
+			CurrentUserAccessor currentUser, HotelPolicyQueryService policies) {
 		this.catalog = catalog;
 		this.rate = rate;
 		this.availability = availability;
@@ -55,6 +57,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 		this.reservations = reservations;
 		this.billing = billing;
 		this.currentUser = currentUser;
+		this.policies = policies;
 	}
 
 	@Transactional(readOnly = true)
@@ -87,7 +90,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 				availability.range(hotelId, LocalDate.now(), LocalDate.now().plusDays(30)),
 				hotel.getAmenities(), media.findByHotelId(hotelId),
 				catalog.experiences(hotelId), catalog.restaurants(hotelId), catalog.faqs(hotelId),
-				catalog.extras(hotelId));
+				catalog.extras(hotelId), policies.policies(hotelId));
 	}
 
 	@Transactional(readOnly = true)

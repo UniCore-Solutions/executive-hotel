@@ -19,7 +19,7 @@ export default function HotelSettingsPage({ params }: { params: Promise<{ hotelI
   const { data, loading, error, refetch } = useQuery(AdminHotelSettingsDocument, { variables: { hotelId } });
 
   const adminHotel = data?.adminHotel;
-  const policies = data?.hotelDetails?.policies ?? [];
+  const policies = adminHotel?.policies ?? [];
 
   // Controlled tab state, lifted above the loading/error/content ternary
   // below, so the active tab survives a `refetch()` (see `onSaved` below).
