@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { setSessionCookie } from '@/lib/session';
+import { isHttpsRequest, setSessionCookie } from '@/lib/session';
 
 const BACKEND_BASE = (process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:8180/graphql').replace(
   /\/graphql\/?$/,
@@ -43,6 +43,6 @@ export async function POST(request: Request): Promise<NextResponse> {
   // See login/route.ts: the client re-fetches the full profile via
   // GET /api/auth/me right after this call succeeds.
   const data: { token: string } = await res.json();
-  await setSessionCookie(data.token);
+  await setSessionCookie(data.token, isHttpsRequest(request));
   return NextResponse.json({ ok: true });
 }

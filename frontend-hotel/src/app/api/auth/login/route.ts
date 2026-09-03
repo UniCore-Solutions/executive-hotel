@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { setSessionCookie } from '@/lib/session';
+import { isHttpsRequest, setSessionCookie } from '@/lib/session';
 
 // API_INTERNAL_URL is the server-side GraphQL URL (…/graphql); the REST auth
 // endpoints live one level up, at the same host.
@@ -37,6 +37,6 @@ export async function POST(request: Request): Promise<NextResponse> {
   // hotelIds); rather than reconcile two shapes here, the client re-fetches
   // the full profile via GET /api/auth/me right after this call succeeds.
   const data: { token: string } = await res.json();
-  await setSessionCookie(data.token);
+  await setSessionCookie(data.token, isHttpsRequest(request));
   return NextResponse.json({ ok: true });
 }
