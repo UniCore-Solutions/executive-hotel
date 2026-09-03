@@ -16,8 +16,8 @@ import { Separator } from '@/components/ui/separator';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Money } from '@/components/shared/Money';
 import { formatDate, formatDateTime, humanizeEnum } from '@/lib/format';
-import { adminGetInvoice, adminGetCreditNote } from '@/api/rest/endpoints/reservations';
-import { buildInvoiceHtml, buildCreditNoteHtml, downloadInvoiceHtml } from '@/lib/invoice';
+import { adminDownloadInvoicePdf, adminDownloadCreditNotePdf } from '@/api/rest/endpoints/reservations';
+import { downloadBytes } from '@/lib/download';
 import { ApiError } from '@/lib/api';
 import { paymentStatusDisplay, refundStatusNote } from '@/lib/reservationStatus';
 import { useToast } from '@/context/ToastContext';
@@ -60,10 +60,9 @@ export function ReservationDetailSheet({
   const downloadInvoice = async () => {
     setInvoiceBusy(true);
     try {
-      const invoice = await adminGetInvoice(reservation.id);
-      const html = buildInvoiceHtml(invoice, invoice.items);
-      downloadInvoiceHtml(html, `${invoice.invoiceNumber}.html`);
-      toast({ title: 'Invoice ready', description: 'Downloaded — open it in your browser to view or print.', variant: 'success' });
+      const pdf = await adminDownloadInvoicePdf(reservation.id);
+      downloadBytes(pdf.content, pdf.filename, 'application/pdf');
+      toast({ title: 'Invoice ready', description: 'Downloaded as a PDF.', variant: 'success' });
     } catch (err) {
       toast({
         title: 'Invoice unavailable',
@@ -78,10 +77,9 @@ export function ReservationDetailSheet({
   const downloadCreditNote = async () => {
     setCreditNoteBusy(true);
     try {
-      const note = await adminGetCreditNote(reservation.id);
-      const html = buildCreditNoteHtml(note);
-      downloadInvoiceHtml(html, `${note.creditNoteNumber}.html`);
-      toast({ title: 'Credit note ready', description: 'Downloaded — open it in your browser to view or print.', variant: 'success' });
+      const pdf = await adminDownloadCreditNotePdf(reservation.id);
+      downloadBytes(pdf.content, pdf.filename, 'application/pdf');
+      toast({ title: 'Credit note ready', description: 'Downloaded as a PDF.', variant: 'success' });
     } catch (err) {
       toast({
         title: 'Credit note unavailable',

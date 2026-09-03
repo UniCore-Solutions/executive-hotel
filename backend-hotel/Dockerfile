@@ -35,7 +35,7 @@ RUN apt-get update \
 RUN groupadd -r -g 1001 spring && useradd -r -u 1001 -g spring -m spring
 WORKDIR /app
 COPY --from=build /workspace/app.jar app.jar
-RUN mkdir -p /app/media && chown -R spring:spring /app
+RUN mkdir -p /app/media /app/documents && chown -R spring:spring /app
 USER spring
 EXPOSE 8180
 ENTRYPOINT ["java", "-jar", "app.jar"]

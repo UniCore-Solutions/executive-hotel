@@ -224,6 +224,16 @@ Toolchain note: **`mvn` is not on PATH** — use `./mvnw`. JDK 21 and Node 24 ar
 - Payments: real persistence, server-validated amount/currency/balance, overpayment
   rejected, owner-or-staff guard, provider-reference idempotency.
 - Transactional outbox with claim/publish/settle phases and stale-claim recovery.
+- **Invoicing/refund documents (2026-09-03)**: invoices auto-issue on reservation
+  confirmation, credit notes on cancellation (both idempotent, one per reservation) —
+  and each now gets a real server-rendered PDF (Thymeleaf template → openhtmltopdf →
+  local filesystem storage behind a `DocumentStorageProvider` port, same shape as
+  media). Generated eagerly, best-effort, at issuance; regenerated on demand if the
+  stored file is ever missing. Authenticated download:
+  `POST /api/v1/reservations/{reference}/invoice/pdf` (+`/credit-note/pdf`, guest
+  reference+email proof) and `GET /api/v1/admin/reservations/{id}/invoice/pdf`
+  (+`/credit-note/pdf`, staff hotel-scoped). `invoices`/`credit_notes` are no longer
+  empty tables.
 - Media upload/serve behind a storage port.
 - Audit logging on every admin mutation.
 - Uniform error envelope across REST, GraphQL and security filters.
@@ -262,7 +272,6 @@ are seeded — bookings are made live through the API.
 | **Reviews** | create + moderate + list, proof-of-stay check | the check requires `checked_out`, which no code path can produce → guests can never review |
 | **Reservation lifecycle** | `confirmed` and `cancelled` transitions | `pending`, `modified`, `checked_in`, `checked_out`, `no_show` are declared in the enum and never set |
 | **Eventing** | full outbox + Kafka producer | zero consumers; `event_consumption` unused |
-| **Invoicing** | `issueInvoice` + admin listing | never exercised — `invoices` / `invoice_items` empty |
 | **Notifications** | read API + tables | **no writer anywhere**; the back-office page will always be empty |
 | **Promotions** | percentage + fixed_amount; `stay_x_pay_y` soft-fails (`Quote.valid:false` + message) instead of throwing — fixed 2026-08-27 (later) | `stay_x_pay_y`'s actual pricing logic is still unimplemented, only its failure mode changed |
 | **RBAC** | roles + hotel scope | `permissions` / `role_permissions` empty; `Permission` entity has no repository and no usages |
@@ -432,3 +441,43 @@ Remaining known scope, in order:
 > - Confirmed live during this work: room-type↔rate-plan linking is a genuine many-to-many
 >   (`room_type_rate_plans`, unique on the pair) — "one rate plan per room type" was a prior
 >   UI assumption, never a DB rule.
+
+> **Update 2026-09-03 — server-side invoice/refund PDF generation.** The client-side
+> "build HTML, let the browser Print-to-PDF" invoice/credit-note download
+> (`lib/invoice.ts`, duplicated in `frontend-hotel` and `admin-hotel`) is replaced with
+> real backend PDF generation:
+> - **Backend**: `Invoice`/`CreditNote` gain `pdf_storage_key`/`pdf_generated_at`
+>   (`V35`, no new status enum — a non-null key plus "does the file exist" is the whole
+>   generation-state signal). A new `DocumentGenerationService`
+>   (Thymeleaf → `openhtmltopdf-pdfbox` 1.1.73, XML template mode, a locked-down
+>   `UriResolver` that refuses every external/`file:` fetch) renders
+>   `templates/invoices/{payment-invoice,refund-invoice}.html` into PDF bytes and
+>   stores them via a new `DocumentStorageProvider` port (same shape as
+>   `MediaStorageProvider`, PDF-specific, `app.documents.storage-path`). Generation is
+>   eager + best-effort at issuance (same call sites and try/catch idiom that already
+>   issue the invoice/credit-note row) and idempotent/concurrency-safe on demand
+>   (`@Lock(PESSIMISTIC_WRITE)` on the invoice/credit-note row, same idiom as
+>   `ReservationRepository`'s inventory lock — reuses the stored PDF if the file is
+>   still present, regenerates if the DB has a key but the file went missing).
+>   **Deliberately no new Kafka consumer** — this repo has zero `@KafkaListener`s
+>   (`booking.confirmed`/`payment.refunded` already fire but nothing reads them), and the
+>   eager-inline + on-demand-regenerate combination already gives the same guarantees a
+>   consumer would, without standing up the first retry/DLQ convention in the codebase
+>   for a sub-second, dependency-free render. New download endpoints:
+>   `POST /api/v1/reservations/{reference}/invoice/pdf` (+`/credit-note/pdf`, guest
+>   reference+email, `permitAll` like their JSON siblings) and
+>   `GET /api/v1/admin/reservations/{id}/invoice/pdf` (+`/credit-note/pdf`, staff,
+>   `requireHotelAccess` inside the service — verified by the
+>   `ADMIN_SERVICES_ENFORCE_AUTHORIZATION` ArchUnit rule same as every other admin path).
+> - **Frontend**: `lib/invoice.ts` deleted from `frontend-hotel` and `admin-hotel` (not
+>   `backoffice-hotel` — legacy, left untouched); the three call sites
+>   (`ConfirmationFlow.tsx`, `ReservationFlow.tsx`, `ReservationDetailSheet.tsx`) now
+>   request the PDF (`responseType: 'arraybuffer'`) and blob-download the real bytes via
+>   a small shared `lib/download.ts` helper. Both apps' `/api/rest` BFF proxies were
+>   fixed to stop reading every backend response with `res.text()` — that silently
+>   corrupted binary bodies; non-text responses now pass through as an `ArrayBuffer`.
+> - Verified: **240/240 backend tests, all 7 ArchUnit rules** (Testcontainers, Maven
+>   container); both frontends `tsc`/`eslint` clean, `frontend-hotel` 120/120 vitest,
+>   `admin-hotel` 279/279 vitest. New integration coverage: eager generation, on-demand
+>   generate-or-reuse, regeneration after the stored file is deleted, guest wrong-email
+>   rejection, staff cross-hotel rejection (403), credit-note-not-yet-issued (404).

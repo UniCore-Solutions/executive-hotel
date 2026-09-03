@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<!--
+  Credit-note/refund document. Same rendering pipeline and escaping rules as
+  payment-invoice.html — see the comment there. Deliberately not itemized
+  the same way as the invoice: a summary of original charge -> penalty
+  retained -> amount credited back, not a re-listing of the original
+  invoice's line items.
+-->
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8" />
+  <title th:text="'Credit note ' + ${creditNoteNumber}">Credit note</title>
+  <style>
+    @page { size: A4; margin: 26mm 18mm; }
+    body { font-family: 'Times New Roman', Georgia, serif; color: #182420; font-size: 12px; margin: 0; }
+    h1 { font-size: 20px; margin: 0 0 4px 0; }
+    h2 { font-size: 16px; margin: 26px 0 4px 0; }
+    p { margin: 2px 0; }
+    .muted { color: #5c6b62; font-size: 11px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 11px; }
+    td { padding: 6px; text-align: left; }
+    td.num { text-align: right; }
+    tr.grand td { font-weight: bold; font-size: 13px; border-top: 2px solid #182420; padding-top: 8px; }
+    p.note { margin-top: 32px; color: #5c6b62; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1 th:text="${hotelName}">Hotel Name</h1>
+  <p class="muted" th:if="${hotelAddress != null and hotelAddress != ''}" th:text="${hotelAddress}">Address</p>
+  <p class="muted" th:if="${hotelPhone != null and hotelPhone != ''}" th:text="${hotelPhone}">Phone</p>
+  <p class="muted" th:if="${hotelEmail != null and hotelEmail != ''}" th:text="${hotelEmail}">Email</p>
+
+  <h2 th:text="'Credit note ' + ${creditNoteNumber}">Credit note CN-0000</h2>
+  <p class="muted">
+    <span>Issued to </span><span th:text="${billingName}">Guest Name</span>
+    <span> &#183; Issued </span><span th:text="${issuedAtDisplay}">1 Jan 2026</span>
+    <span> &#183; following a cancellation</span>
+  </p>
+
+  <table>
+    <tr>
+      <td>Original invoice amount</td>
+      <td class="num" th:text="${originalAmount}">MAD 0</td>
+    </tr>
+    <tr>
+      <td>Cancellation fee retained</td>
+      <td class="num" th:text="'-' + ${penaltyAmount}">-MAD 0</td>
+    </tr>
+    <tr class="grand">
+      <td>Credited back</td>
+      <td class="num" th:text="${creditedAmount}">MAD 0</td>
+    </tr>
+  </table>
+
+  <p class="note">This credit note adjusts the original invoice for the above reservation
+    following its cancellation. No further action is needed on your part.</p>
+</body>
+</html>

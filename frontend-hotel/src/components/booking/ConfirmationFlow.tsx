@@ -15,8 +15,8 @@ import { GraphqlClientError } from '@/services/graphqlClient';
 import { getExtras } from '@/services/extras';
 import { getHotelById } from '@/services/catalog';
 import { buildIcs } from '@/lib/ics';
-import { buildInvoiceHtml, downloadInvoiceHtml } from '@/lib/invoice';
-import { issueInvoice } from '@/api/rest/endpoints';
+import { downloadBytes } from '@/lib/download';
+import { downloadInvoicePdf } from '@/api/rest/endpoints';
 import { ApiError } from '@/api/rest/client';
 import { fmt, fmtShort, fromISODate, nightsBetween } from '@/lib/dates';
 import { image, IMG_FALLBACK } from '@/services/availability';
@@ -359,14 +359,10 @@ export default function ConfirmationFlow() {
   const downloadInvoice = async () => {
     setInvoiceBusy(true);
     try {
-      const invoice = await issueInvoice(res.reference, res.guest.email ?? '');
-      const html = buildInvoiceHtml(invoice, invoice.items, {
-        name: hotelMeta?.name || 'Hotel',
-        city: hotelMeta?.city,
-      });
-      downloadInvoiceHtml(html, `${invoice.invoiceNumber}.html`);
+      const pdf = await downloadInvoicePdf(res.reference, res.guest.email ?? '');
+      downloadBytes(pdf.content, pdf.filename, 'application/pdf');
       toast({
-        message: 'Invoice downloaded — open it in your browser to view or print it.',
+        message: 'Invoice downloaded as a PDF.',
         type: 'ok',
         title: 'Invoice ready',
       });

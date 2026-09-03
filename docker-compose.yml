@@ -88,6 +88,7 @@ services:
       KAFKA_BOOTSTRAP: kafka:29092
       MEDIA_STORAGE_PATH: /app/media
       MEDIA_BASE_URL: ${MEDIA_BASE_URL:-http://localhost:8180}
+      DOCUMENTS_STORAGE_PATH: /app/documents
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
       OUTBOX_RELAY_INTERVAL_MS: ${OUTBOX_RELAY_INTERVAL_MS:-1000}
       RESERVATION_HOLD_MINUTES: ${RESERVATION_HOLD_MINUTES:-15}
@@ -103,6 +104,7 @@ services:
       - "${BACKEND_PORT:-8180}:8180"
     volumes:
       - media_data:/app/media
+      - documents_data:/app/documents
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8180/actuator/health/readiness >/dev/null"]
       interval: 10s
@@ -212,3 +214,4 @@ volumes:
   postgres_data:
   kafka_data:
   media_data:
+  documents_data:

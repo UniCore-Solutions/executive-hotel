@@ -8,40 +8,42 @@ export async function adminCancelReservation(
   return data;
 }
 
-export interface AdminInvoiceData {
-  invoiceNumber: string;
-  billingName: string;
-  currencyCode: string;
-  subtotalAmount: number;
-  discountAmount: number;
-  taxAmount: number;
-  feeAmount: number;
-  totalAmount: number;
-  issuedAt: string;
-  items: { description: string; quantity: number; unitPrice: number; totalPrice: number }[];
+export interface DownloadedPdf {
+  content: ArrayBuffer;
+  filename: string;
 }
 
-/** Get-or-create — idempotent, hotel-scoped staff access enforced server-side. */
-export async function adminGetInvoice(reservationId: string): Promise<AdminInvoiceData> {
-  const { data } = await restClient.get(`/admin/reservations/${reservationId}/invoice`);
-  return data as AdminInvoiceData;
+/** Parses `attachment; filename="INV-XXXX.pdf"` — falls back to a generic
+    name if the header is missing or unparsable rather than failing the
+    download. */
+function filenameFromContentDisposition(header: string | undefined, fallback: string): string {
+  const match = header?.match(/filename="?([^";]+)"?/i);
+  return match?.[1] ?? fallback;
 }
 
-export interface AdminCreditNoteData {
-  creditNoteNumber: string;
-  billingName: string;
-  currencyCode: string;
-  originalAmount: number;
-  penaltyAmount: number;
-  creditedAmount: number;
-  issuedAt: string;
+/** Get-or-generate — idempotent, hotel-scoped staff access enforced
+    server-side; the backend renders and stores the PDF (or reuses the one
+    already stored) and streams it back. */
+export async function adminDownloadInvoicePdf(reservationId: string): Promise<DownloadedPdf> {
+  const response = await restClient.get(`/admin/reservations/${reservationId}/invoice/pdf`, {
+    responseType: 'arraybuffer',
+  });
+  return {
+    content: response.data as ArrayBuffer,
+    filename: filenameFromContentDisposition(response.headers['content-disposition'], 'invoice.pdf'),
+  };
 }
 
 /** Read-only — a credit note is issued automatically on cancellation, never
     on demand. Throws (404) if none exists for this reservation. */
-export async function adminGetCreditNote(reservationId: string): Promise<AdminCreditNoteData> {
-  const { data } = await restClient.get(`/admin/reservations/${reservationId}/credit-note`);
-  return data as AdminCreditNoteData;
+export async function adminDownloadCreditNotePdf(reservationId: string): Promise<DownloadedPdf> {
+  const response = await restClient.get(`/admin/reservations/${reservationId}/credit-note/pdf`, {
+    responseType: 'arraybuffer',
+  });
+  return {
+    content: response.data as ArrayBuffer,
+    filename: filenameFromContentDisposition(response.headers['content-disposition'], 'credit-note.pdf'),
+  };
 }
 
 /** Assigns a physical room to one room line. 409s (surfaced as ApiError with

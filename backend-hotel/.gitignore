@@ -37,4 +37,5 @@ build/
 .env.*
 !.env.example
 data/media/
+data/documents/
 logs/

@@ -18,11 +18,24 @@ export const restClient: AxiosInstance = axios.create({
   timeout: 30_000,
 });
 
+/** Requests that use `responseType: 'arraybuffer'` (PDF downloads) get an
+    ArrayBuffer back for error responses too — the backend's JSON error
+    envelope needs decoding before the code/message can be read. */
+function decodeErrorBody(data: unknown): ApiErrorEnvelope | undefined {
+  if (!data) return undefined;
+  if (!(data instanceof ArrayBuffer)) return data as ApiErrorEnvelope;
+  try {
+    return JSON.parse(new TextDecoder().decode(data)) as ApiErrorEnvelope;
+  } catch {
+    return undefined;
+  }
+}
+
 restClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError<ApiErrorEnvelope>) => {
     const status = error.response?.status;
-    const body = error.response?.data;
+    const body = decodeErrorBody(error.response?.data);
     if (body?.code && body.message) {
       throw new ApiError(body.message, body.code);
     }

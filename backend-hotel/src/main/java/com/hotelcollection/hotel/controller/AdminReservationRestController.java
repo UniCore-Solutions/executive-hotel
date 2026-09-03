@@ -2,6 +2,10 @@ package com.hotelcollection.hotel.controller;
 
 import java.util.UUID;
 
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -9,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.hotelcollection.hotel.dto.billing.GeneratedDocument;
 import com.hotelcollection.hotel.entity.CreditNote;
 import com.hotelcollection.hotel.entity.Invoice;
 import com.hotelcollection.hotel.entity.Reservation;
@@ -68,6 +73,26 @@ public class AdminReservationRestController {
 	@GetMapping("/{reservationId}/credit-note")
 	public CreditNote creditNote(@PathVariable UUID reservationId) {
 		return invoiceService.getCreditNoteForStaff(reservationId);
+	}
+
+	/** Hotel-scoped staff access enforced inside {@link InvoiceService} —
+	 * never the reservation/invoice id alone. */
+	@GetMapping("/{reservationId}/invoice/pdf")
+	public ResponseEntity<byte[]> invoicePdf(@PathVariable UUID reservationId) {
+		return pdfResponse(invoiceService.getInvoicePdfForStaff(reservationId));
+	}
+
+	@GetMapping("/{reservationId}/credit-note/pdf")
+	public ResponseEntity<byte[]> creditNotePdf(@PathVariable UUID reservationId) {
+		return pdfResponse(invoiceService.getCreditNotePdfForStaff(reservationId));
+	}
+
+	private ResponseEntity<byte[]> pdfResponse(GeneratedDocument doc) {
+		return ResponseEntity.ok()
+				.contentType(MediaType.APPLICATION_PDF)
+				.header(HttpHeaders.CONTENT_DISPOSITION,
+						ContentDisposition.attachment().filename(doc.filename()).build().toString())
+				.body(doc.content());
 	}
 
 	/** Transport-specific body for the cancel action. */

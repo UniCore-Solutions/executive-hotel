@@ -13,9 +13,9 @@ import { REST_INVALIDATIONS, invalidateGraphql } from '@/api/invalidation';
 import { reservations, type BackendReservation } from '@/services/reservations';
 import { GraphqlClientError } from '@/services/graphqlClient';
 import { getExtras } from '@/services/extras';
-import { getCreditNote } from '@/api/rest/endpoints';
+import { downloadCreditNotePdf } from '@/api/rest/endpoints';
 import { ApiError } from '@/api/rest/client';
-import { buildCreditNoteHtml, downloadInvoiceHtml } from '@/lib/invoice';
+import { downloadBytes } from '@/lib/download';
 import { fmt, fromISODate, inStayWindow } from '@/lib/dates';
 import { fmtPrice } from '@/lib/format';
 import { image, IMG_FALLBACK } from '@/services/availability';
@@ -306,10 +306,9 @@ export default function ReservationFlow() {
   const downloadCreditNote = async () => {
     setCreditNoteBusy(true);
     try {
-      const note = await getCreditNote(res.reference, res.guest.email ?? '');
-      const html = buildCreditNoteHtml(note, { name: 'Executive Hotel' });
-      downloadInvoiceHtml(html, `${note.creditNoteNumber}.html`);
-      toast({ message: 'Credit note downloaded.', type: 'ok', title: 'Ready' });
+      const pdf = await downloadCreditNotePdf(res.reference, res.guest.email ?? '');
+      downloadBytes(pdf.content, pdf.filename, 'application/pdf');
+      toast({ message: 'Credit note downloaded as a PDF.', type: 'ok', title: 'Ready' });
     } catch (err) {
       const message =
         err instanceof ApiError && err.code === 'NOT_FOUND'

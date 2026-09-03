@@ -90,10 +90,18 @@ export async function handler(
     body,
     cache: 'no-store',
   });
-  const payload = await res.text();
+  const responseContentType = res.headers.get('content-type') ?? 'application/json';
+  // Binary responses (e.g. the invoice/credit-note PDF download) must not go
+  // through `res.text()` — decoding non-UTF8 bytes as text and re-encoding
+  // them corrupts the body. Anything not text/JSON is passed through as
+  // an ArrayBuffer instead.
+  const isText = /^(text\/|application\/(json|.*\+json|xml|.*\+xml|x-www-form-urlencoded))/i.test(
+    responseContentType,
+  );
+  const payload = isText ? await res.text() : await res.arrayBuffer();
   return new NextResponse(payload, {
     status: res.status,
-    headers: { 'content-type': res.headers.get('content-type') ?? 'application/json' },
+    headers: { 'content-type': responseContentType },
   });
 }
 

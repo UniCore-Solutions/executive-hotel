@@ -23,6 +23,15 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+  thymeleaf:
+    # XML, not the default (lenient, NekoHTML-based) HTML mode: openhtmltopdf
+    # parses rendered templates with a strict XML parser, so both the
+    # template source and Thymeleaf's own parsing of it must be well-formed
+    # (self-closed void elements, no unclosed tags) — Thymeleaf 3 has no
+    # separate "XHTML" mode, XML is the strict one. Only used for
+    # server-rendered PDF documents (templates/invoices/**) — nothing else in
+    # this app uses Thymeleaf.
+    mode: XML
   graphql:
     graphiql:
       enabled: false
@@ -59,6 +68,8 @@ app:
   media:
     storage-path: ${MEDIA_STORAGE_PATH:./data/media}
     base-url: ${MEDIA_BASE_URL:http://localhost:8180}
+  documents:
+    storage-path: ${DOCUMENTS_STORAGE_PATH:./data/documents}
   outbox:
     relay-interval-ms: ${OUTBOX_RELAY_INTERVAL_MS:1000}
     batch-size: 50

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<!--
+  Rendered server-side by DocumentGenerationServiceImpl, then converted to
+  PDF by openhtmltopdf. Must stay well-formed XHTML (self-closed void
+  elements, properly nested tags) — openhtmltopdf parses this as XML, not
+  lenient HTML5. Every dynamic value uses th:text (auto-escaping); never
+  th:utext, since billingName/hotelAddress can contain guest-controlled text.
+-->
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8" />
+  <title th:text="'Invoice ' + ${invoiceNumber}">Invoice</title>
+  <style>
+    @page { size: A4; margin: 26mm 18mm; }
+    body { font-family: 'Times New Roman', Georgia, serif; color: #182420; font-size: 12px; margin: 0; }
+    h1 { font-size: 20px; margin: 0 0 4px 0; }
+    h2 { font-size: 16px; margin: 26px 0 4px 0; }
+    p { margin: 2px 0; }
+    .muted { color: #5c6b62; font-size: 11px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 11px; }
+    th, td { padding: 7px 6px; border-bottom: 1px solid #dddddd; text-align: left; }
+    th { text-transform: uppercase; font-size: 9px; letter-spacing: 0.04em; color: #5c6b62; }
+    td.num, th.num { text-align: right; }
+    table.totals { margin-top: 8px; }
+    table.totals td { border-bottom: none; padding: 3px 6px; }
+    tr.grand td { font-weight: bold; font-size: 13px; border-top: 2px solid #182420; padding-top: 6px; }
+    p.thanks { margin-top: 32px; color: #5c6b62; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1 th:text="${hotelName}">Hotel Name</h1>
+  <p class="muted" th:if="${hotelAddress != null and hotelAddress != ''}" th:text="${hotelAddress}">Address</p>
+  <p class="muted" th:if="${hotelPhone != null and hotelPhone != ''}" th:text="${hotelPhone}">Phone</p>
+  <p class="muted" th:if="${hotelEmail != null and hotelEmail != ''}" th:text="${hotelEmail}">Email</p>
+
+  <h2 th:text="'Invoice ' + ${invoiceNumber}">Invoice INV-0000</h2>
+  <p class="muted">
+    <span>Billed to </span><span th:text="${billingName}">Guest Name</span>
+    <span> &#183; Issued </span><span th:text="${issuedAtDisplay}">1 Jan 2026</span>
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th class="num">Qty</th>
+        <th class="num">Unit</th>
+        <th class="num">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr th:each="item : ${items}">
+        <td th:text="${item.description}">Room stay</td>
+        <td class="num" th:text="${item.quantity}">1</td>
+        <td class="num" th:text="${item.unitPrice}">MAD 0</td>
+        <td class="num" th:text="${item.totalPrice}">MAD 0</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table class="totals">
+    <tr>
+      <td>Subtotal</td>
+      <td class="num" th:text="${subtotalAmount}">MAD 0</td>
+    </tr>
+    <tr th:if="${hasDiscount}">
+      <td>Discount</td>
+      <td class="num" th:text="'-' + ${discountAmount}">-MAD 0</td>
+    </tr>
+    <tr>
+      <td>Tax</td>
+      <td class="num" th:text="${taxAmount}">MAD 0</td>
+    </tr>
+    <tr>
+      <td>Fees</td>
+      <td class="num" th:text="${feeAmount}">MAD 0</td>
+    </tr>
+    <tr class="grand">
+      <td>Total</td>
+      <td class="num" th:text="${totalAmount}">MAD 0</td>
+    </tr>
+  </table>
+
+  <p class="thanks">Thank you for staying with us.</p>
+</body>
+</html>

@@ -43,7 +43,7 @@ async function handler(
     body,
     cache: 'no-store',
   });
-  const payload = await res.text();
+  const responseContentType = res.headers.get('content-type') ?? 'application/json';
   // A null-body status (204/205/304 — e.g. the media DELETE endpoint's
   // `ResponseEntity.noContent()`) cannot carry a body per the Fetch spec,
   // not even an empty string: `new NextResponse('', { status: 204 })`
@@ -53,9 +53,20 @@ async function handler(
   // action — it equally affects the pre-existing room-type media delete,
   // which goes through this same proxy.
   const nullBodyStatus = res.status === 204 || res.status === 205 || res.status === 304;
-  return new NextResponse(nullBodyStatus ? null : payload, {
+  if (nullBodyStatus) {
+    return new NextResponse(null, { status: res.status, headers: { 'content-type': responseContentType } });
+  }
+  // Binary responses (e.g. the invoice/credit-note PDF download) must not go
+  // through `res.text()` — decoding non-UTF8 bytes as text and re-encoding
+  // them corrupts the body. Anything not text/JSON is passed through as
+  // an ArrayBuffer instead.
+  const isText = /^(text\/|application\/(json|.*\+json|xml|.*\+xml|x-www-form-urlencoded))/i.test(
+    responseContentType,
+  );
+  const payload = isText ? await res.text() : await res.arrayBuffer();
+  return new NextResponse(payload, {
     status: res.status,
-    headers: { 'content-type': res.headers.get('content-type') ?? 'application/json' },
+    headers: { 'content-type': responseContentType },
   });
 }
 

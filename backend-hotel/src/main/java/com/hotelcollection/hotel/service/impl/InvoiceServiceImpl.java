@@ -9,21 +9,26 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.hotelcollection.hotel.dto.billing.GeneratedDocument;
 import com.hotelcollection.hotel.entity.CreditNote;
 import com.hotelcollection.hotel.entity.Invoice;
 import com.hotelcollection.hotel.entity.InvoiceItem;
 import com.hotelcollection.hotel.entity.ReservationStatus;
 import com.hotelcollection.hotel.exception.DomainException;
 import com.hotelcollection.hotel.security.CurrentUserAccessor;
+import com.hotelcollection.hotel.service.DocumentGenerationService;
 import com.hotelcollection.hotel.service.InvoiceService;
 import com.hotelcollection.hotel.entity.Reservation;
 import com.hotelcollection.hotel.repository.CreditNoteRepository;
 import com.hotelcollection.hotel.repository.InvoiceItemRepository;
 import com.hotelcollection.hotel.repository.InvoiceRepository;
 import com.hotelcollection.hotel.service.BookingService;
+import com.hotelcollection.hotel.storage.DocumentStorageProvider;
 
 /**
  * Invoice use cases. An invoice is idempotent (one per reservation) and,
@@ -38,20 +43,27 @@ import com.hotelcollection.hotel.service.BookingService;
 @Service
 public class InvoiceServiceImpl implements InvoiceService {
 
+	private static final Logger log = LoggerFactory.getLogger(InvoiceServiceImpl.class);
+
 	private final InvoiceRepository invoiceRepository;
 	private final InvoiceItemRepository invoiceItemRepository;
 	private final CreditNoteRepository creditNoteRepository;
 	private final BookingService booking;
 	private final CurrentUserAccessor currentUser;
+	private final DocumentGenerationService documentGeneration;
+	private final DocumentStorageProvider documentStorage;
 
 	public InvoiceServiceImpl(InvoiceRepository invoiceRepository,
 			InvoiceItemRepository invoiceItemRepository, CreditNoteRepository creditNoteRepository,
-			BookingService booking, CurrentUserAccessor currentUser) {
+			BookingService booking, CurrentUserAccessor currentUser,
+			DocumentGenerationService documentGeneration, DocumentStorageProvider documentStorage) {
 		this.invoiceRepository = invoiceRepository;
 		this.invoiceItemRepository = invoiceItemRepository;
 		this.creditNoteRepository = creditNoteRepository;
 		this.booking = booking;
 		this.currentUser = currentUser;
+		this.documentGeneration = documentGeneration;
+		this.documentStorage = documentStorage;
 	}
 
 	@Override
@@ -113,7 +125,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 		int sortOrder = 0;
 		for (var line : reservation.getRoomLines()) {
 			items.add(item(invoice.getId(), "room", null,
-					"Room stay: " + line.getCheckInDate() + " → " + line.getCheckOutDate()
+					// ASCII "to", not an arrow glyph: the PDF renderer's base-14
+					// fonts (WinAnsi/Latin-1) have no glyph for U+2192 and would
+					// silently drop or substitute it.
+					"Room stay: " + line.getCheckInDate() + " to " + line.getCheckOutDate()
 							+ " (" + line.getNights() + " nights)",
 					BigDecimal.ONE, line.getSubtotalAmount(), sortOrder++));
 		}
@@ -133,6 +148,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 		}
 		invoiceItemRepository.saveAll(items);
 		invoice.getItems().addAll(items);
+		tryGenerateInvoicePdf(invoice);
 		return invoice;
 	}
 
@@ -163,7 +179,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 		note.setCreditedAmount(creditedAmount);
 		note.setStatus("issued");
 		note.setIssuedAt(Instant.now());
-		return creditNoteRepository.save(note);
+		CreditNote saved = creditNoteRepository.save(note);
+		tryGenerateCreditNotePdf(saved);
+		return saved;
 	}
 
 	@Override
@@ -181,6 +199,95 @@ public class InvoiceServiceImpl implements InvoiceService {
 		currentUser.requireHotelAccess(reservation.getHotelId());
 		return creditNoteRepository.findByReservationId(reservationId)
 				.orElseThrow(() -> DomainException.notFound("no credit note exists for this reservation"));
+	}
+
+	@Override
+	@Transactional
+	public GeneratedDocument getInvoicePdfForGuest(String reservationReference, String guestEmail) {
+		Invoice invoice = getOrCreateInvoice(reservationReference, guestEmail);
+		return new GeneratedDocument(getOrGenerateInvoicePdf(invoice), filename(invoice.getInvoiceNumber()));
+	}
+
+	@Override
+	@Transactional
+	public GeneratedDocument getInvoicePdfForStaff(UUID reservationId) {
+		Invoice invoice = getInvoiceForStaff(reservationId);
+		return new GeneratedDocument(getOrGenerateInvoicePdf(invoice), filename(invoice.getInvoiceNumber()));
+	}
+
+	@Override
+	@Transactional
+	public GeneratedDocument getCreditNotePdfForGuest(String reservationReference, String guestEmail) {
+		CreditNote note = getCreditNote(reservationReference, guestEmail);
+		return new GeneratedDocument(getOrGenerateCreditNotePdf(note), filename(note.getCreditNoteNumber()));
+	}
+
+	@Override
+	@Transactional
+	public GeneratedDocument getCreditNotePdfForStaff(UUID reservationId) {
+		CreditNote note = getCreditNoteForStaff(reservationId);
+		return new GeneratedDocument(getOrGenerateCreditNotePdf(note), filename(note.getCreditNoteNumber()));
+	}
+
+	/**
+	 * Idempotent, concurrency-safe: locks the invoice row, reuses an
+	 * already-stored PDF if the file is still actually present (regenerates
+	 * if the DB has a key but the file went missing), otherwise generates
+	 * one. The lock means two concurrent downloads for the same invoice
+	 * never race into generating/storing two files.
+	 */
+	private byte[] getOrGenerateInvoicePdf(Invoice invoice) {
+		Invoice locked = invoiceRepository.findByIdForUpdate(invoice.getId())
+				.orElseThrow(() -> DomainException.notFound("invoice not found"));
+		byte[] existing = documentStorage.read(locked.getPdfStorageKey());
+		if (existing != null) {
+			return existing;
+		}
+		byte[] pdf = documentGeneration.generateInvoicePdf(locked);
+		locked.setPdfStorageKey(DocumentGenerationService.invoiceStorageKey(locked.getId()));
+		locked.setPdfGeneratedAt(Instant.now());
+		invoiceRepository.save(locked);
+		return pdf;
+	}
+
+	/** Same idempotent, concurrency-safe shape as {@link #getOrGenerateInvoicePdf}. */
+	private byte[] getOrGenerateCreditNotePdf(CreditNote note) {
+		CreditNote locked = creditNoteRepository.findByIdForUpdate(note.getId())
+				.orElseThrow(() -> DomainException.notFound("credit note not found"));
+		byte[] existing = documentStorage.read(locked.getPdfStorageKey());
+		if (existing != null) {
+			return existing;
+		}
+		byte[] pdf = documentGeneration.generateCreditNotePdf(locked);
+		locked.setPdfStorageKey(DocumentGenerationService.creditNoteStorageKey(locked.getId()));
+		locked.setPdfGeneratedAt(Instant.now());
+		creditNoteRepository.save(locked);
+		return pdf;
+	}
+
+	/** Best-effort eager generation at issuance time — never allowed to fail
+	 * the invoice row it decorates; a miss here is filled in by the
+	 * on-demand path ({@link #getOrGenerateInvoicePdf}) on first download. */
+	private void tryGenerateInvoicePdf(Invoice invoice) {
+		try {
+			getOrGenerateInvoicePdf(invoice);
+		} catch (Exception ex) {
+			log.warn("failed to eagerly generate invoice PDF for {}", invoice.getInvoiceNumber(), ex);
+		}
+	}
+
+	/** Best-effort eager generation at issuance time — same posture as
+	 * {@link #tryGenerateInvoicePdf}. */
+	private void tryGenerateCreditNotePdf(CreditNote note) {
+		try {
+			getOrGenerateCreditNotePdf(note);
+		} catch (Exception ex) {
+			log.warn("failed to eagerly generate credit note PDF for {}", note.getCreditNoteNumber(), ex);
+		}
+	}
+
+	private String filename(String documentNumber) {
+		return documentNumber + ".pdf";
 	}
 
 	private String guestDisplayName(Reservation reservation) {

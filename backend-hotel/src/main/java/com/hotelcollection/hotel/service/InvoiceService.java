@@ -3,6 +3,7 @@ package com.hotelcollection.hotel.service;
 import java.math.BigDecimal;
 import java.util.UUID;
 
+import com.hotelcollection.hotel.dto.billing.GeneratedDocument;
 import com.hotelcollection.hotel.entity.CreditNote;
 import com.hotelcollection.hotel.entity.Invoice;
 
@@ -53,4 +54,26 @@ public interface InvoiceService {
 	/** Staff entry point (hotel-scoped access enforced internally).
 	 * {@code NOT_FOUND} if no credit note exists for this reservation. */
 	CreditNote getCreditNoteForStaff(UUID reservationId);
+
+	/**
+	 * Guest self-service PDF download (reference+email proof) — same
+	 * idempotent get-or-create as {@link #getOrCreateInvoice}, plus
+	 * idempotent, concurrency-safe PDF generation/reuse: returns the already
+	 * -stored PDF when one exists, otherwise generates, stores and persists
+	 * it before returning it.
+	 */
+	GeneratedDocument getInvoicePdfForGuest(String reservationReference, String guestEmail);
+
+	/** Staff PDF download (hotel-scoped access enforced internally); same
+	 * generate-or-reuse semantics as {@link #getInvoicePdfForGuest}. */
+	GeneratedDocument getInvoicePdfForStaff(UUID reservationId);
+
+	/** Guest self-service credit-note PDF download. {@code NOT_FOUND} if no
+	 * credit note exists for this reservation. */
+	GeneratedDocument getCreditNotePdfForGuest(String reservationReference, String guestEmail);
+
+	/** Staff credit-note PDF download (hotel-scoped access enforced
+	 * internally). {@code NOT_FOUND} if no credit note exists for this
+	 * reservation. */
+	GeneratedDocument getCreditNotePdfForStaff(UUID reservationId);
 }

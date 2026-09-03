@@ -69,4 +69,10 @@ public class CreditNote {
 
 	@Column(nullable = false)
 	private Instant issuedAt;
+
+	@Column(name = "pdf_storage_key")
+	private String pdfStorageKey;
+
+	@Column(name = "pdf_generated_at")
+	private Instant pdfGeneratedAt;
 }

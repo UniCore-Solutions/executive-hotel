@@ -47,8 +47,8 @@ class DatabaseIntegrityIntegrationTest {
 	void flywayAppliedAllMigrations() {
 		Integer applied = jdbc.queryForObject(
 				"SELECT count(*) FROM flyway_schema_history WHERE success = TRUE", Integer.class);
-		// V34 (platform_contact_info) is the current head.
-		assertThat(applied).isEqualTo(34);
+		// V35 (invoice_document_pdf_tracking) is the current head.
+		assertThat(applied).isEqualTo(35);
 	}
 
 	@Test

@@ -129,56 +129,48 @@ export async function capturePayment(input: {
   return response.data as PaymentCreated;
 }
 
-export interface InvoiceItem {
-  description: string;
-  itemType: string;
-  quantity: number;
-  unitPrice: number;
-  totalPrice: number;
+export interface DownloadedPdf {
+  content: ArrayBuffer;
+  filename: string;
 }
 
-export interface InvoiceData {
-  invoiceNumber: string;
-  billingName: string;
-  currencyCode: string;
-  subtotalAmount: number;
-  discountAmount: number;
-  taxAmount: number;
-  feeAmount: number;
-  totalAmount: number;
-  status: string;
-  issuedAt: string;
-  items: InvoiceItem[];
+/** Parses `attachment; filename="INV-XXXX.pdf"` — falls back to a generic
+    name if the header is missing or unparsable rather than failing the
+    download. */
+function filenameFromContentDisposition(header: string | undefined, fallback: string): string {
+  const match = header?.match(/filename="?([^";]+)"?/i);
+  return match?.[1] ?? fallback;
 }
 
-/** Get-or-create — idempotent, so calling this to "download" is safe even if
-    the reservation's invoice hasn't auto-issued yet for some reason. */
-export async function issueInvoice(reference: string, email: string): Promise<InvoiceData> {
-  const response = await restClient.post(`/v1/reservations/${encodeURIComponent(reference)}/invoice`, {
-    email,
-  });
-  return response.data as InvoiceData;
-}
-
-export interface CreditNoteData {
-  creditNoteNumber: string;
-  billingName: string;
-  currencyCode: string;
-  originalAmount: number;
-  penaltyAmount: number;
-  creditedAmount: number;
-  status: string;
-  issuedAt: string;
+/** Get-or-generate — idempotent, so calling this to "download" is safe even
+    if the reservation's invoice hasn't auto-issued yet for some reason. The
+    backend renders and stores the PDF (or reuses the one already stored)
+    and streams it back; reference+email is the whole authorization proof. */
+export async function downloadInvoicePdf(reference: string, email: string): Promise<DownloadedPdf> {
+  const response = await restClient.post(
+    `/v1/reservations/${encodeURIComponent(reference)}/invoice/pdf`,
+    { email },
+    { responseType: 'arraybuffer' }
+  );
+  return {
+    content: response.data as ArrayBuffer,
+    filename: filenameFromContentDisposition(response.headers['content-disposition'], 'invoice.pdf'),
+  };
 }
 
 /** Read-only — a credit note is issued automatically on cancellation, never
     on demand. Throws (404) if the reservation was never cancelled, or was
     cancelled without ever having an invoice to adjust. */
-export async function getCreditNote(reference: string, email: string): Promise<CreditNoteData> {
-  const response = await restClient.post(`/v1/reservations/${encodeURIComponent(reference)}/credit-note`, {
-    email,
-  });
-  return response.data as CreditNoteData;
+export async function downloadCreditNotePdf(reference: string, email: string): Promise<DownloadedPdf> {
+  const response = await restClient.post(
+    `/v1/reservations/${encodeURIComponent(reference)}/credit-note/pdf`,
+    { email },
+    { responseType: 'arraybuffer' }
+  );
+  return {
+    content: response.data as ArrayBuffer,
+    filename: filenameFromContentDisposition(response.headers['content-disposition'], 'credit-note.pdf'),
+  };
 }
 
 export async function updateMyProfile(input: {

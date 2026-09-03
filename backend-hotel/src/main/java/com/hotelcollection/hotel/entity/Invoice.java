@@ -78,6 +78,12 @@ public class Invoice {
 	@Column(nullable = false)
 	private Instant issuedAt;
 
+	@Column(name = "pdf_storage_key")
+	private String pdfStorageKey;
+
+	@Column(name = "pdf_generated_at")
+	private Instant pdfGeneratedAt;
+
 	@OneToMany(mappedBy = "invoiceId", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
 	private List<InvoiceItem> items = new ArrayList<>();
 }
