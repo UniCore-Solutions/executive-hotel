@@ -65,10 +65,44 @@ const AVAILABILITY_STATUS: Record<string, Tone> = {
   soldout: 'critical',
 };
 
+// Backend enum is `pending | approved | rejected` (ReviewModerationStatus,
+// review/review.graphqls) — this previously said `published`, which never
+// matched a real value and silently fell back to the 'neutral' tone for
+// every approved review.
 const REVIEW_STATUS: Record<string, Tone> = {
   pending: 'info',
-  published: 'success',
+  approved: 'success',
   rejected: 'critical',
+};
+
+const PROMOTION_STATUS: Record<string, Tone> = {
+  active: 'success',
+  inactive: 'neutral',
+  expired: 'critical',
+};
+
+// `users.status` (`chk_users_status`, V2 + V27): active/inactive/locked are
+// admin-managed staff states; 'provisioned' is the passwordless placeholder
+// account silently created for an accountless guest booking (V27) — not a
+// staff concept, but `adminUsers` returns every user row, staff and guest
+// alike, so the Users module needs to render it too.
+const USER_STATUS: Record<string, Tone> = {
+  active: 'success',
+  provisioned: 'info',
+  inactive: 'neutral',
+  locked: 'critical',
+};
+
+// `AuditLog.result` is hardcoded to "success" everywhere `AuditService.record`
+// is called today (confirmed live — every seeded row is "success") — the
+// other values are anticipated, not yet real, but the field is a free
+// string on the entity, so this stays ready for whenever a failure path
+// starts recording one instead of silently rendering "neutral".
+const AUDIT_RESULT: Record<string, Tone> = {
+  success: 'success',
+  failure: 'critical',
+  failed: 'critical',
+  error: 'critical',
 };
 
 const DOMAINS = {
@@ -80,6 +114,9 @@ const DOMAINS = {
   catalog: CATALOG_STATUS,
   availability: AVAILABILITY_STATUS,
   review: REVIEW_STATUS,
+  promotion: PROMOTION_STATUS,
+  user: USER_STATUS,
+  audit: AUDIT_RESULT,
 } as const;
 
 export type StatusDomain = keyof typeof DOMAINS;

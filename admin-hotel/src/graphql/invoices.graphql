@@ -1,0 +1,17 @@
+query AdminInvoices($hotelId: ID!, $page: PageInput) {
+  adminInvoices(hotelId: $hotelId, page: $page) {
+    total
+    page
+    size
+    items {
+      id
+      invoiceNumber
+      reservationId
+      billingName
+      currencyCode
+      totalAmount
+      status
+      issuedAt
+    }
+  }
+}

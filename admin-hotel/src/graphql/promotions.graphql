@@ -1,0 +1,24 @@
+query AdminPromotions($hotelId: ID!) {
+  adminPromotions(hotelId: $hotelId) {
+    id
+    hotelId
+    code
+    name
+    description
+    discountType
+    discountValue
+    bookingWindowStart
+    bookingWindowEnd
+    stayWindowStart
+    stayWindowEnd
+    minNights
+    maxUsageTotal
+    maxUsagePerGuest
+    stackable
+    appliesToAllRoomTypes
+    appliesToAllRatePlans
+    applicableDaysOfWeek
+    status
+    createdAt
+  }
+}

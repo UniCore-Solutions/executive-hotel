@@ -1,0 +1,18 @@
+query AdminReviews($hotelId: ID!, $status: ReviewModerationStatus, $page: PageInput) {
+  adminReviews(hotelId: $hotelId, status: $status, page: $page) {
+    total
+    page
+    size
+    items {
+      id
+      hotelId
+      authorName
+      rating
+      title
+      comment
+      moderationStatus
+      responseText
+      createdAt
+    }
+  }
+}

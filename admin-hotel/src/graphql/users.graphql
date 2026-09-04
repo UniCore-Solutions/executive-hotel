@@ -1,0 +1,25 @@
+query AdminUsers {
+  adminUsers {
+    id
+    email
+    firstName
+    lastName
+    phone
+    status
+    lastLoginAt
+    createdAt
+    roles {
+      id
+      roleName
+      hotelId
+      hotelName
+    }
+  }
+}
+
+query AdminRoles {
+  adminRoles {
+    name
+    hotelScoped
+  }
+}

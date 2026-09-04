@@ -1,14 +1,19 @@
 import {
+  BadgePercent,
   BedDouble,
   Building2,
   CalendarClock,
   CalendarRange,
+  FileText,
   LayoutDashboard,
+  MessageSquareText,
   Palette,
   Receipt,
+  ScrollText,
   Settings,
   Tag,
   Users,
+  UsersRound,
   type LucideIcon,
 } from 'lucide-react';
 import { SUPER_ADMIN } from '@/lib/roles';
@@ -52,6 +57,20 @@ export const GLOBAL_NAV_GROUPS: NavGroup[] = [
       // super_admin-only same as the write it fronts. UX-only gate, same
       // caveat as every other `roles` entry in this file.
       { href: '/platform/settings', label: 'Platform Settings', icon: Palette, roles: [SUPER_ADMIN] },
+      // Every method on IdentityAdminService calls
+      // CurrentUserAccessor.requireSuperAdmin() internally (adminUsers,
+      // adminRoles, createUser, assignRole, revokeRole alike) — this is the
+      // one nav gate in this file backed by a real backend check on every
+      // path it fronts, not just a plausibility guess like the hotel-nav
+      // `roles` entries below.
+      { href: '/users', label: 'Users & Roles', icon: UsersRound, roles: [SUPER_ADMIN] },
+      // `adminAuditLogs` has no `hotelId` argument — it's a platform-wide
+      // read, backend-gated to `requireSuperAdmin()` inside
+      // `AuditServiceImpl.auditLogs` (confirmed live: a `hotel_admin`
+      // login gets a real FORBIDDEN, not a partial result). This nav gate
+      // matches that real boundary rather than just following the usual
+      // UX-only convention.
+      { href: '/audit', label: 'Audit Log', icon: ScrollText, roles: [SUPER_ADMIN] },
     ],
   },
 ];
@@ -80,6 +99,14 @@ export function hotelNavGroups(hotelId: string, roles: string[]): NavGroup[] {
           href: `${base}/payments`,
           label: 'Payments',
           icon: Receipt,
+          roles: ['hotel_admin', 'finance_staff'],
+        },
+        {
+          href: `${base}/invoices`,
+          label: 'Invoices',
+          icon: FileText,
+          // Same audience as Payments — invoice/credit-note PDFs are a
+          // finance-adjacent, read-only concern.
           roles: ['hotel_admin', 'finance_staff'],
         },
       ],
@@ -115,6 +142,16 @@ export function hotelNavGroups(hotelId: string, roles: string[]): NavGroup[] {
           icon: Tag,
           roles: ['hotel_admin', 'revenue_manager'],
         },
+        {
+          href: `${base}/promotions`,
+          label: 'Promotions',
+          icon: BadgePercent,
+          // Same revenue-side judgement call as Rate Plans just above — a
+          // promo code discounts pricing, so it's a pricing/revenue
+          // decision, not ops or content. UX-only gate, same caveat as the
+          // rest of this file (see NavItem.roles doc).
+          roles: ['hotel_admin', 'revenue_manager'],
+        },
       ],
     },
     {
@@ -124,6 +161,19 @@ export function hotelNavGroups(hotelId: string, roles: string[]): NavGroup[] {
           href: `${base}/settings`,
           label: 'Settings',
           icon: Settings,
+          roles: ['hotel_admin', 'content_manager'],
+        },
+        {
+          href: `${base}/reviews`,
+          label: 'Reviews',
+          icon: MessageSquareText,
+          // Review moderation decides what appears on the hotel's public
+          // page — the same "guest-facing content" plausibility bucket as
+          // Settings above, not a front-desk/finance/revenue task. Same
+          // UX-only judgement-call caveat as every other `roles` entry in
+          // this file (see NavItem.roles doc) — a direct URL still goes
+          // through the real `requireHotelAccess` check in
+          // ReviewService#adminReviews/#moderate, unchanged.
           roles: ['hotel_admin', 'content_manager'],
         },
       ],

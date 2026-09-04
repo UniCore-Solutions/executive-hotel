@@ -32,6 +32,13 @@ describe('GLOBAL_NAV_GROUPS', () => {
     expect(platform?.roles).toEqual([SUPER_ADMIN]);
     expect(hotels?.roles).toBeUndefined();
   });
+
+  it('gates Users & Roles to super_admin, matching every method on IdentityAdminService', () => {
+    const users = GLOBAL_NAV_GROUPS.flatMap((g) => g.items).find((i) => i.label === 'Users & Roles');
+    expect(users?.roles).toEqual([SUPER_ADMIN]);
+    expect(visibleTo(users!, ['reception_staff'])).toBe(false);
+    expect(visibleTo(users!, [SUPER_ADMIN])).toBe(true);
+  });
 });
 
 describe('hotelNavGroups', () => {
@@ -50,10 +57,13 @@ describe('hotelNavGroups', () => {
       'Reservations',
       'Guests',
       'Payments',
+      'Invoices',
       'Room Types',
       'Availability',
       'Rate Plans',
+      'Promotions',
       'Settings',
+      'Reviews',
     ]);
   });
 

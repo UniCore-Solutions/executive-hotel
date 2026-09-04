@@ -9,11 +9,11 @@
 
 | | |
 |---|---|
-| **Phase** | 2.2 (Inventory) complete; 2.3 (Dashboard) complete; **E-NAV-1, E-ROLES-1, E5 (Rate plans & Availability), E6 (Settings & Media), E7 (Guests & Payments), E-NAV-2, E-PLATFORM (new), E3-T04 (Room/Room-Type merge + rate-plan linking + scoped Availability), E4-T02 (actionable check-in/check-out + room assignment) all complete** |
-| **Current module** | Three tasks built in parallel this session (one agent per epic, each in its own worktree off `d9e4204`), then hand-merged (reconciling `nav-items.ts` — touched by all three — and `invalidation.ts` — touched by two — plus layering the concurrent money-formatting fix onto the rewritten dashboard page) and re-verified as a whole. Next: Promotions (E5, still unblocked and unstarted), or E8/E9 |
-| **Last completed** | Hotels list search/sort/create (E-NAV-2); Platform brand settings — logo, description, new contact fields (E-PLATFORM, new epic); Room Types + Rooms merged into one page with rate-plan linking and a room-type-scoped Availability tab (E3-T04); actionable role-aware Dashboard — real arrivals/departures lists, room assignment, check-in/check-out (E4-T02) |
-| **Next READY task** | E5-T0x — Promotions (rate plans exist, J-14 unblocked); or E8/E9 (Users/Audit/Reviews, Front desk, Extras, Content, Invoices, Reports) |
-| **Verified against** | Live stack + Maven-container test suite (backend: 227/227, all 7 ArchUnit rules) + `admin-hotel` build/tsc/eslint (0 errors)/vitest (15/15), 2026-09-02 |
+| **Phase** | 2.2 (Inventory) complete; 2.3 (Dashboard) complete; **E-NAV-1, E-ROLES-1, E5 (Rate plans & Availability & Promotions), E6 (Settings & Media), E7 (Guests & Payments), E-NAV-2, E-PLATFORM, E3-T04, E4-T02, and E8/most-of-E9 (Users & Roles, Audit Log, Reviews moderation, Invoices) all complete** |
+| **Current module** | Five tasks built in parallel this session (one agent per module — Promotions, Users & Roles, Audit Log, Reviews moderation, Invoices — each in its own worktree off `main`), then hand-merged (reconciling `nav-items.ts`/`nav-items.test.ts` — touched by all five — and `StatusBadge.tsx` — touched by four, including a real pre-existing bug fix — plus `DataTableToolbar.tsx`, made search-optional by the Reviews agent) and re-verified as a whole. Next: the three genuinely backend-blocked E9 modules (Extras admin write, Content/CMS beyond brand settings, Reports) |
+| **Last completed** | Promotions (E5-T06); Users & Roles, Audit Log, Reviews moderation (E8); Invoices (E9) — see "Epic E8 — Users, Audit, Reviews" and "Epic E9 — Invoices" below for full detail |
+| **Next READY task** | The three backend-blocked E9 modules: Extras admin write (needs a new `ExtrasAdminService`/REST controller — J-2), Content/CMS (needs new admin write endpoints for `HeroBlock`/`PlatformContentBlock`/`FeaturedExperiencesBlock` — `PlatformAdminServiceImpl` today only covers brand/media, confirmed by reading it), Reports (nothing beyond the existing `AdminDashboardService` aggregation exists) |
+| **Verified against** | Live stack; merged result re-verified as a whole (not just each agent's isolated worktree run): `admin-hotel` `tsc` clean, `eslint` 0 errors (1 pre-existing benign warning), **303/303 vitest**, `npm run build` clean (24 routes, 5 new: `/audit`, `/users`, `/hotels/[hotelId]/{promotions,reviews,invoices}`), plus live GraphQL/REST round-trips through the merged app's own BFF on a throwaway dev server against every new query (`adminUsers`, `adminAuditLogs`, `adminPromotions`, `adminReviews`, `adminInvoices` — the last confirmed against the correct canonical hotel id after an initial query happened to hit an inactive hotel with zero invoices), 2026-09-04 |
 
 **Outstanding follow-up**: GitHub Dependabot flagged 2 lodash advisories (high +
 moderate) in both `admin-hotel` and `backoffice-hotel`, caused by `@graphql-codegen/cli`
@@ -230,6 +230,11 @@ unchanged.
 | `/hotels/[hotelId]/settings` | ✅ | Full-page Profile / Policies / Amenities / Media tabs. Policies' write path — flagged "unverified" before this session — is confirmed working end to end (real Postgres rows after a real write) |
 | `/hotels/[hotelId]/guests` | ✅ | List (`DataTable`) with server-side debounced search on name/email (not phone — schema doesn't support it) |
 | `/hotels/[hotelId]/payments` | ✅ | Read-only list (`DataTable`), **real server-side search+sort added 2026-09-02** (search matches reservation reference or guest name/email via a nested subquery — `Payment` has no direct guest relation). Shows `reservationId` as plain reference text — no drill-down link (no `adminReservation(id)` query exists, NEW-2) |
+| `/hotels/[hotelId]/invoices` | ✅ **new** | Read-only list (`DataTable`), no server filter args. Per-row invoice + credit-note PDF download (credit-note 404s honestly when the reservation was never cancelled) |
+| `/hotels/[hotelId]/promotions` | ✅ **new** | List (client-side search/sort) + create/edit drawer, activate/deactivate action. Platform-wide promotions shown badged, editable only by `super_admin` |
+| `/hotels/[hotelId]/reviews` | ✅ **new** | Status-filterable, paginated list; approve/reject action with confirmation and toast feedback |
+| `/users` | ✅ **new** | Global, `super_admin`-only. User list (defaults to staff, toggle to show all accounts incl. guests/provisioned), create-user drawer, per-user role assign/revoke |
+| `/audit` | ✅ **new** | Global, `super_admin`-only. Paginated audit trail, client-side filters on the loaded page (no server filter args exist on `adminAuditLogs`) |
 
 **Note:** the old standalone `/hotels/[hotelId]/rooms` route is **gone** — merged into
 `/hotels/[hotelId]/room-types` per E3-T04 above (2026-09-02). Any bookmark or link to the
@@ -335,10 +340,131 @@ session (not just typechecked) — see "Verification log" below.
 | E7-T01 | Guests directory with search | COMPLETED — search covers name/email only (schema has no phone search) |
 | E7-T02 | Payments list | COMPLETED — read-only; J-9 corrected (see Backend gaps); real search+sort added 2026-09-02 |
 
-### Epics E8–E9 — not started
+### Epic E5-T06 — Promotions
 
-See the investigation report §S for the full breakdown (Users/Audit/Reviews, and the
-backend-blocked modules: Front desk, Extras, Content, Invoices, Reports).
+| ID | Task | Status |
+|---|---|---|
+| E5-T06 | Promotions list + create/edit drawer, activate/deactivate action | COMPLETED 2026-09-04 |
+
+`adminPromotions(hotelId): [AdminPromotion!]!` (`rate.graphqls`) and the REST writes in
+`AdminRateRestController` were already real; built a list (client-side search/sort, no
+server args exist) + a single `PromotionFormSheet` drawer shared by create/edit (no
+id-dependent follow-up step the way Rate Plans has, so no full-page editor was needed).
+Platform-wide promotions (`hotelId: null`) are shown badged "Platform-wide"; editing one
+requires `super_admin` server-side (surfaced as a toast on failure, not duplicated
+client-side). `stay_x_pay_y` promotions are creatable with an inline warning that
+quote-time pricing for that type is still unimplemented (per this doc's Backend gaps /
+`docs/CURRENT_STATE.md`).
+
+**Backend gap found (not worked around, see Backend gaps NEW-6):** `AdminPromotion`/
+`AdminPromotionInput` only expose all-or-nothing `appliesToAllRoomTypes`/
+`appliesToAllRatePlans` booleans — `promotion_eligible_room_types`/
+`promotion_eligible_rate_plans` tables exist in the schema with zero admin read/write
+surface, so staff cannot scope a promotion to specific room types or rate plans today.
+
+Verified: `tsc`/`eslint` clean, 279/279 vitest (isolated worktree run), `npm run build`
+clean. Live-verified all three REST writes (create/update/status) directly against
+`localhost:8180` and again through this app's own BFF on a throwaway dev server. Two
+harmless inactive test promotions (`TESTPROMO1`, `BFFTEST1`) were left in the dev
+database — there is no delete endpoint for promotions to remove them.
+
+### Epic E8 — Users, Audit, Reviews
+
+| ID | Task | Status |
+|---|---|---|
+| E8-T01 | Users & Roles: global user list, create-user drawer, per-user role assign/revoke | COMPLETED 2026-09-04 |
+| E8-T02 | Audit Log: global, paginated, filterable audit trail | COMPLETED 2026-09-04 |
+| E8-T03 | Reviews moderation: hotel-scoped list, status filter, approve/reject action | COMPLETED 2026-09-04 |
+
+**Users & Roles (`/users`, `super_admin`-only).** Confirmed by reading
+`IdentityAdminServiceImpl`/`CurrentUserAccessor` source that every method
+(`adminUsers`, `adminRoles`, `createUser`, `assignRole`, `revokeRole`) calls
+`requireSuperAdmin()` — this is genuinely platform-wide with no hotel-scoped variant for
+a `hotel_admin` to manage their own staff, confirmed live (a `hotel_admin` login gets a
+real GraphQL `FORBIDDEN` on `adminUsers` and a real REST `403` trying to grant itself
+`super_admin`). One real path correction found by reading source instead of trusting a
+paraphrase: revoke is `DELETE /api/v1/admin/users/roles/{userRoleId}`, not
+`/api/v1/admin/roles/{userRoleId}`. `adminUsers` returns every `User` row system-wide
+including guests and passwordless "provisioned" accounts (212 rows live, 3 real staff) —
+the list defaults to a "Staff" filter with a "Show all accounts" toggle for the one real
+workflow that needs the rest (granting a role to an existing guest account). No
+deactivate/status-update endpoint exists for `AdminUser` (see Backend gaps NEW-7).
+
+**Audit Log (`/audit`, `super_admin`-only).** Traced `adminAuditLogs` →
+`AuditServiceImpl.auditLogs` and found it **already correctly gated** —
+`requireSuperAdmin()` is the first line — confirmed live both directly and through the
+app's own BFF (a `hotel_admin` login gets a genuine `FORBIDDEN`, not a silently
+hotel-filtered result). No backend change was needed. `adminAuditLogs` takes no filter
+args beyond `page`, so filtering (action/resource type/result/hotel/free-text) is
+client-side against the currently-loaded page only, with an explicit on-page disclaimer
+— same honesty convention this app already applies to the Hotels list (NEW-3).
+**Backend quirk found, not a security issue (see Backend gaps NEW-8):**
+`AuditLogEntry.metadata` is declared `String` in the schema but the resolver returns the
+raw jsonb `Map<String,Object>` with no serializer, so the wire value is Java's
+`Map#toString()` (`{name=Executive Hotel}`), not valid JSON — `auditMetadata.ts` parses
+both shapes defensively.
+
+**Reviews moderation (`/hotels/[hotelId]/reviews`).** `adminReviews(hotelId, status,
+page)` and `POST /api/v1/admin/reviews/{id}/moderation` were already real,
+hotel-scoped via `requireHotelAccess`. Found and fixed a real pre-existing bug along the
+way: `StatusBadge`'s `REVIEW_STATUS` mapped `published` — a value that has never existed
+in the real `pending|approved|rejected` enum — instead of `approved`, so every approved
+review silently rendered the wrong (neutral) tone. Live-verified end to end including an
+actual Playwright/Chromium browser session (login → filter → approve dialog → in-place
+list update with a success toast, no manual reload) against real seeded data (4 reviews),
+with the test mutation cleanly reverted afterward.
+
+Verified (isolated worktree runs before the merge): all three `tsc`/`eslint`/`vitest`
+clean, `npm run build` clean, live GraphQL+REST round-trips through each module's own
+BFF. Re-verified together after merge — see the Status table above.
+
+### Epic E9 — Invoices
+
+| ID | Task | Status |
+|---|---|---|
+| E9-T01 | Invoices: hotel-scoped, read-only list with per-row invoice/credit-note PDF download | COMPLETED 2026-09-04 |
+
+Corrects this doc's prior "Invoices is backend-blocked" line — it is not; real
+server-rendered invoice/credit-note PDFs shipped 2026-09-03 (see `docs/CURRENT_STATE.md`).
+`adminInvoices(hotelId, page)` (`billing.graphqls`) has no server `search`/`sort` args, so
+the list is a plain paginated `DataTable`, modeled closely on Payments. The GraphQL
+`Invoice` type carries no reservation status or "has a credit note" flag, so — following
+the exact precedent already in `ReservationDetailSheet.tsx` — the credit-note download
+action is always offered and a 404 explains "never cancelled" via toast, rather than
+inventing a join the schema doesn't serve. One path correction found by reading
+`AdminReservationRestController` source: the credit-note endpoint is
+`GET /api/v1/admin/reservations/{id}/credit-note/pdf`, not
+`.../invoice/credit-note/pdf`. Reused the existing `lib/download.ts#downloadBytes` and
+REST client helpers already added for `ReservationDetailSheet` rather than duplicating
+them. No backend changes needed.
+
+Verified: `tsc`/`eslint` clean, 285/285 vitest (isolated worktree run), `npm run build`
+clean (20 routes at that point). Live-verified both directly against `localhost:8180` and
+through the app's own BFF: `adminInvoices` (21 real rows on the canonical hotel), and both
+PDF downloads with actual byte/magic-number checks (`%PDF-1.6`, byte counts matching
+exactly through the proxy — confirming its binary pass-through fix still holds), plus a
+clean `NOT_FOUND` envelope for the no-credit-note case.
+
+### Epics E9 (remainder) — not started
+
+Three genuinely backend-blocked modules remain, per a fresh read of the current backend
+source (not the original investigation report, which predates most of 2026-09's backend
+work and is stale on this point):
+
+- **Extras admin write** — confirmed absent: no `ExtrasAdminService`, no
+  create/update-extra REST endpoint anywhere in `backend-hotel/`. See Backend gaps J-2.
+- **Content/CMS beyond brand settings** — `PlatformAdminServiceImpl` (built for
+  E-PLATFORM) covers only the `Platform` brand/media entity; `HeroBlock`,
+  `PlatformContentBlock` and `FeaturedExperiencesBlock` (the actual homepage/guest-site
+  content blocks) have no admin write path at all.
+- **Reports** — nothing beyond `AdminDashboardService`'s existing arrivals/departures/
+  occupancy/revenue aggregation exists; a real reporting module (date-range revenue,
+  ADR/RevPAR, etc.) would need new backend queries, not just a new page.
+
+Front desk is no longer in this list — E4-T02's actionable Dashboard (real
+arrivals/departures, room assignment, check-in/check-out) already covers its core
+workflow; a dedicated `/front-desk` page beyond the Dashboard has not been requested and
+would likely duplicate it.
 
 ## Backend gaps
 
@@ -357,6 +483,9 @@ Carried from the investigation report (§J), plus two discovered during this ses
 | **NEW-2** | **No admin query to fetch a single reservation by id.** `adminReservations` returns pages only; there is no `adminReservation(id)`. Worked around: the detail view reads the already-fetched row from the list query (Apollo cache) rather than an extra round trip — this is *better* UX than a naive fetch-by-id would have been, but it means a reservation not on the currently-loaded page can't be deep-linked to until it's paged into view (the app shows an honest "not in the current view" notice in that case, never a fabricated result). Also means the Payments list's `reservationId` is shown as plain text, not a link. | OPEN — low urgency given the workaround, but resolving J-1 (real search) would make this moot for the common case. | none blocking |
 | **NEW-4** | **No `policies` field on the admin `AdminHotel` GraphQL type** — the write path (`PUT /admin/hotels/{id}/policies`) works and was verified end to end (real Postgres rows after a real write, previously flagged "unverified — 0 rows"), but there's no admin read query to match. Worked around: the Settings page reads policies via the public, `permitAll` `hotelDetails(id).policies` query instead (safe since it's already public content). | OPEN | Would let Settings drop its public-query workaround |
 | **NEW-5** | **No `currencies` reference query**, same shape gap as NEW-1's `cancellationReasons`. Worked around: hardcoded 6 currency options client-side in the Settings Profile form. | OPEN | Low priority — rarely changes |
+| **NEW-6** | **`AdminPromotion`/`AdminPromotionInput` have no per-room-type/per-rate-plan eligibility fields** — `promotion_eligible_room_types`/`promotion_eligible_rate_plans` tables exist in the schema, unused; only all-or-nothing `appliesToAllRoomTypes`/`appliesToAllRatePlans` booleans are exposed. Worked around: the Promotions form warns inline that turning either boolean off makes the promotion eligible for nothing. | OPEN | Real per-item promo scoping, if ever needed |
+| **NEW-7** | **No deactivate/status-update endpoint for `AdminUser`.** A user can be created and have roles assigned/revoked, but there's no way to disable an account from the admin console. | OPEN | Low priority — no reported need yet |
+| **NEW-8** | **`AuditLogEntry.metadata` is declared `String` in the schema but resolves to a raw jsonb `Map` with no serializer**, so the wire value is Java's `Map#toString()` (`{k=v}`), not valid JSON. Worked around: `auditMetadata.ts` parses both shapes defensively before falling back to raw text. | OPEN | Cosmetic only — fixing the resolver-side serialization would let clients drop the fallback parser |
 
 ## Decisions
 

@@ -1,0 +1,19 @@
+query AdminAuditLogs($page: PageInput) {
+  adminAuditLogs(page: $page) {
+    total
+    page
+    size
+    items {
+      id
+      actorUserId
+      actorEmail
+      action
+      resourceType
+      resourceId
+      hotelId
+      result
+      metadata
+      createdAt
+    }
+  }
+}
