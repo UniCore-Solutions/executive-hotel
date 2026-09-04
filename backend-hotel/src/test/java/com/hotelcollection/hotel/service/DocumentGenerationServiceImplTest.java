@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -20,9 +21,13 @@ import com.hotelcollection.hotel.entity.Hotel;
 import com.hotelcollection.hotel.entity.Invoice;
 import com.hotelcollection.hotel.entity.InvoiceItem;
 import com.hotelcollection.hotel.entity.Reservation;
+import com.hotelcollection.hotel.repository.CancellationReasonRepository;
+import com.hotelcollection.hotel.repository.InvoiceRepository;
+import com.hotelcollection.hotel.repository.MediaRepository;
 import com.hotelcollection.hotel.service.impl.DocumentGenerationServiceImpl;
 import com.hotelcollection.hotel.storage.DocumentStorageProvider;
 import com.hotelcollection.hotel.storage.LocalFilesystemDocumentStorageProvider;
+import com.hotelcollection.hotel.storage.MediaStorageProvider;
 
 /**
  * Unit coverage for the HTML->PDF rendering pipeline itself: real Thymeleaf
@@ -54,14 +59,26 @@ class DocumentGenerationServiceImplTest {
 		Reservation reservation = new Reservation();
 		reservation.setId(reservationId);
 		reservation.setHotelId(hotelId);
+		reservation.setReference("RES-TEST-1");
+		reservation.setCheckInDate(LocalDate.of(2026, 1, 1));
+		reservation.setCheckOutDate(LocalDate.of(2026, 1, 4));
+		reservation.setAdults((short) 2);
+		reservation.setChildren((short) 0);
 		when(booking.getById(reservationId)).thenReturn(reservation);
 		Hotel hotel = new Hotel();
+		hotel.setId(hotelId);
 		hotel.setName("Executive Hotel");
 		hotel.setCity("Lisbon");
 		hotel.setCountryCode("PT");
 		when(catalog.getHotel(hotelId)).thenReturn(hotel);
 
-		return new DocumentGenerationServiceImpl(templateEngine, storage, booking, catalog);
+		MediaRepository mediaRepository = mock(MediaRepository.class);
+		MediaStorageProvider mediaStorage = mock(MediaStorageProvider.class);
+		CancellationReasonRepository cancellationReasonRepository = mock(CancellationReasonRepository.class);
+		InvoiceRepository invoiceRepository = mock(InvoiceRepository.class);
+
+		return new DocumentGenerationServiceImpl(templateEngine, storage, booking, catalog,
+				mediaRepository, mediaStorage, cancellationReasonRepository, invoiceRepository);
 	}
 
 	private Invoice invoiceFixture() {

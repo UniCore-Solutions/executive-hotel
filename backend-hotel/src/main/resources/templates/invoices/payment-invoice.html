@@ -4,53 +4,176 @@
   PDF by openhtmltopdf. Must stay well-formed XHTML (self-closed void
   elements, properly nested tags) — openhtmltopdf parses this as XML, not
   lenient HTML5. Every dynamic value uses th:text (auto-escaping); never
-  th:utext, since billingName/hotelAddress can contain guest-controlled text.
+  th:utext, since billingName/hotelAddress/guest fields can contain
+  guest-controlled text. logoDataUri is the one src/href-style value in this
+  template — it is always a data: URI the server base64-encoded itself from
+  stored logo bytes, never a value that could point off-document (see
+  DocumentGenerationServiceImpl#DATA_URI_ONLY).
 -->
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
 <head>
   <meta charset="UTF-8" />
   <title th:text="'Invoice ' + ${invoiceNumber}">Invoice</title>
   <style>
-    @page { size: A4; margin: 26mm 18mm; }
-    body { font-family: 'Times New Roman', Georgia, serif; color: #182420; font-size: 12px; margin: 0; }
-    h1 { font-size: 20px; margin: 0 0 4px 0; }
-    h2 { font-size: 16px; margin: 26px 0 4px 0; }
-    p { margin: 2px 0; }
-    .muted { color: #5c6b62; font-size: 11px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 11px; }
-    th, td { padding: 7px 6px; border-bottom: 1px solid #dddddd; text-align: left; }
-    th { text-transform: uppercase; font-size: 9px; letter-spacing: 0.04em; color: #5c6b62; }
+    @page { size: A4; margin: 16mm 16mm 20mm 16mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      color: #1c2521;
+      font-size: 10px;
+      line-height: 1.5;
+      margin: 0;
+    }
+
+    /* ---- palette ---- */
+    /* ink #1c2521, muted #6b7a72, hairline #e2e7e4, accent #0f4c3a, accent-soft #eef4f1 */
+
+    .brand-bar { width: 100%; border-bottom: 2.5px solid #0f4c3a; padding-bottom: 12px; margin-bottom: 18px; }
+    .brand-bar table { width: 100%; border-collapse: collapse; }
+    .brand-bar td { padding: 0; vertical-align: top; border: none; }
+    .logo-img { max-height: 46px; max-width: 190px; }
+    .hotel-name-fallback { font-size: 19px; font-weight: bold; color: #0f4c3a; letter-spacing: 0.02em; }
+    .hotel-contact { color: #6b7a72; font-size: 9px; margin-top: 4px; line-height: 1.6; }
+    .doc-title { text-align: right; font-size: 24px; font-weight: bold; color: #1c2521; letter-spacing: 0.06em; }
+    .doc-meta { text-align: right; color: #6b7a72; font-size: 9px; margin-top: 6px; line-height: 1.7; }
+    .doc-meta .label { color: #97a39c; }
+    .doc-meta .value { color: #1c2521; font-weight: bold; }
+
+    /* ---- info panels: bill-to / stay ---- */
+    .panels { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    .panels td { border: none; padding: 0; vertical-align: top; width: 50%; }
+    .panel { background-color: #f7f9f8; border: 1px solid #e2e7e4; border-radius: 4px; padding: 12px 14px; }
+    .panel-left { margin-right: 6px; }
+    .panel-right { margin-left: 6px; }
+    .panel h3 {
+      margin: 0 0 8px 0; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.08em;
+      color: #0f4c3a; font-weight: bold;
+    }
+    .panel .primary-line { font-size: 12px; font-weight: bold; color: #1c2521; margin: 0 0 3px 0; }
+    .panel .sub-line { color: #6b7a72; font-size: 9.5px; margin: 1px 0; }
+    .kv-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    .kv-table td { border: none; padding: 2px 0; font-size: 9.5px; }
+    .kv-table td.k { color: #6b7a72; width: 42%; }
+    .kv-table td.v { color: #1c2521; font-weight: bold; text-align: right; }
+
+    /* ---- line items ---- */
+    h2.section-title {
+      font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: #0f4c3a;
+      font-weight: bold; margin: 0 0 8px 0;
+    }
+    table.items { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+    table.items thead td, table.items thead th {
+      background-color: #0f4c3a; color: #ffffff; padding: 8px 8px; text-align: left;
+      font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.05em; border: none;
+    }
+    table.items thead td.num, table.items thead th.num { text-align: right; }
+    table.items tbody td { padding: 8px 8px; border-bottom: 1px solid #e2e7e4; font-size: 10px; color: #1c2521; }
+    table.items tbody tr:nth-child(even) { background-color: #f7f9f8; }
     td.num, th.num { text-align: right; }
-    table.totals { margin-top: 8px; }
-    table.totals td { border-bottom: none; padding: 3px 6px; }
-    tr.grand td { font-weight: bold; font-size: 13px; border-top: 2px solid #182420; padding-top: 6px; }
-    p.thanks { margin-top: 32px; color: #5c6b62; font-size: 11px; }
+    td.desc { color: #1c2521; }
+
+    /* ---- totals ---- */
+    table.totals-wrap { width: 100%; border-collapse: collapse; margin-top: 14px; }
+    table.totals-wrap td { border: none; padding: 0; vertical-align: top; }
+    table.totals { width: 62mm; border-collapse: collapse; margin-left: auto; }
+    table.totals td { padding: 4px 0; font-size: 9.5px; border: none; }
+    table.totals td.t-label { color: #6b7a72; }
+    table.totals td.t-value { text-align: right; color: #1c2521; }
+    table.totals tr.discount td { color: #b3492e; }
+    table.totals tr.grand td {
+      font-weight: bold; font-size: 13.5px; color: #0f4c3a; border-top: 1.5px solid #0f4c3a;
+      padding-top: 8px; margin-top: 4px;
+    }
+
+    /* ---- footer ---- */
+    .footer { margin-top: 34px; border-top: 1px solid #e2e7e4; padding-top: 12px; }
+    .footer p { margin: 2px 0; color: #97a39c; font-size: 8.5px; text-align: center; }
+    .footer p.thanks { color: #0f4c3a; font-size: 10px; font-weight: bold; margin-bottom: 4px; }
   </style>
 </head>
 <body>
-  <h1 th:text="${hotelName}">Hotel Name</h1>
-  <p class="muted" th:if="${hotelAddress != null and hotelAddress != ''}" th:text="${hotelAddress}">Address</p>
-  <p class="muted" th:if="${hotelPhone != null and hotelPhone != ''}" th:text="${hotelPhone}">Phone</p>
-  <p class="muted" th:if="${hotelEmail != null and hotelEmail != ''}" th:text="${hotelEmail}">Email</p>
 
-  <h2 th:text="'Invoice ' + ${invoiceNumber}">Invoice INV-0000</h2>
-  <p class="muted">
-    <span>Billed to </span><span th:text="${billingName}">Guest Name</span>
-    <span> &#183; Issued </span><span th:text="${issuedAtDisplay}">1 Jan 2026</span>
-  </p>
+  <div class="brand-bar">
+    <table>
+      <tr>
+        <td style="width: 55%;">
+          <img th:if="${logoDataUri != null}" th:src="${logoDataUri}" class="logo-img" alt="Hotel logo" />
+          <div th:unless="${logoDataUri != null}" class="hotel-name-fallback" th:text="${hotelName}">Hotel Name</div>
+          <div class="hotel-contact">
+            <div th:if="${hotelAddress != null and hotelAddress != ''}" th:text="${hotelAddress}">Address</div>
+            <div>
+              <span th:if="${hotelPhone != null and hotelPhone != ''}" th:text="${hotelPhone}">Phone</span>
+              <span th:if="${hotelPhone != null and hotelPhone != '' and hotelEmail != null and hotelEmail != ''}"> &#183; </span>
+              <span th:if="${hotelEmail != null and hotelEmail != ''}" th:text="${hotelEmail}">Email</span>
+            </div>
+          </div>
+        </td>
+        <td style="width: 45%;">
+          <div class="doc-title">INVOICE</div>
+          <div class="doc-meta">
+            <div><span class="label">Invoice No.</span> <span class="value" th:text="${invoiceNumber}">INV-0000</span></div>
+            <div><span class="label">Issued</span> <span class="value" th:text="${issuedAtDisplay}">1 Jan 2026</span></div>
+            <div><span class="label">Reservation</span> <span class="value" th:text="${reservationReference}">REF-0000</span></div>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </div>
 
-  <table>
+  <table class="panels">
+    <tr>
+      <td>
+        <div class="panel panel-left">
+          <h3>Billed To</h3>
+          <p class="primary-line" th:text="${billingName}">Guest Name</p>
+          <p class="sub-line" th:if="${guestEmail != null and guestEmail != ''}" th:text="${guestEmail}">guest@example.com</p>
+          <p class="sub-line" th:if="${guestPhone != null and guestPhone != ''}" th:text="${guestPhone}">+212 000 000 000</p>
+          <p class="sub-line" th:if="${guestCountryCode != null and guestCountryCode != ''}" th:text="${guestCountryCode}">MA</p>
+        </div>
+      </td>
+      <td>
+        <div class="panel panel-right">
+          <h3>Stay Details</h3>
+          <table class="kv-table">
+            <tr>
+              <td class="k">Check-in</td>
+              <td class="v" th:text="${checkInDisplay}">1 Jan 2026</td>
+            </tr>
+            <tr>
+              <td class="k">Check-out</td>
+              <td class="v" th:text="${checkOutDisplay}">2 Jan 2026</td>
+            </tr>
+            <tr>
+              <td class="k">Length of stay</td>
+              <td class="v" th:text="${nightsDisplay}">1 night</td>
+            </tr>
+            <tr>
+              <td class="k">Occupancy</td>
+              <td class="v" th:text="${occupancyDisplay}">1 adult</td>
+            </tr>
+            <tr th:if="${roomTypeSummary != null and roomTypeSummary != ''}">
+              <td class="k">Room type</td>
+              <td class="v" th:text="${roomTypeSummary}">Deluxe Room</td>
+            </tr>
+          </table>
+        </div>
+      </td>
+    </tr>
+  </table>
+
+  <h2 class="section-title">Charges</h2>
+  <table class="items">
     <thead>
       <tr>
-        <th>Description</th>
-        <th class="num">Qty</th>
-        <th class="num">Unit</th>
-        <th class="num">Amount</th>
+        <td>Description</td>
+        <td class="num">Qty</td>
+        <td class="num">Unit</td>
+        <td class="num">Amount</td>
       </tr>
     </thead>
     <tbody>
       <tr th:each="item : ${items}">
-        <td th:text="${item.description}">Room stay</td>
+        <td class="desc" th:text="${item.description}">Room stay</td>
         <td class="num" th:text="${item.quantity}">1</td>
         <td class="num" th:text="${item.unitPrice}">MAD 0</td>
         <td class="num" th:text="${item.totalPrice}">MAD 0</td>
@@ -58,29 +181,41 @@
     </tbody>
   </table>
 
-  <table class="totals">
+  <table class="totals-wrap">
     <tr>
-      <td>Subtotal</td>
-      <td class="num" th:text="${subtotalAmount}">MAD 0</td>
-    </tr>
-    <tr th:if="${hasDiscount}">
-      <td>Discount</td>
-      <td class="num" th:text="'-' + ${discountAmount}">-MAD 0</td>
-    </tr>
-    <tr>
-      <td>Tax</td>
-      <td class="num" th:text="${taxAmount}">MAD 0</td>
-    </tr>
-    <tr>
-      <td>Fees</td>
-      <td class="num" th:text="${feeAmount}">MAD 0</td>
-    </tr>
-    <tr class="grand">
-      <td>Total</td>
-      <td class="num" th:text="${totalAmount}">MAD 0</td>
+      <td>
+        <table class="totals">
+          <tr>
+            <td class="t-label">Subtotal</td>
+            <td class="t-value" th:text="${subtotalAmount}">MAD 0</td>
+          </tr>
+          <tr class="discount" th:if="${hasDiscount}">
+            <td class="t-label">Discount</td>
+            <td class="t-value" th:text="'-' + ${discountAmount}">-MAD 0</td>
+          </tr>
+          <tr>
+            <td class="t-label">Tax</td>
+            <td class="t-value" th:text="${taxAmount}">MAD 0</td>
+          </tr>
+          <tr>
+            <td class="t-label">Fees</td>
+            <td class="t-value" th:text="${feeAmount}">MAD 0</td>
+          </tr>
+          <tr class="grand">
+            <td>Total</td>
+            <td class="t-value" th:text="${totalAmount}">MAD 0</td>
+          </tr>
+        </table>
+      </td>
     </tr>
   </table>
 
-  <p class="thanks">Thank you for staying with us.</p>
+  <div class="footer">
+    <p class="thanks">Thank you for staying with us.</p>
+    <p th:text="${hotelName} + ' · This document was issued electronically and is valid without a signature.'">
+      Hotel Name &#183; This document was issued electronically and is valid without a signature.
+    </p>
+  </div>
+
 </body>
 </html>

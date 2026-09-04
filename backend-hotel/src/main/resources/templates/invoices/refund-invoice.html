@@ -11,39 +11,158 @@
   <meta charset="UTF-8" />
   <title th:text="'Credit note ' + ${creditNoteNumber}">Credit note</title>
   <style>
-    @page { size: A4; margin: 26mm 18mm; }
-    body { font-family: 'Times New Roman', Georgia, serif; color: #182420; font-size: 12px; margin: 0; }
-    h1 { font-size: 20px; margin: 0 0 4px 0; }
-    h2 { font-size: 16px; margin: 26px 0 4px 0; }
-    p { margin: 2px 0; }
-    .muted { color: #5c6b62; font-size: 11px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 11px; }
-    td { padding: 6px; text-align: left; }
-    td.num { text-align: right; }
-    tr.grand td { font-weight: bold; font-size: 13px; border-top: 2px solid #182420; padding-top: 8px; }
-    p.note { margin-top: 32px; color: #5c6b62; font-size: 11px; }
+    @page { size: A4; margin: 16mm 16mm 20mm 16mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      color: #1c2521;
+      font-size: 10px;
+      line-height: 1.5;
+      margin: 0;
+    }
+
+    /* ---- palette ---- */
+    /* ink #1c2521, muted #6b7a72, hairline #e2e7e4, accent #9a3324 (cancellation red), accent-soft #fbf1ee */
+
+    .brand-bar { width: 100%; border-bottom: 2.5px solid #9a3324; padding-bottom: 12px; margin-bottom: 18px; }
+    .brand-bar table { width: 100%; border-collapse: collapse; }
+    .brand-bar td { padding: 0; vertical-align: top; border: none; }
+    .logo-img { max-height: 46px; max-width: 190px; }
+    .hotel-name-fallback { font-size: 19px; font-weight: bold; color: #9a3324; letter-spacing: 0.02em; }
+    .hotel-contact { color: #6b7a72; font-size: 9px; margin-top: 4px; line-height: 1.6; }
+    .doc-title { text-align: right; font-size: 22px; font-weight: bold; color: #1c2521; letter-spacing: 0.05em; }
+    .doc-subtitle { text-align: right; font-size: 9px; color: #9a3324; font-weight: bold; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+    .doc-meta { text-align: right; color: #6b7a72; font-size: 9px; margin-top: 6px; line-height: 1.7; }
+    .doc-meta .label { color: #97a39c; }
+    .doc-meta .value { color: #1c2521; font-weight: bold; }
+
+    /* ---- info panels ---- */
+    .panels { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    .panels td { border: none; padding: 0; vertical-align: top; width: 50%; }
+    .panel { background-color: #f7f9f8; border: 1px solid #e2e7e4; border-radius: 4px; padding: 12px 14px; }
+    .panel-left { margin-right: 6px; }
+    .panel-right { margin-left: 6px; }
+    .panel h3 {
+      margin: 0 0 8px 0; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.08em;
+      color: #9a3324; font-weight: bold;
+    }
+    .panel .primary-line { font-size: 12px; font-weight: bold; color: #1c2521; margin: 0 0 3px 0; }
+    .panel .sub-line { color: #6b7a72; font-size: 9.5px; margin: 1px 0; }
+    .kv-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    .kv-table td { border: none; padding: 2px 0; font-size: 9.5px; }
+    .kv-table td.k { color: #6b7a72; width: 42%; }
+    .kv-table td.v { color: #1c2521; font-weight: bold; text-align: right; }
+
+    /* ---- cancellation banner ---- */
+    .banner {
+      background-color: #fbf1ee; border: 1px solid #f0d5cd; border-left: 4px solid #9a3324;
+      border-radius: 4px; padding: 10px 14px; margin-bottom: 20px;
+    }
+    .banner p { margin: 0; font-size: 9.5px; color: #7a2a1d; }
+    .banner p.reason { margin-top: 3px; color: #6b7a72; }
+
+    /* ---- adjustment table ---- */
+    h2.section-title {
+      font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: #9a3324;
+      font-weight: bold; margin: 0 0 8px 0;
+    }
+    table.adjust { width: 100%; border-collapse: collapse; }
+    table.adjust td { padding: 9px 8px; border-bottom: 1px solid #e2e7e4; font-size: 10.5px; }
+    table.adjust td.label { color: #1c2521; }
+    table.adjust td.num { text-align: right; color: #1c2521; }
+    table.adjust tr.penalty td { color: #9a3324; }
+    table.adjust tr.grand td {
+      font-weight: bold; font-size: 14px; color: #0f4c3a; border-top: 1.5px solid #0f4c3a;
+      border-bottom: none; padding-top: 10px;
+    }
+
+    /* ---- footer ---- */
+    .footer { margin-top: 34px; border-top: 1px solid #e2e7e4; padding-top: 12px; }
+    .footer p { margin: 2px 0; color: #97a39c; font-size: 8.5px; text-align: center; }
+    .footer p.note { color: #6b7a72; font-size: 9.5px; margin-bottom: 4px; }
   </style>
 </head>
 <body>
-  <h1 th:text="${hotelName}">Hotel Name</h1>
-  <p class="muted" th:if="${hotelAddress != null and hotelAddress != ''}" th:text="${hotelAddress}">Address</p>
-  <p class="muted" th:if="${hotelPhone != null and hotelPhone != ''}" th:text="${hotelPhone}">Phone</p>
-  <p class="muted" th:if="${hotelEmail != null and hotelEmail != ''}" th:text="${hotelEmail}">Email</p>
 
-  <h2 th:text="'Credit note ' + ${creditNoteNumber}">Credit note CN-0000</h2>
-  <p class="muted">
-    <span>Issued to </span><span th:text="${billingName}">Guest Name</span>
-    <span> &#183; Issued </span><span th:text="${issuedAtDisplay}">1 Jan 2026</span>
-    <span> &#183; following a cancellation</span>
-  </p>
+  <div class="brand-bar">
+    <table>
+      <tr>
+        <td style="width: 55%;">
+          <img th:if="${logoDataUri != null}" th:src="${logoDataUri}" class="logo-img" alt="Hotel logo" />
+          <div th:unless="${logoDataUri != null}" class="hotel-name-fallback" th:text="${hotelName}">Hotel Name</div>
+          <div class="hotel-contact">
+            <div th:if="${hotelAddress != null and hotelAddress != ''}" th:text="${hotelAddress}">Address</div>
+            <div>
+              <span th:if="${hotelPhone != null and hotelPhone != ''}" th:text="${hotelPhone}">Phone</span>
+              <span th:if="${hotelPhone != null and hotelPhone != '' and hotelEmail != null and hotelEmail != ''}"> &#183; </span>
+              <span th:if="${hotelEmail != null and hotelEmail != ''}" th:text="${hotelEmail}">Email</span>
+            </div>
+          </div>
+        </td>
+        <td style="width: 45%;">
+          <div class="doc-title">CREDIT NOTE</div>
+          <div class="doc-subtitle">Booking cancellation</div>
+          <div class="doc-meta">
+            <div><span class="label">Credit Note No.</span> <span class="value" th:text="${creditNoteNumber}">CN-0000</span></div>
+            <div th:if="${invoiceNumber != null}"><span class="label">Against Invoice</span> <span class="value" th:text="${invoiceNumber}">INV-0000</span></div>
+            <div><span class="label">Issued</span> <span class="value" th:text="${issuedAtDisplay}">1 Jan 2026</span></div>
+            <div><span class="label">Reservation</span> <span class="value" th:text="${reservationReference}">REF-0000</span></div>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </div>
 
-  <table>
+  <table class="panels">
     <tr>
-      <td>Original invoice amount</td>
+      <td>
+        <div class="panel panel-left">
+          <h3>Issued To</h3>
+          <p class="primary-line" th:text="${billingName}">Guest Name</p>
+          <p class="sub-line" th:if="${guestEmail != null and guestEmail != ''}" th:text="${guestEmail}">guest@example.com</p>
+          <p class="sub-line" th:if="${guestPhone != null and guestPhone != ''}" th:text="${guestPhone}">+212 000 000 000</p>
+          <p class="sub-line" th:if="${guestCountryCode != null and guestCountryCode != ''}" th:text="${guestCountryCode}">MA</p>
+        </div>
+      </td>
+      <td>
+        <div class="panel panel-right">
+          <h3>Original Booking</h3>
+          <table class="kv-table">
+            <tr>
+              <td class="k">Check-in</td>
+              <td class="v" th:text="${checkInDisplay}">1 Jan 2026</td>
+            </tr>
+            <tr>
+              <td class="k">Check-out</td>
+              <td class="v" th:text="${checkOutDisplay}">2 Jan 2026</td>
+            </tr>
+            <tr th:if="${roomTypeSummary != null and roomTypeSummary != ''}">
+              <td class="k">Room type</td>
+              <td class="v" th:text="${roomTypeSummary}">Deluxe Room</td>
+            </tr>
+          </table>
+        </div>
+      </td>
+    </tr>
+  </table>
+
+  <div class="banner">
+    <p>
+      <span>This reservation was cancelled on </span><span th:text="${cancelledAtDisplay}">1 Jan 2026</span><span>.</span>
+    </p>
+    <p class="reason" th:if="${cancellationReasonLabel != null and cancellationReasonLabel != ''}">
+      <span>Reason: </span><span th:text="${cancellationReasonLabel}">Guest request</span>
+    </p>
+  </div>
+
+  <h2 class="section-title">Adjustment</h2>
+  <table class="adjust">
+    <tr>
+      <td class="label">Original invoice amount</td>
       <td class="num" th:text="${originalAmount}">MAD 0</td>
     </tr>
-    <tr>
-      <td>Cancellation fee retained</td>
+    <tr class="penalty">
+      <td class="label">Cancellation fee retained</td>
       <td class="num" th:text="'-' + ${penaltyAmount}">-MAD 0</td>
     </tr>
     <tr class="grand">
@@ -52,7 +171,13 @@
     </tr>
   </table>
 
-  <p class="note">This credit note adjusts the original invoice for the above reservation
-    following its cancellation. No further action is needed on your part.</p>
+  <div class="footer">
+    <p class="note">This credit note adjusts the original invoice for the above reservation following its
+      cancellation. No further action is needed on your part.</p>
+    <p th:text="${hotelName} + ' · This document was issued electronically and is valid without a signature.'">
+      Hotel Name &#183; This document was issued electronically and is valid without a signature.
+    </p>
+  </div>
+
 </body>
 </html>

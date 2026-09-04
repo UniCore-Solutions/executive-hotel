@@ -10,12 +10,23 @@ package com.hotelcollection.hotel.dto.billing;
  */
 public record CreditNoteDocumentData(
 		String creditNoteNumber,
+		String invoiceNumber,
+		String logoDataUri,
 		String hotelName,
 		String hotelAddress,
 		String hotelPhone,
 		String hotelEmail,
 		String billingName,
+		String guestEmail,
+		String guestPhone,
+		String guestCountryCode,
 		String issuedAtDisplay,
+		String reservationReference,
+		String checkInDisplay,
+		String checkOutDisplay,
+		String roomTypeSummary,
+		String cancelledAtDisplay,
+		String cancellationReasonLabel,
 		String originalAmount,
 		String penaltyAmount,
 		String creditedAmount) {

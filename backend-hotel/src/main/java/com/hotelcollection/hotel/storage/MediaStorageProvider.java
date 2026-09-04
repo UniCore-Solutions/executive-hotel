@@ -15,6 +15,10 @@ public interface MediaStorageProvider {
 	 */
 	String store(byte[] content, String originalName, String contentType);
 
+	/** Read back previously stored bytes; {@code null} if the key is unknown
+	 * or empty. */
+	byte[] read(String storageKey);
+
 	/** Remove the stored object; no-op when the key is unknown or empty. */
 	void delete(String storageKey);
 

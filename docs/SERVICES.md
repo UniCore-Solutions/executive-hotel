@@ -137,7 +137,8 @@ go through these interfaces** (ArchUnit-enforced).
 | `InventoryService` | `lockAndSell` / `release` — `ensureRow` upsert then `SELECT … FOR UPDATE` over the night range | **Real**, pessimistic locking |
 | `BookingService` | create (idempotency key, server-priced snapshot, inventory lock, outbox event), lookup by reference+email, `myReservations`, cancel (penalty + release + event), admin cancel/list | **Real**, the most complete flow |
 | `PaymentService` | create (balance & currency validated server-side, overpayment rejected), capture, owner-or-staff IDOR guard | **Real persistence, mock gateway** — capture invents `MOCK-XXXXXXXX` |
-| `InvoiceService` | issue invoice + items | **Real** — `invoices` table empty in the live DB (never exercised) |
+| `InvoiceService` | auto-issues an invoice + line items the moment a reservation reaches `confirmed` (`BookingServiceImpl`), plus a credit note on cancellation | **Real** |
+| `DocumentGenerationService` | renders invoice/credit-note PDFs (Thymeleaf → openhtmltopdf): hotel branding (logo inlined as a base64 `data:` URI — the renderer's `FSUriResolver` resolves nothing else, so no network/filesystem fetch is reachable from template markup), guest contact info, stay details (dates/nights/occupancy/room type), and — on the credit note — the cancellation date/reason | **Real** |
 | `BillingAdminService` | admin payment/invoice listings | **Real** |
 | `ReviewService` | create (proof-of-stay via completed `checked_out` reservation), list, moderate | **Real**, but gated on a checkout that the product can never reach — see below |
 | `MediaStorageService` / `MediaAdminService` / `MediaQueryService` | upload/delete/serve behind `MediaStorageProvider` | **Real**, local filesystem only |

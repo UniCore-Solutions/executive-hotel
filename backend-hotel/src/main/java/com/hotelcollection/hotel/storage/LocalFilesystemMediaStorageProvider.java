@@ -84,6 +84,23 @@ public class LocalFilesystemMediaStorageProvider implements MediaStorageProvider
 	}
 
 	@Override
+	public byte[] read(String storageKey) {
+		if (storageKey == null || storageKey.isBlank()) {
+			return null;
+		}
+		Path target = resolve(storageKey);
+		if (!Files.exists(target)) {
+			return null;
+		}
+		try {
+			return Files.readAllBytes(target);
+		} catch (IOException ex) {
+			log.warn("media file read failed for key {}", storageKey, ex);
+			return null;
+		}
+	}
+
+	@Override
 	public void delete(String storageKey) {
 		if (storageKey == null || storageKey.isBlank()) {
 			return;
