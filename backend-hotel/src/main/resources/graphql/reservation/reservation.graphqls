@@ -29,6 +29,7 @@ type Reservation {
 	totalAmount: Float!
 	source: String!
 	notes: String
+	arrivalSlot: String
 	createdAt: DateTime!
 	guest: ReservationGuestInfo!
 	roomLines: [ReservationRoomLine!]!

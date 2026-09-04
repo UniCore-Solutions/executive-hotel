@@ -16,6 +16,7 @@ fragment ReservationSummary on Reservation {
   totalAmount
   source
   notes
+  arrivalSlot
   createdAt
   guest {
     id

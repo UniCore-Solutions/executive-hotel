@@ -8,20 +8,24 @@ import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/context/ToastContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useModal } from '@/context/ModalContext';
+import { useSession } from '@/context/SessionContext';
 import { useApollo } from '@/api/apollo/provider';
 import { REST_INVALIDATIONS, invalidateGraphql } from '@/api/invalidation';
 import { reservations, type BackendReservation } from '@/services/reservations';
 import { getExtras } from '@/services/extras';
 import {
   downloadCreditNotePdf,
+  downloadInvoicePdf,
   requestReservationLookupOtp,
   verifyReservationLookupOtp,
 } from '@/api/rest/endpoints';
 import { ApiError } from '@/api/rest/client';
 import { downloadBytes } from '@/lib/download';
+import { buildIcs } from '@/lib/ics';
 import { fmt, fromISODate, inStayWindow } from '@/lib/dates';
 import { fmtPrice } from '@/lib/format';
 import { image, IMG_FALLBACK } from '@/services/availability';
+import { getHotelById } from '@/services/catalog';
 import { QuoteTable } from '@/components/ui/QuoteTable';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -145,6 +149,7 @@ export default function ReservationFlow() {
   const { currency } = useCurrency();
   const { open } = useModal();
   const apollo = useApollo();
+  const { session } = useSession();
 
   const deepRef = useMemo(
     () =>
@@ -190,6 +195,41 @@ export default function ReservationFlow() {
       getExtras(res.hotelId).then(setExtrasDefs).catch(() => {});
     }
   }, [res?.hotelId]);
+
+  // Hotel name/address/phone — the guest needs to know where they're
+  // actually going and how to reach the property, neither of which the
+  // reservation record itself carries.
+  const [hotelMeta, setHotelMeta] = useState<{
+    name: string;
+    addressLine1?: string | null;
+    addressLine2?: string | null;
+    city?: string | null;
+    countryCode?: string | null;
+    phone?: string | null;
+  } | null>(null);
+  useEffect(() => {
+    if (!res?.hotelId) return;
+    let alive = true;
+    getHotelById(res.hotelId)
+      .then(
+        (h) =>
+          alive &&
+          h &&
+          setHotelMeta({
+            name: h.name,
+            addressLine1: h.addressLine1,
+            addressLine2: h.addressLine2,
+            city: h.city,
+            countryCode: h.countryCode,
+            phone: h.phone,
+          })
+      )
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [res?.hotelId]);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
 
   const checkingIn =
     !!res && res.status === 'confirmed' && inStayWindow(res.checkInDate, res.checkOutDate);
@@ -291,6 +331,48 @@ export default function ReservationFlow() {
     autoLookedUp.current = true;
     requestOtp(deepRef, deepEmail);
   }, [deepRef, deepEmail, res]);
+
+  // A signed-in guest clicking their own booking from "Your bookings"
+  // (?ref=... only, no email) already proved who they are via the session
+  // cookie — the OTP step above exists to prove email ownership for an
+  // anonymous self-service lookup, which is redundant here. Read the same
+  // non-OTP `reservation(reference, email)` lookup ConfirmationFlow already
+  // uses, scoped to the signed-in account's own email; the backend still
+  // enforces the reference+email match, so a mismatch (not this account's
+  // reservation) just falls through to the ordinary manual lookup form
+  // instead of leaking anything.
+  const sessionLookedUp = useRef(false);
+  useEffect(() => {
+    if (sessionLookedUp.current || !deepRef || deepEmail || res || !session?.email) return;
+    sessionLookedUp.current = true;
+    reservations
+      .find(deepRef, session.email)
+      .then((r) => {
+        setRes(r);
+        setStatus('view');
+      })
+      .catch(() => {
+        setRefInput(deepRef);
+      });
+  }, [deepRef, deepEmail, res, session?.email]);
+
+  // Next.js keeps this page component mounted across a client-side
+  // navigation that only changes the query string (e.g. the header's bare
+  // "/reservation" link, or switching from one booking's ?ref= to
+  // another's) — component state does not reset on its own. Without this,
+  // a reservation already loaded into `res` keeps rendering (cancel button
+  // and all) even after the URL no longer carries that reservation's ref,
+  // or shows the wrong reservation's details after the ref changes.
+  const prevDeepRef = useRef(deepRef);
+  useEffect(() => {
+    if (deepRef === prevDeepRef.current) return;
+    prevDeepRef.current = deepRef;
+    setRes(null);
+    setStatus('lookup');
+    setPendingLookup(null);
+    autoLookedUp.current = false;
+    sessionLookedUp.current = false;
+  }, [deepRef]);
 
   const showOther = () => {
     setStatus('lookup');
@@ -413,6 +495,23 @@ export default function ReservationFlow() {
   const price = derivePrice(res);
   const cancelSummary = cancelled ? cancellationSummary(res, currency) : null;
 
+  /* Real payment status from the backend (pending/captured/failed/refunded),
+     never a hardcoded "settled at booking" — a pay-at-property stay sits at
+     'pending' by design (nothing charged online), so its own rate wording
+     wins over a generic pending label. */
+  const settlesAtProperty = res.roomLines.every((l) => l.paymentTiming === 'pay_at_property');
+  const paymentLabel = settlesAtProperty
+    ? 'Due at the hotel'
+    : res.paymentStatus === 'captured'
+      ? 'Paid'
+      : res.paymentStatus === 'failed'
+        ? 'Payment failed'
+        : res.paymentStatus === 'refunded'
+          ? 'Refunded'
+          : res.paymentStatus === 'partially_refunded'
+            ? 'Partially refunded'
+            : 'Pending';
+
   const statusText = STATUS_META[res.status] || STATUS_META.confirmed!;
   const statusCls =
     res.status === 'checked_in'
@@ -420,6 +519,41 @@ export default function ReservationFlow() {
       : res.status === 'cancelled'
         ? 'bg-clay/8 border border-clay/25 text-clay'
         : 'bg-white border border-navy/10';
+
+  const downloadInvoice = async () => {
+    setInvoiceBusy(true);
+    try {
+      const pdf = await downloadInvoicePdf(res.reference, res.guest.email ?? '');
+      downloadBytes(pdf.content, pdf.filename, 'application/pdf');
+      toast({ message: 'Invoice downloaded as a PDF.', type: 'ok', title: 'Invoice ready' });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Could not generate the invoice right now.';
+      toast({ message, type: 'error', title: 'Invoice unavailable' });
+    } finally {
+      setInvoiceBusy(false);
+    }
+  };
+
+  const downloadIcs = () => {
+    const roomName = roomLine?.roomTypeName ?? 'Room';
+    const hotelName = hotelMeta?.name || 'the hotel';
+    const ics = buildIcs({
+      summary: `${roomName} — ${hotelName}`,
+      location: hotelMeta?.city || '',
+      description: `Booking ${res.reference} · Check-in from 15:00 — check-out by 11:00.`,
+      dtStart: res.checkInDate,
+      dtEnd: res.checkOutDate,
+      uid: `${res.reference}@${hotelName.toLowerCase().replace(/\s+/g, '')}.example`,
+    });
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${res.reference}.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ message: 'Calendar file downloaded — add it to your calendar.', type: 'ok', title: 'Added to calendar' });
+  };
 
   const downloadCreditNote = async () => {
     setCreditNoteBusy(true);
@@ -494,13 +628,41 @@ export default function ReservationFlow() {
         </div>
       ) : null}
 
+      <div className="mt-2 grid gap-3 sm:grid-cols-2">
+        <Button
+          type="button"
+          onClick={downloadIcs}
+          variant="outline"
+          className="rounded-2xl px-4 py-3.5"
+        >
+          Add to calendar
+        </Button>
+        <Button
+          type="button"
+          onClick={downloadInvoice}
+          disabled={invoiceBusy}
+          variant="outline"
+          className="rounded-2xl px-4 py-3.5"
+        >
+          {invoiceBusy ? 'Preparing…' : 'Download invoice'}
+        </Button>
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
         <div className="space-y-6">
           <div className="border-navy/10 rounded-3xl border bg-white p-6 lg:p-7">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
-                Your stay
-              </h2>
+              <div>
+                <h2 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+                  Your stay
+                </h2>
+                {hotelMeta ? (
+                  <p className="text-navy mt-0.5 text-sm font-semibold">
+                    {hotelMeta.name}
+                    {hotelMeta.city ? ` · ${hotelMeta.city}` : ''}
+                  </p>
+                ) : null}
+              </div>
               <span
                 id="view-ref"
                 className="font-display text-navy text-lg font-semibold tracking-wider"
@@ -571,24 +733,109 @@ export default function ReservationFlow() {
                   </dd>
                 </div>
               ) : null}
+              {res.notes && res.notes !== 'Standard reservation' ? (
+                <div className="sm:col-span-2">
+                  <dt className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+                    Special requests
+                  </dt>
+                  <dd className="text-navy mt-1">{res.notes}</dd>
+                </div>
+              ) : null}
+            </dl>
+          </div>
+
+          {hotelMeta ? (
+            <div className="border-navy/10 rounded-3xl border bg-white p-6 lg:p-7">
+              <h2 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+                The hotel
+              </h2>
+              <p className="text-navy mt-2 text-sm font-semibold">{hotelMeta.name}</p>
+              <p className="text-navy/60 mt-1 text-sm">
+                {[hotelMeta.addressLine1, hotelMeta.addressLine2, hotelMeta.city, hotelMeta.countryCode]
+                  .filter(Boolean)
+                  .join(', ')}
+              </p>
+              {hotelMeta.phone ? (
+                <p className="text-navy/60 mt-1 text-sm">
+                  <a href={`tel:${hotelMeta.phone}`} className="hover:text-navy underline underline-offset-2">
+                    {hotelMeta.phone}
+                  </a>
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="border-navy/10 rounded-3xl border bg-white p-6 lg:p-7">
+            <h2 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+              Guest details
+            </h2>
+            <dl className="mt-4 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-navy/45 text-xs font-semibold tracking-widest uppercase">Name</dt>
+                <dd className="text-navy mt-1 font-semibold">
+                  {res.guest.firstName} {res.guest.lastName}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-navy/45 text-xs font-semibold tracking-widest uppercase">Email</dt>
+                <dd className="text-navy mt-1">{res.guest.email || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-navy/45 text-xs font-semibold tracking-widest uppercase">Phone</dt>
+                <dd className="text-navy mt-1">{res.guest.phone || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+                  Estimated arrival
+                </dt>
+                <dd className="text-navy mt-1">{res.arrivalSlot || 'Not specified'}</dd>
+              </div>
             </dl>
           </div>
         </div>
 
         <div className="space-y-6">
           <div className="border-navy/10 rounded-3xl border bg-white p-6">
-            <h2 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
-              Price summary
-            </h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+                Price summary
+              </h2>
+              {!cancelled ? (
+                <span
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-bold tracking-wider uppercase ${
+                    paymentLabel === 'Paid'
+                      ? 'bg-success/10 text-success-dark'
+                      : paymentLabel === 'Payment failed'
+                        ? 'bg-clay/10 text-clay'
+                        : 'bg-navy/8 text-navy'
+                  }`}
+                >
+                  {paymentLabel}
+                </span>
+              ) : null}
+            </div>
             <div id="view-price" className="mt-4">
               <QuoteTable
                 quote={price}
                 currency={currency}
-                note={
-                  cancelled ? 'cancelled — no further charges' : 'settled at booking'
-                }
+                note={cancelled ? 'cancelled — no further charges' : paymentLabel.toLowerCase()}
               />
             </div>
+            {res.charges.length > 0 ? (
+              <div className="border-navy/10 mt-4 border-t pt-4">
+                <h3 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">
+                  Additional charges
+                </h3>
+                <ul className="mt-2 space-y-1.5 text-sm">
+                  {res.charges.map((c) => (
+                    <li key={c.id} className="text-navy flex items-center justify-between gap-4">
+                      <span>{c.name}</span>
+                      <span className="font-semibold">{fmtPrice(c.amount, currency)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
           <div className="border-navy/10 rounded-3xl border bg-white p-6">
             <h2 className="text-navy/45 text-xs font-semibold tracking-widest uppercase">

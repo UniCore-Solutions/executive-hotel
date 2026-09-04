@@ -426,7 +426,7 @@ export default function AccountFlow() {
                   return (
                     <Link
                       key={b.reference}
-                      href={`/confirmation?ref=${encodeURIComponent(b.reference)}`}
+                      href={`/reservation?ref=${encodeURIComponent(b.reference)}`}
                       className="group border-navy/10 bg-paper hover:border-navy/25 hover:shadow-navy/5 flex items-center gap-4 rounded-2xl border p-4 transition-all hover:shadow-md"
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}

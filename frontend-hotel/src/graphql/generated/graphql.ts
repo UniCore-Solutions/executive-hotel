@@ -160,6 +160,7 @@ export type ReservationSummaryFragment = {
   totalAmount: number;
   source: string;
   notes: string | null;
+  arrivalSlot: string | null;
   createdAt: string;
   guest: {
     id: string | null;
@@ -619,6 +620,7 @@ export type MyReservationsQuery = {
     totalAmount: number;
     source: string;
     notes: string | null;
+    arrivalSlot: string | null;
     createdAt: string;
     guest: {
       id: string | null;
@@ -689,6 +691,7 @@ export type ReservationLookupQuery = {
     totalAmount: number;
     source: string;
     notes: string | null;
+    arrivalSlot: string | null;
     createdAt: string;
     guest: {
       id: string | null;
@@ -759,6 +762,7 @@ export type VerifiedReservationLookupQuery = {
     totalAmount: number;
     source: string;
     notes: string | null;
+    arrivalSlot: string | null;
     createdAt: string;
     guest: {
       id: string | null;
@@ -900,6 +904,7 @@ export const ReservationSummaryFragmentDoc = {
           { kind: 'Field', name: { kind: 'Name', value: 'totalAmount' } },
           { kind: 'Field', name: { kind: 'Name', value: 'source' } },
           { kind: 'Field', name: { kind: 'Name', value: 'notes' } },
+          { kind: 'Field', name: { kind: 'Name', value: 'arrivalSlot' } },
           { kind: 'Field', name: { kind: 'Name', value: 'createdAt' } },
           {
             kind: 'Field',
@@ -2213,6 +2218,7 @@ export const MyReservationsDocument = {
           { kind: 'Field', name: { kind: 'Name', value: 'totalAmount' } },
           { kind: 'Field', name: { kind: 'Name', value: 'source' } },
           { kind: 'Field', name: { kind: 'Name', value: 'notes' } },
+          { kind: 'Field', name: { kind: 'Name', value: 'arrivalSlot' } },
           { kind: 'Field', name: { kind: 'Name', value: 'createdAt' } },
           {
             kind: 'Field',
@@ -2366,6 +2372,7 @@ export const ReservationLookupDocument = {
           { kind: 'Field', name: { kind: 'Name', value: 'totalAmount' } },
           { kind: 'Field', name: { kind: 'Name', value: 'source' } },
           { kind: 'Field', name: { kind: 'Name', value: 'notes' } },
+          { kind: 'Field', name: { kind: 'Name', value: 'arrivalSlot' } },
           { kind: 'Field', name: { kind: 'Name', value: 'createdAt' } },
           {
             kind: 'Field',
@@ -2522,6 +2529,7 @@ export const VerifiedReservationLookupDocument = {
           { kind: 'Field', name: { kind: 'Name', value: 'totalAmount' } },
           { kind: 'Field', name: { kind: 'Name', value: 'source' } },
           { kind: 'Field', name: { kind: 'Name', value: 'notes' } },
+          { kind: 'Field', name: { kind: 'Name', value: 'arrivalSlot' } },
           { kind: 'Field', name: { kind: 'Name', value: 'createdAt' } },
           {
             kind: 'Field',

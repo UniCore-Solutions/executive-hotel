@@ -10,16 +10,25 @@ import type { ApolloClient } from '@apollo/client';
  * the Apollo cache so the next read refetches from the backend. No component
  * invents its own invalidation; this map IS the strategy.
  *
- * Query names are the operation names from src/graphql/*.graphql
- * (e.g. `MyReservations`, `AdminReservation`).
+ * Entries are the GraphQL *field* names as selected on `Query` in
+ * src/graphql/*.graphql (e.g. `myReservations`, `reservation`) — NOT the
+ * `query Xyz { ... }` operation names. `ApolloCache.evict({ fieldName })`
+ * matches against the normalized store's field keys, which are the schema
+ * field name (optionally with a serialized-args suffix that an unqualified
+ * evict ignores) — never the operation name. `query MyReservations {
+ * myReservations { ... } }` stores under `myReservations`; evicting
+ * `"MyReservations"` (capital M) silently matches nothing and the whole
+ * entry becomes a no-op. Get this wrong here and a REST write looks
+ * successful while every cache-first read in the tab keeps serving
+ * pre-write data until a hard reload.
  */
 
 export const REST_INVALIDATIONS: Record<string, string[]> = {
   // ---- guest: reservations & payments (POST /api/v1/reservations, ...) ----
-  'reservations.create': ['MyReservations'],
-  'reservations.cancel': ['MyReservations', 'ReservationLookup'],
-  'payments.create': ['MyReservations'],
-  'payments.capture': ['MyReservations'],
+  'reservations.create': ['myReservations'],
+  'reservations.cancel': ['myReservations', 'reservation'],
+  'payments.create': ['myReservations'],
+  'payments.capture': ['myReservations'],
   'auth.profile': ['Me'],
 
   // ---- back-office: catalog ----

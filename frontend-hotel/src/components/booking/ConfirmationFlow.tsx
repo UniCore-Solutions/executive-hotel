@@ -402,13 +402,41 @@ export default function ConfirmationFlow() {
   };
 
   const paymentFailed = res.paymentStatus === 'failed';
+  const isCancelled = res.status === 'cancelled';
 
   return (
     <div id="confirmation">
       {/* header: success, or a payment-failed variant with a retry path —
           the room is still held (see BOOKING_PAYMENT_UX_PLAN §2/§5) so this
           is a recoverable state, not a dead end. */}
-      {paymentFailed ? (
+      {isCancelled ? (
+        <div
+          id="reservation-cancelled"
+          className="border-clay/25 bg-clay/5 rounded-3xl border p-8 text-center"
+        >
+          <span
+            className="bg-clay inline-flex h-14 w-14 items-center justify-center rounded-full text-2xl text-white"
+            aria-hidden="true"
+          >
+            ✕
+          </span>
+          <h1 className="font-display text-navy mt-4 text-3xl font-semibold lg:text-4xl">
+            This reservation was cancelled
+          </h1>
+          <p className="text-navy/60 mx-auto mt-2 max-w-md text-sm">
+            Reference <strong>{res.reference}</strong> is no longer active — this room is not
+            held for you and no further charges will be made.
+          </p>
+          {res.cancellation ? (
+            <p className="text-navy/45 mt-2 text-xs">
+              Cancelled {fmtShort(new Date(res.cancellation.cancelledAt))}
+              {res.cancellation.refundAmount
+                ? ` · ${res.cancellation.refundAmount} ${res.currencyCode} refunded`
+                : ''}
+            </p>
+          ) : null}
+        </div>
+      ) : paymentFailed ? (
         <div
           id="payment-failed"
           className="border-clay/25 bg-clay/5 rounded-3xl border p-8 text-center"
@@ -478,9 +506,11 @@ export default function ConfirmationFlow() {
         <Button asChild className="shadow-navy/15 rounded-2xl px-4 py-3.5">
           <a href={`/reservation?ref=${encodeURIComponent(res.reference)}`}>Manage booking</a>
         </Button>
-        <Button asChild variant="outline" className="rounded-2xl px-4 py-3.5">
-          <a href={`/checkin?ref=${encodeURIComponent(res.reference)}`}>Online check-in</a>
-        </Button>
+        {isCancelled ? null : (
+          <Button asChild variant="outline" className="rounded-2xl px-4 py-3.5">
+            <a href={`/checkin?ref=${encodeURIComponent(res.reference)}`}>Online check-in</a>
+          </Button>
+        )}
         <Button
           type="button"
           onClick={shareLink}
@@ -520,7 +550,11 @@ export default function ConfirmationFlow() {
           <ol id="timeline" className="mt-4 grid gap-4 sm:grid-cols-4">
             {[
               [
-                res.status === 'confirmed' ? 'Booking confirmed' : 'Booking received',
+                isCancelled
+                  ? 'Booking cancelled'
+                  : res.status === 'confirmed'
+                    ? 'Booking confirmed'
+                    : 'Booking received',
                 `Today · ${res.reference}`,
                 true,
               ],
@@ -652,7 +686,9 @@ export default function ConfirmationFlow() {
       </div>
 
       <p className="text-navy/40 mt-10 text-center text-[11px]">
-        Keep your reference handy — you can manage or cancel your booking anytime.
+        {isCancelled
+          ? 'Keep your reference handy for any follow-up with the hotel.'
+          : 'Keep your reference handy — you can manage or cancel your booking anytime.'}
       </p>
     </div>
   );

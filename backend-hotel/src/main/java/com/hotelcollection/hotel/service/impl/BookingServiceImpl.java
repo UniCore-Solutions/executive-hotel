@@ -452,8 +452,12 @@ public class BookingServiceImpl implements BookingService {
 	private Guest findOrCreateGuest(GuestInput in) {
 		Guest guest;
 		if (in.email() != null && !in.email().isBlank()) {
-			guest = guestRepository.findByEmailIgnoreCase(in.email().trim()).stream()
-					.findFirst().orElseGet(() -> createGuest(in));
+			Optional<Guest> existing = guestRepository.findByEmailIgnoreCase(in.email().trim()).stream().findFirst();
+			if (existing.isPresent()) {
+				guest = updateGuest(existing.get(), in);
+			} else {
+				guest = createGuest(in);
+			}
 		} else {
 			guest = createGuest(in);
 		}
@@ -474,6 +478,25 @@ public class BookingServiceImpl implements BookingService {
 		guest.setPhone(in.phone());
 		guest.setCountryCode(in.countryCode());
 		guest.setCreatedAt(Instant.now());
+		guest.setUpdatedAt(Instant.now());
+		return guestRepository.save(guest);
+	}
+
+	// A guest record is shared across every reservation made under the same
+	// email; each new booking's contact details are the freshest known truth
+	// for that guest, so they overwrite the stored record rather than being
+	// discarded in favour of whatever an earlier booking left behind. Blank
+	// optional fields (phone/countryCode) are left untouched rather than
+	// clearing a previously known value.
+	private Guest updateGuest(Guest guest, GuestInput in) {
+		guest.setFirstName(in.firstName());
+		guest.setLastName(in.lastName());
+		if (blankToNull(in.phone()) != null) {
+			guest.setPhone(in.phone());
+		}
+		if (blankToNull(in.countryCode()) != null) {
+			guest.setCountryCode(in.countryCode());
+		}
 		guest.setUpdatedAt(Instant.now());
 		return guestRepository.save(guest);
 	}

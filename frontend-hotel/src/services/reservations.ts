@@ -48,6 +48,7 @@ export interface BackendReservation {
   totalAmount: number;
   source: string;
   notes?: string | null;
+  arrivalSlot?: string | null;
   createdAt: string;
   guest: {
     id?: string | null;
