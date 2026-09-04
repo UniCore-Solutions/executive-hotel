@@ -9,7 +9,9 @@ import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatusBadge } from '@/components/shared/StatusBadge';
+import { MEDIA_CATEGORY_LOGO } from '@/api/rest/endpoints/catalog';
 import { HotelProfileForm } from '@/components/modules/settings/HotelProfileForm';
+import { HotelBrandingPanel } from '@/components/modules/settings/HotelBrandingPanel';
 import { HotelPoliciesForm } from '@/components/modules/settings/HotelPoliciesForm';
 import { HotelAmenitiesForm } from '@/components/modules/settings/HotelAmenitiesForm';
 import { HotelGallery } from '@/components/modules/settings/HotelGallery';
@@ -20,6 +22,10 @@ export default function HotelSettingsPage({ params }: { params: Promise<{ hotelI
 
   const adminHotel = data?.adminHotel;
   const policies = adminHotel?.policies ?? [];
+  // The Media tab/gallery excludes the logo (it has its own home on the
+  // Branding tab) — the tab's count badge must match what the gallery
+  // actually shows, not the raw row count.
+  const galleryCount = adminHotel?.media.filter((m) => m.category !== MEDIA_CATEGORY_LOGO).length ?? 0;
 
   // Controlled tab state, lifted above the loading/error/content ternary
   // below, so the active tab survives a `refetch()` (see `onSaved` below).
@@ -39,8 +45,8 @@ export default function HotelSettingsPage({ params }: { params: Promise<{ hotelI
   return (
     <>
       <PageHeader
-        title="Settings"
-        description="Profile, policies, amenities, and media shown on this hotel's guest-facing page."
+        title="Hotel Profile"
+        description="Identity, branding, policies, amenities, and media shown on this hotel's guest-facing page."
         actions={adminHotel ? <StatusBadge domain="catalog" value={adminHotel.status} /> : undefined}
       />
 
@@ -71,14 +77,26 @@ export default function HotelSettingsPage({ params }: { params: Promise<{ hotelI
         <Tabs key={hotelId} value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="profile">Profile</TabsTrigger>
+            <TabsTrigger value="branding">Branding</TabsTrigger>
             <TabsTrigger value="policies">Policies ({policies.length})</TabsTrigger>
             <TabsTrigger value="amenities">Amenities ({adminHotel.amenities.length})</TabsTrigger>
-            <TabsTrigger value="media">Media ({adminHotel.media.length})</TabsTrigger>
+            <TabsTrigger value="media">Media ({galleryCount})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile">
             <Card className="max-w-2xl">
               <HotelProfileForm hotel={adminHotel.hotel} onSaved={onSaved} />
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="branding">
+            <Card className="max-w-2xl">
+              <HotelBrandingPanel
+                hotelId={hotelId}
+                media={adminHotel.media}
+                onChanged={onSaved}
+                onViewMedia={() => setActiveTab('media')}
+              />
             </Card>
           </TabsContent>
 

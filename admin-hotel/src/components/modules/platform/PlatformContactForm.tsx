@@ -28,6 +28,9 @@ export function PlatformContactForm({ platform, onSaved }: { platform: PlatformC
 
   return (
     <Form form={form} onSubmit={submit} className="space-y-6">
+      <p className="text-xs text-muted-foreground">
+        Shown wherever the collection is reached as a whole — not a specific hotel&apos;s own phone or email.
+      </p>
       <FormRow>
         <TextField<PlatformContactFormValues> name="contactEmail" label="Contact email" type="email" placeholder="hello@hotelcollection.test" />
         <TextField<PlatformContactFormValues> name="contactPhone" label="Contact phone" type="tel" placeholder="+212 600 000 000" />

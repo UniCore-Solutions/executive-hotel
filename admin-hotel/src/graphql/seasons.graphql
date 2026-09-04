@@ -1,0 +1,13 @@
+query AdminSeasons($hotelId: ID!) {
+  adminSeasons(hotelId: $hotelId) {
+    id
+    hotelId
+    name
+    seasonType
+    startDate
+    endDate
+    isActive
+    color
+    notes
+  }
+}

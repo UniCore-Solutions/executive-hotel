@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.hotelcollection.hotel.service.AuditService;
 import com.hotelcollection.hotel.service.AvailabilityService;
+import com.hotelcollection.hotel.dto.catalog.AdminBulkRoomInput;
 import com.hotelcollection.hotel.dto.catalog.AdminHotelInput;
 import com.hotelcollection.hotel.dto.catalog.AdminRoomInput;
 import com.hotelcollection.hotel.dto.catalog.AdminRoomTypeInput;
@@ -90,6 +91,9 @@ public class CatalogAdminServiceImpl implements CatalogAdminService {
 		hotel.setLongitude(in.longitude());
 		hotel.setPhone(in.phone());
 		hotel.setEmail(in.email());
+		hotel.setWebsite(in.website());
+		hotel.setTimezone(in.timezone());
+		hotel.setLanguages(in.languages());
 		hotel.setStarRating(in.starRating() == null ? null : in.starRating().shortValue());
 		hotel.setCheckInTime(parseTime(in.checkInTime()));
 		hotel.setCheckOutTime(parseTime(in.checkOutTime()));
@@ -129,6 +133,11 @@ public class CatalogAdminServiceImpl implements CatalogAdminService {
 		applyIfPresent(in.longitude(), hotel::setLongitude);
 		applyIfPresent(in.phone(), hotel::setPhone);
 		applyIfPresent(in.email(), hotel::setEmail);
+		applyIfPresent(in.website(), hotel::setWebsite);
+		applyIfPresent(in.timezone(), hotel::setTimezone);
+		if (in.languages() != null) {
+			hotel.setLanguages(in.languages());
+		}
 		if (in.starRating() != null) {
 			hotel.setStarRating(in.starRating().shortValue());
 		}
@@ -377,11 +386,100 @@ public class CatalogAdminServiceImpl implements CatalogAdminService {
 		return room;
 	}
 
+	private static final int MAX_BULK_ROOMS = 200;
+
+	@Override
+	@Transactional
+	public List<Room> bulkCreateRooms(UUID hotelId, UUID roomTypeId, AdminBulkRoomInput in) {
+		CurrentUser actor = requireStaffAccess(hotelId);
+		requireHotel(hotelId);
+		RoomType rt = roomTypeRepository.findById(roomTypeId)
+				.orElseThrow(() -> DomainException.validation("room type not found"));
+		if (!rt.getHotelId().equals(hotelId)) {
+			throw DomainException.validation("room type does not belong to this hotel");
+		}
+
+		List<String> roomNumbers = buildRoomNumbers(in);
+		if (roomNumbers.isEmpty()) {
+			throw DomainException.validation("no room numbers to create");
+		}
+		if (roomNumbers.size() > MAX_BULK_ROOMS) {
+			throw DomainException.validation("cannot create more than " + MAX_BULK_ROOMS + " rooms at once");
+		}
+		java.util.Set<String> deduped = new java.util.LinkedHashSet<>(roomNumbers);
+		if (deduped.size() != roomNumbers.size()) {
+			throw DomainException.validation("room numbers must be unique within the batch");
+		}
+
+		List<String> existing = roomRepository.findExistingRoomNumbers(hotelId, roomNumbers);
+		if (!existing.isEmpty()) {
+			throw DomainException.conflict(
+					"these room numbers already exist in this hotel: " + String.join(", ", existing));
+		}
+
+		String status = in.status() == null ? "active" : validRoomStatus(in.status());
+		Instant now = Instant.now();
+		List<Room> rooms = new java.util.ArrayList<>();
+		for (String roomNumber : roomNumbers) {
+			Room room = new Room();
+			room.setHotelId(hotelId);
+			room.setRoomTypeId(roomTypeId);
+			room.setRoomNumber(roomNumber);
+			room.setFloor(in.floor());
+			room.setStatus(status);
+			room.setHousekeepingStatus("clean");
+			room.setMaintenanceStatus("ok");
+			room.setCreatedAt(now);
+			room.setUpdatedAt(now);
+			rooms.add(room);
+		}
+		try {
+			roomRepository.saveAll(rooms);
+			roomRepository.flush();
+		} catch (DataIntegrityViolationException ex) {
+			throw DomainException.conflict("one or more room numbers already exist in this hotel");
+		}
+		audit.record(actor, "room.bulk_created", "room_type", roomTypeId, hotelId,
+				Map.of("count", rooms.size(), "roomNumbers", roomNumbers));
+		return rooms;
+	}
+
+	/** Manual {@code roomNumbers} list takes precedence; otherwise generates
+	 * {@code count} numbers from {@code startNumber}, formatted
+	 * "{prefix}-{n}" when a prefix is given, else the plain number. */
+	private List<String> buildRoomNumbers(AdminBulkRoomInput in) {
+		if (in.roomNumbers() != null && !in.roomNumbers().isEmpty()) {
+			return in.roomNumbers().stream()
+					.map(n -> n == null ? "" : n.trim())
+					.peek(n -> {
+						if (n.isEmpty()) {
+							throw DomainException.validation("room numbers cannot be blank");
+						}
+					})
+					.toList();
+		}
+		if (in.count() == null || in.count() <= 0) {
+			throw DomainException.validation("either roomNumbers or a positive count is required");
+		}
+		if (in.startNumber() == null) {
+			throw DomainException.validation("startNumber is required when generating by count");
+		}
+		String prefix = in.prefix() == null ? "" : in.prefix().trim();
+		List<String> generated = new java.util.ArrayList<>();
+		for (int i = 0; i < in.count(); i++) {
+			int n = in.startNumber() + i;
+			generated.add(prefix.isEmpty() ? String.valueOf(n) : prefix + "-" + n);
+		}
+		return generated;
+	}
+
 	@Override
 	@Transactional(readOnly = true)
-	public List<Amenity> amenityCatalog() {
+	public List<Amenity> amenityCatalog(boolean includeInactive) {
 		currentUser.requireStaff();
-		return amenityRepository.findAllByOrderByCategoryAscNameAsc();
+		return includeInactive
+				? amenityRepository.findAllByOrderByCategoryAscNameAsc()
+				: amenityRepository.findByIsActiveTrueOrderByCategoryAscNameAsc();
 	}
 
 	@Override

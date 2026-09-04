@@ -2,6 +2,7 @@ package com.hotelcollection.hotel.entity;
 
 import java.util.UUID;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -27,4 +28,7 @@ public class Amenity {
 	private String icon;
 
 	private String category;
+
+	@Column(name = "is_active", nullable = false)
+	private boolean isActive = true;
 }

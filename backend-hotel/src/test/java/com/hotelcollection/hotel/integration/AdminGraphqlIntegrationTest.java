@@ -189,6 +189,86 @@ class AdminGraphqlIntegrationTest {
 	}
 
 	@Test
+	@SuppressWarnings("unchecked")
+	void adminAmenitiesIncludeInactiveDefaultsToActiveOnly() throws Exception {
+		Amenity inactive = new Amenity();
+		inactive.setName("Deprecated Perk " + System.nanoTime());
+		inactive.setCategory("general");
+		inactive.setActive(false);
+		amenityRepository.saveAndFlush(inactive);
+		String token = staffToken(uid(9103), List.of(uid(999)));
+
+		Map<String, Object> defaultBody = post("""
+				query { adminAmenities { id name } }
+				""", null, token);
+		List<Map<String, Object>> defaultList = (List<Map<String, Object>>)
+				((Map<String, Object>) defaultBody.get("data")).get("adminAmenities");
+		assertThat(defaultList).noneMatch(a -> inactive.getId().toString().equals(a.get("id")));
+
+		Map<String, Object> allBody = post("""
+				query { adminAmenities(includeInactive: true) { id name } }
+				""", null, token);
+		List<Map<String, Object>> allList = (List<Map<String, Object>>)
+				((Map<String, Object>) allBody.get("data")).get("adminAmenities");
+		assertThat(allList).anyMatch(a -> inactive.getId().toString().equals(a.get("id")));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void seasonCrudOverlapRejectionAndHotelScopedAuthorization() throws Exception {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		String token = staffToken(uid(9201), List.of(fx.hotel().getId()));
+
+		Map<String, Object> created = rest("POST", "/api/v1/admin/hotels/" + fx.hotel().getId() + "/seasons",
+				Map.of("name", "High Season", "seasonType", "high", "startDate", "2027-06-01",
+						"endDate", "2027-08-31"),
+				token);
+		assertThat(created.get("__status")).isEqualTo(201);
+		String seasonId = (String) created.get("id");
+		assertThat(created.get("seasonType")).isEqualTo("high");
+
+		// Overlapping range on the same hotel — rejected by the real DB
+		// constraint (ex_seasons_no_overlap, V42), not just client validation.
+		Map<String, Object> overlapping = rest("POST", "/api/v1/admin/hotels/" + fx.hotel().getId() + "/seasons",
+				Map.of("name", "Conflicting", "startDate", "2027-07-15", "endDate", "2027-09-15"), token);
+		assertThat(overlapping.get("__status")).isEqualTo(409);
+
+		// Non-overlapping range on the same hotel — succeeds.
+		Map<String, Object> adjacent = rest("POST", "/api/v1/admin/hotels/" + fx.hotel().getId() + "/seasons",
+				Map.of("name", "Low Season", "seasonType", "low", "startDate", "2027-09-01",
+						"endDate", "2027-10-31"),
+				token);
+		assertThat(adjacent.get("__status")).isEqualTo(201);
+
+		Map<String, Object> read = post("""
+				query($hotelId: ID!) { adminSeasons(hotelId: $hotelId) { id name startDate endDate isActive } }
+				""", Map.of("hotelId", fx.hotel().getId().toString()), token);
+		List<Map<String, Object>> list = (List<Map<String, Object>>)
+				((Map<String, Object>) read.get("data")).get("adminSeasons");
+		assertThat(list).hasSize(2);
+
+		Map<String, Object> updated = rest("PUT", "/api/v1/admin/seasons/" + seasonId,
+				Map.of("name", "Peak Season", "isActive", false), token);
+		assertThat(updated.get("__status")).isEqualTo(200);
+		assertThat(updated.get("name")).isEqualTo("Peak Season");
+		assertThat(updated.get("active")).isEqualTo(false);
+
+		// The now-inactive season no longer blocks a new one over its old
+		// dates (the EXCLUDE constraint is gated WHERE is_active).
+		Map<String, Object> reclaimed = rest("POST", "/api/v1/admin/hotels/" + fx.hotel().getId() + "/seasons",
+				Map.of("name", "Replaces Peak", "startDate", "2027-06-01", "endDate", "2027-08-31"), token);
+		assertThat(reclaimed.get("__status")).isEqualTo(201);
+
+		String otherStaffToken = staffToken(uid(9202), List.of(UUID.randomUUID()));
+		Map<String, Object> forbidden = rest("PUT", "/api/v1/admin/seasons/" + seasonId,
+				Map.of("name", "Hijacked"), otherStaffToken);
+		assertThat(forbidden.get("__status")).isEqualTo(403);
+
+		Map<String, Object> deleted = rest("DELETE", "/api/v1/admin/seasons/" + seasonId, null, token);
+		assertThat(deleted.get("__status")).isEqualTo(204);
+	}
+
+	@Test
 	void malformedUuidArgumentIsValidationError() throws Exception {
 		String token = staffToken(uid(9103), List.of(fixtures.newBookableHotel().hotelId()));
 

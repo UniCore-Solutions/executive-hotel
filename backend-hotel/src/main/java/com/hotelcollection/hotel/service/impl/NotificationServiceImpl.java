@@ -98,7 +98,6 @@ public class NotificationServiceImpl implements NotificationService {
 	private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH);
 	private static final DateTimeFormatter DATETIME_FMT =
 			DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.ENGLISH).withZone(java.time.ZoneOffset.UTC);
-	private static final String LOGO_CATEGORY = "logo";
 	/** Platform-wide brand for platform-scoped emails when no hotel can be
 	 * resolved — deliberately not a hard failure; see {@link #resolveWelcomeTheme}. */
 	private static final String PLATFORM_BRAND = "Hotel Collection";
@@ -434,13 +433,13 @@ public class NotificationServiceImpl implements NotificationService {
 	}
 
 	private String resolveLogoUrl(Hotel hotel) {
-		List<Media> hotelLogo = mediaRepository.findByHotelIdAndCategory(hotel.getId(), LOGO_CATEGORY);
+		List<Media> hotelLogo = mediaRepository.findByHotelIdAndCategory(hotel.getId(), Media.CATEGORY_LOGO);
 		if (!hotelLogo.isEmpty()) {
 			return hotelLogo.get(0).getUrl();
 		}
 		if (hotel.getPlatformId() != null) {
 			List<Media> platformLogo = mediaRepository.findByPlatformIdAndCategory(hotel.getPlatformId(),
-					LOGO_CATEGORY);
+					Media.CATEGORY_LOGO);
 			if (!platformLogo.isEmpty()) {
 				return platformLogo.get(0).getUrl();
 			}

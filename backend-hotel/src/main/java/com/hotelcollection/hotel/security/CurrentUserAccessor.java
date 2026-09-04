@@ -76,4 +76,22 @@ public class CurrentUserAccessor {
 		}
 		return actor;
 	}
+
+	/**
+	 * Requires {@code hotel_admin} of at least one hotel, or platform-level
+	 * {@code super_admin}. For platform-shared resources that no single hotel
+	 * owns (e.g. the amenity catalog — any hotel_admin can add to it, and the
+	 * addition becomes usable by every other hotel too) but that shouldn't be
+	 * writable by every staff role either — narrower than {@link #requireStaff()},
+	 * broader than {@link #requireSuperAdmin()}.
+	 */
+	public CurrentUser requireHotelAdminOrSuperAdmin() {
+		CurrentUser actor = require();
+		boolean allowed = actor.hasRole("super_admin")
+				|| (actor.hasRole("hotel_admin") && actor.hotelIds() != null && !actor.hotelIds().isEmpty());
+		if (!allowed) {
+			throw DomainException.forbidden("hotel_admin or super_admin role required");
+		}
+		return actor;
+	}
 }

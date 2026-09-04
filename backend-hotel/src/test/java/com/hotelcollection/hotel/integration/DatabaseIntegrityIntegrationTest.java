@@ -47,8 +47,8 @@ class DatabaseIntegrityIntegrationTest {
 	void flywayAppliedAllMigrations() {
 		Integer applied = jdbc.queryForObject(
 				"SELECT count(*) FROM flyway_schema_history WHERE success = TRUE", Integer.class);
-		// V38 (google_oauth_sso) is the current head.
-		assertThat(applied).isEqualTo(38);
+		// V42 (seasons) is the current head.
+		assertThat(applied).isEqualTo(42);
 	}
 
 	@Test
@@ -57,8 +57,9 @@ class DatabaseIntegrityIntegrationTest {
 				"SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"
 						+ " AND table_name <> 'flyway_schema_history'",
 				Integer.class);
-		// 56 + user_external_identities/oauth_states/login_grants (V38).
-		assertThat(tables).isEqualTo(59);
+		// 56 + user_external_identities/oauth_states/login_grants (V38) + seasons
+		// (V42); V39/V40/V41 add only indexes/columns on existing tables.
+		assertThat(tables).isEqualTo(60);
 
 		assertThat(extensionInstalled("btree_gist")).isTrue();
 		assertThat(extensionInstalled("pgcrypto")).isTrue();

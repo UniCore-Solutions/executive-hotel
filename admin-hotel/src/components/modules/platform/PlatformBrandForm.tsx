@@ -1,6 +1,6 @@
 'use client';
 
-import { Form, FormRow, FormActions } from '@/components/form/Form';
+import { Form, FormRow, FormSection, FormActions } from '@/components/form/Form';
 import { TextField } from '@/components/form/fields/TextField';
 import { TextareaField } from '@/components/form/fields/TextareaField';
 import { SelectField } from '@/components/form/fields/SelectField';
@@ -44,25 +44,30 @@ export function PlatformBrandForm({ platform, onSaved }: { platform: PlatformBra
 
   return (
     <Form form={form} onSubmit={submit} className="space-y-6">
-      <FormRow>
-        <TextField<PlatformBrandFormValues> name="name" label="Collection name" required placeholder="The Hotel Collection" />
-        <TextField<PlatformBrandFormValues> name="tagline" label="Tagline" placeholder="Curated stays, independently run" />
-      </FormRow>
-      <TextareaField<PlatformBrandFormValues>
-        name="description"
-        label="Description"
-        rows={4}
-        placeholder="A short description of the collection, shown on the guest site."
-      />
-      <FormRow>
-        <SelectField<PlatformBrandFormValues>
-          name="defaultCurrency"
-          label="Default currency"
-          required
-          options={CURRENCY_OPTIONS}
+      <FormSection title="Identity" description="How the collection is named and described to guests.">
+        <FormRow>
+          <TextField<PlatformBrandFormValues> name="name" label="Collection name" required placeholder="The Hotel Collection" />
+          <TextField<PlatformBrandFormValues> name="tagline" label="Tagline" placeholder="Curated stays, independently run" />
+        </FormRow>
+        <TextareaField<PlatformBrandFormValues>
+          name="description"
+          label="Description"
+          rows={4}
+          placeholder="A short description of the collection, shown on the guest site."
         />
-        <SelectField<PlatformBrandFormValues> name="status" label="Status" required options={STATUS_OPTIONS} />
-      </FormRow>
+      </FormSection>
+
+      <FormSection title="Status & currency">
+        <FormRow>
+          <SelectField<PlatformBrandFormValues>
+            name="defaultCurrency"
+            label="Default currency"
+            required
+            options={CURRENCY_OPTIONS}
+          />
+          <SelectField<PlatformBrandFormValues> name="status" label="Status" required options={STATUS_OPTIONS} />
+        </FormRow>
+      </FormSection>
 
       <FormActions>
         <Button type="submit" loading={isSubmitting}>

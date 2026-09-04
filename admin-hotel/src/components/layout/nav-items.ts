@@ -3,6 +3,7 @@ import {
   BedDouble,
   Building2,
   CalendarClock,
+  CalendarDays,
   CalendarRange,
   FileText,
   LayoutDashboard,
@@ -11,6 +12,7 @@ import {
   Receipt,
   ScrollText,
   Settings,
+  Sparkles,
   Tag,
   Users,
   UsersRound,
@@ -75,6 +77,25 @@ export const GLOBAL_NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+/**
+ * `GLOBAL_NAV_GROUPS` filtered to what `roles` should actually see — the
+ * hotel-workspace equivalent (`hotelNavGroups`) always applied this same
+ * `visibleTo()` filter before returning; this one didn't, so every layout
+ * component that rendered `GLOBAL_NAV_GROUPS` directly (`Sidebar`/`Topbar`/
+ * `MobileNav`) showed the full unfiltered list — including "Platform
+ * Settings"/"Users & Roles"/"Audit Log" — to every staff member on any
+ * global page, not just `super_admin`. Found live (2026-09-04) while
+ * checking a `hotel_admin` session's sidebar on `/amenities`. The backend
+ * was never affected (these routes' writes are separately gated inside
+ * their own services), but the nav itself was wrong. Layout components
+ * should call this instead of the raw constant.
+ */
+export function visibleGlobalNavGroups(roles: string[]): NavGroup[] {
+  return GLOBAL_NAV_GROUPS
+    .map((group) => ({ ...group, items: group.items.filter((item) => visibleTo(item, roles)) }))
+    .filter((group) => group.items.length > 0);
+}
+
 /** Hotel-workspace navigation — everything scoped to the hotel whose id
     prefixes each href, filtered to what `roles` would plausibly use (see
     `NavItem.roles`). Same "ship it, then link it" rule as the global nav. */
@@ -131,6 +152,30 @@ export function hotelNavGroups(hotelId: string, roles: string[]): NavGroup[] {
           // data behind this, only a plausibility guess.
           roles: ['hotel_admin', 'revenue_manager', 'reception_staff'],
         },
+        {
+          href: `${base}/seasons`,
+          label: 'Seasons',
+          icon: CalendarDays,
+          // Calendar/definition module, not pricing (deliberately not wired
+          // into rate_plan_prices — see SeasonService's class doc) — same
+          // revenue/ops audience as Availability just above, not content.
+          roles: ['hotel_admin', 'revenue_manager', 'reception_staff'],
+        },
+        {
+          // Deliberately NOT `${base}/amenities` — the catalog isn't owned by
+          // any one hotel (`AmenityAdminService`'s class doc), so this links
+          // to the global `/amenities` page even from inside a hotel's
+          // workspace. Reached from here (not the top-level "Platform" nav)
+          // because that's genuinely where staff go looking for it
+          // (task-driven). `roles` mirrors the real backend gate
+          // (`CurrentUserAccessor.requireHotelAdminOrSuperAdmin`) more
+          // closely than most entries in this file — a hotel_admin really
+          // can write here, not just a plausibility guess.
+          href: '/amenities',
+          label: 'Amenities',
+          icon: Sparkles,
+          roles: ['hotel_admin'],
+        },
       ],
     },
     {
@@ -155,25 +200,33 @@ export function hotelNavGroups(hotelId: string, roles: string[]): NavGroup[] {
       ],
     },
     {
-      label: 'Configuration',
+      // Reviews is its own business module (guest feedback/moderation), not
+      // hotel configuration — kept as a separate top-level group from
+      // Settings below rather than nested under it, even though both
+      // currently share the same plausible-audience `roles` guess.
+      label: 'Reviews',
       items: [
-        {
-          href: `${base}/settings`,
-          label: 'Settings',
-          icon: Settings,
-          roles: ['hotel_admin', 'content_manager'],
-        },
         {
           href: `${base}/reviews`,
           label: 'Reviews',
           icon: MessageSquareText,
           // Review moderation decides what appears on the hotel's public
-          // page — the same "guest-facing content" plausibility bucket as
-          // Settings above, not a front-desk/finance/revenue task. Same
-          // UX-only judgement-call caveat as every other `roles` entry in
-          // this file (see NavItem.roles doc) — a direct URL still goes
-          // through the real `requireHotelAccess` check in
+          // page — a guest-facing content task, not front-desk/finance/
+          // revenue. Same UX-only judgement-call caveat as every other
+          // `roles` entry in this file (see NavItem.roles doc) — a direct
+          // URL still goes through the real `requireHotelAccess` check in
           // ReviewService#adminReviews/#moderate, unchanged.
+          roles: ['hotel_admin', 'content_manager'],
+        },
+      ],
+    },
+    {
+      label: 'Settings',
+      items: [
+        {
+          href: `${base}/settings`,
+          label: 'Hotel Profile',
+          icon: Settings,
           roles: ['hotel_admin', 'content_manager'],
         },
       ],

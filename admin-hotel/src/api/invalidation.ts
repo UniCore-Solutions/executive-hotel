@@ -37,6 +37,7 @@ export const REST_INVALIDATIONS: Record<string, string[]> = {
   'roomTypes.media': ['adminHotel'],
   'rooms.create': ['adminHotel'],
   'rooms.update': ['adminHotel'],
+  'rooms.bulkCreate': ['adminHotel'],
   'ratePlans.create': ['adminHotel'],
   'ratePlans.update': ['adminHotel'],
   'ratePlans.link': ['adminHotel'],
@@ -57,6 +58,15 @@ export const REST_INVALIDATIONS: Record<string, string[]> = {
   'users.create': ['adminUsers'],
   'users.assignRole': ['adminUsers', 'adminRoles'],
   'users.revokeRole': ['adminUsers', 'adminRoles'],
+  // Evicts every `adminAmenities` cache entry regardless of its
+  // `includeInactive` argument — Apollo's fieldName-based evict matches all
+  // of them, so both the management page and every hotel/room-type picker
+  // refresh together.
+  'amenities.create': ['adminAmenities'],
+  'amenities.update': ['adminAmenities'],
+  'seasons.create': ['adminSeasons'],
+  'seasons.update': ['adminSeasons'],
+  'seasons.delete': ['adminSeasons'],
 };
 
 export function invalidateGraphql(apollo: ApolloClient, operationKey: string): void {

@@ -30,3 +30,12 @@ export function isStaff(roles: string[]): boolean {
 export function isSuperAdmin(roles: string[]): boolean {
   return roles.includes(SUPER_ADMIN);
 }
+
+/** Mirrors `CurrentUserAccessor.requireHotelAdminOrSuperAdmin` — used for
+    platform-shared resources (the amenity catalog) that any hotel_admin can
+    write to, not just super_admin, but that shouldn't be open to every
+    staff role. UX-only, same caveat as everything else in this file — the
+    real check is the backend method it mirrors. */
+export function isHotelAdminOfAnyHotel(roles: string[], hotelIds: string[]): boolean {
+  return isSuperAdmin(roles) || (roles.includes('hotel_admin') && hotelIds.length > 0);
+}

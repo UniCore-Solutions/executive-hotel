@@ -65,6 +65,29 @@ public interface MediaRepository extends JpaRepository<Media, UUID> {
 	void deletePrimaryByHotelId(@Param("hotelId") UUID hotelId);
 	void deleteAll();
 
+	/** Replace-on-upload for the one-logo-per-owner rule (mirrors
+	 * {@link #deletePrimaryByHotelId}/{@link #deletePrimaryByPlatformId} —
+	 * immediate so the new logo's insert never collides with the old row). */
+	@Modifying
+	@Query("delete from Media m where m.hotelId = :hotelId and m.category = :category")
+	void deleteByHotelIdAndCategory(@Param("hotelId") UUID hotelId, @Param("category") String category);
+
+	@Modifying
+	@Query("delete from Media m where m.platformId = :platformId and m.category = :category")
+	void deleteByPlatformIdAndCategory(@Param("platformId") UUID platformId, @Param("category") String category);
+
+	/** Replace-all gallery writes (`replaceHotelMedia`/`replacePlatformMedia`)
+	 * must never be able to delete or duplicate the logo — it has its own
+	 * dedicated upload/delete path. These exclude the given category instead
+	 * of the owner's full media set. */
+	@Modifying
+	@Query("delete from Media m where m.hotelId = :hotelId and (m.category is null or m.category <> :category)")
+	void deleteByHotelIdExceptCategory(@Param("hotelId") UUID hotelId, @Param("category") String category);
+
+	@Modifying
+	@Query("delete from Media m where m.platformId = :platformId and (m.category is null or m.category <> :category)")
+	void deleteByPlatformIdExceptCategory(@Param("platformId") UUID platformId, @Param("category") String category);
+
 	/** Logo resolution for email branding ({@code NotificationServiceImpl}) —
 	 * hotel-scoped logo first, primary one preferred if more than one exists. */
 	@Query("select m from Media m where m.hotelId = :hotelId and m.category = :category "

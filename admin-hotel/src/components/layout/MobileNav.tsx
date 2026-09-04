@@ -8,14 +8,14 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetBody } from '@/compo
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useSession } from '@/context/SessionContext';
-import { GLOBAL_NAV_GROUPS, hotelNavGroups } from './nav-items';
+import { visibleGlobalNavGroups, hotelNavGroups } from './nav-items';
 
 export function MobileNav() {
   const pathname = usePathname();
   const params = useParams<{ hotelId?: string }>();
   const { me } = useSession();
   const hotelId = typeof params.hotelId === 'string' ? params.hotelId : null;
-  const groups = hotelId ? hotelNavGroups(hotelId, me?.roles ?? []) : GLOBAL_NAV_GROUPS;
+  const groups = hotelId ? hotelNavGroups(hotelId, me?.roles ?? []) : visibleGlobalNavGroups(me?.roles ?? []);
   const [open, setOpen] = useState(false);
 
   return (

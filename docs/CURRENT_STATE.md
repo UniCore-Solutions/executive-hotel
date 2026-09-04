@@ -686,3 +686,48 @@ Remaining known scope, in order:
 > - Verified: **273/273 backend tests (was 264), all 7 ArchUnit rules** (Testcontainers,
 >   Maven container). Guest frontend: `tsc` clean, 0 eslint errors, **120/120 vitest**
 >   (was 85/85).
+
+> **Update 2026-09-04 — Hotel Management & Platform Settings redesign, 8 workstreams
+> (`admin-hotel/`).** Full detail in `docs/ADMIN_REBUILD_PROGRESS.md`'s "Epic E-REDESIGN"
+> section; summary here per this file's own scope. `backoffice-hotel` untouched
+> throughout (retired console, per standing guidance).
+> - **IA**: Reviews is now its own top-level hotel-workspace nav group (was nested under
+>   "Configuration" with Settings — the exact anti-pattern the task flagged).
+> - **Branding, real for the first time**: the hotel/platform logo was an anonymous
+>   gallery photo (`Media.category` set nowhere, read nowhere admin-side) — now a
+>   governed, single-owner concept. Uploading `category="logo"` replaces any existing one
+>   for that owner; a DB partial-unique-index (`V39`) backs it for the concurrent-upload
+>   race; the gallery's replace-all write can neither drop nor duplicate the logo no
+>   matter what it submits (`MediaAdminServiceImpl`, live-verified). New dedicated
+>   Branding tabs on both Hotel Settings and Platform Settings.
+> - **Hotel Profile**: `Hotel` gained `website`/`timezone`/`languages` (`V40`, the first
+>   native-array-typed column in this codebase) — genuinely missing, not invented; no
+>   "official name" field added (`name`+`brand` already cover it). Settings page
+>   reorganized into General/Contact/Location/Localization/Operational sections; country
+>   and timezone are now real-reference-data-backed autocomplete instead of free text.
+> - **Amenities**: gained `is_active` (`V41`) and a real management surface — new
+>   `AmenityAdminService` (create/edit/activate-deactivate, `super_admin`-gated), a new
+>   global `/amenities` page, and category-grouped hotel/room-type pickers (was one flat
+>   list with a text hint).
+> - **Seasons — new module.** Did not exist in any form before (confirmed by a full-repo
+>   grep). New hotel-scoped `seasons` table (`V42`) with a real DB overlap constraint
+>   (`EXCLUDE USING gist`, gated `WHERE (is_active)` so deactivating frees the dates) —
+>   the same technique `rate_plan_prices` already proved, applied to a genuinely new
+>   entity. Calendar/definition only, deliberately **not** wired into rate-plan pricing.
+>   New `/hotels/{id}/seasons` page.
+> - **Room Types & Rooms**: a room type could only ever grow one room at a time before —
+>   new `POST .../room-types/{id}/rooms/bulk` (pattern generator or manual list,
+>   all-or-nothing, zero partial inserts on any collision), reachable from the Room Type
+>   edit page and as an optional second step right after creating a room type.
+> - Verified across all 8 workstreams: **backend ended at 322/322 tests, all 7 ArchUnit
+>   rules** (one transient memory-pressure test-context flake mid-session, confirmed
+>   resolved on immediate re-run, not a regression); `admin-hotel` `tsc`/`eslint` clean
+>   throughout, ended at **304/304 vitest**, `next build` clean (3 new routes:
+>   `/amenities`, `/hotels/[hotelId]/seasons`, plus the existing settings routes
+>   redesigned in place). Every workstream live-verified against the real running stack
+>   through the actual admin BFF, not just tests — all test data cleaned up afterward,
+>   canonical hotel/platform demo content restored where a live test necessarily touched
+>   it (one disclosed caveat: two `hotel_policies` rows' exact original wording could not
+>   be recovered since it wasn't captured before an overwrite — see the Policies
+>   workstream detail in ADMIN_REBUILD_PROGRESS.md for what happened and why it's
+>   low-consequence).

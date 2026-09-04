@@ -4,7 +4,7 @@ import { usePathname, useParams } from 'next/navigation';
 import { useSession } from '@/context/SessionContext';
 import { MobileNav } from '@/components/layout/MobileNav';
 import { UserMenu } from '@/components/layout/UserMenu';
-import { GLOBAL_NAV_GROUPS, hotelNavGroups, type NavGroup } from './nav-items';
+import { visibleGlobalNavGroups, hotelNavGroups, type NavGroup } from './nav-items';
 
 function currentLabel(pathname: string, groups: NavGroup[]): string {
   for (const group of groups) {
@@ -20,7 +20,7 @@ export function Topbar() {
   const pathname = usePathname();
   const params = useParams<{ hotelId?: string }>();
   const hotelId = typeof params.hotelId === 'string' ? params.hotelId : null;
-  const groups = hotelId ? hotelNavGroups(hotelId, me?.roles ?? []) : GLOBAL_NAV_GROUPS;
+  const groups = hotelId ? hotelNavGroups(hotelId, me?.roles ?? []) : visibleGlobalNavGroups(me?.roles ?? []);
 
   return (
     <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border bg-paper/95 px-4 backdrop-blur sm:px-6">

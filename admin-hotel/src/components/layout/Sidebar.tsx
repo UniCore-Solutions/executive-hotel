@@ -5,14 +5,14 @@ import Link from 'next/link';
 import { ArrowLeft, Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSession } from '@/context/SessionContext';
-import { GLOBAL_NAV_GROUPS, hotelNavGroups } from './nav-items';
+import { visibleGlobalNavGroups, hotelNavGroups } from './nav-items';
 
 export function Sidebar() {
   const pathname = usePathname();
   const params = useParams<{ hotelId?: string }>();
   const { me } = useSession();
   const hotelId = typeof params.hotelId === 'string' ? params.hotelId : null;
-  const groups = hotelId ? hotelNavGroups(hotelId, me?.roles ?? []) : GLOBAL_NAV_GROUPS;
+  const groups = hotelId ? hotelNavGroups(hotelId, me?.roles ?? []) : visibleGlobalNavGroups(me?.roles ?? []);
 
   return (
     <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-black/10 bg-navy-dark text-white lg:flex">

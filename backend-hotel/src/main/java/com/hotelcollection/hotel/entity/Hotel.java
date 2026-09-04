@@ -68,6 +68,19 @@ public class Hotel {
 
 	private String email;
 
+	private String website;
+
+	/** IANA timezone id, e.g. "Europe/Lisbon". Display/validation only — no
+	 * scheduling logic in this codebase currently derives from it. */
+	private String timezone;
+
+	/** ISO 639-1 codes (e.g. "en", "fr"). Nullable native Postgres array —
+	 * same {@code @JdbcTypeCode} idiom this entity already uses for
+	 * {@link #config}'s jsonb column, applied to {@code SqlTypes.ARRAY}. */
+	@JdbcTypeCode(SqlTypes.ARRAY)
+	@Column(columnDefinition = "text[]")
+	private List<String> languages;
+
 	private Short starRating;
 
 	private LocalTime checkInTime;

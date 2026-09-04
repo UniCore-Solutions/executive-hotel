@@ -56,6 +56,13 @@ export interface MediaInput {
   sortOrder?: number;
 }
 
+/** Governed media category vocabulary — mirrors the backend's
+ * `Media.CATEGORY_*` constants. `LOGO` is the only one with a uniqueness
+ * rule (one per hotel/platform, backend-enforced); the rest are
+ * informational. Single source of truth so the literal isn't repeated
+ * across `LogoUploadField`/`HotelGallery`/`PlatformGallery`. */
+export const MEDIA_CATEGORY_LOGO = 'logo';
+
 // ---------------------------------------------------------------- hotel settings
 
 export async function createHotel(input: HotelInput): Promise<{ id: string }> {
@@ -93,13 +100,14 @@ export async function setHotelPolicies(hotelId: string, policies: HotelPolicyInp
 export async function uploadHotelImage(
   hotelId: string,
   file: File,
-  meta: { altText?: string; isPrimary?: boolean },
+  meta: { altText?: string; category?: string; isPrimary?: boolean },
 ): Promise<Media> {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('ownerType', 'hotel');
   formData.append('ownerId', hotelId);
   if (meta.altText) formData.append('altText', meta.altText);
+  if (meta.category) formData.append('category', meta.category);
   formData.append('isPrimary', String(meta.isPrimary ?? false));
   const { data } = await restClient.post('/media/upload', formData);
   return data as Media;
@@ -128,6 +136,26 @@ export async function setRoomTypeMedia(roomTypeId: string, media: MediaInput[]):
 export async function createRoom(hotelId: string, input: RoomInput): Promise<{ id: string }> {
   const { data } = await restClient.post(`/admin/hotels/${hotelId}/rooms`, input);
   return data as { id: string };
+}
+
+export interface BulkRoomInput {
+  roomNumbers?: string[];
+  prefix?: string;
+  startNumber?: number;
+  count?: number;
+  floor?: string;
+  status?: string;
+}
+
+/** Manual-list or pattern-generated batch of rooms for one room type —
+    all-or-nothing (`CatalogAdminServiceImpl.bulkCreateRooms`). */
+export async function bulkCreateRooms(
+  hotelId: string,
+  roomTypeId: string,
+  input: BulkRoomInput,
+): Promise<{ id: string; roomNumber: string }[]> {
+  const { data } = await restClient.post(`/admin/hotels/${hotelId}/room-types/${roomTypeId}/rooms/bulk`, input);
+  return data as { id: string; roomNumber: string }[];
 }
 
 export async function updateRoom(id: string, input: RoomInput): Promise<unknown> {

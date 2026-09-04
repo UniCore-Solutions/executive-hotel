@@ -1,14 +1,22 @@
 'use client';
 
+import { useQuery } from '@apollo/client/react';
 import { Form, FormRow, FormSection, FormActions } from '@/components/form/Form';
 import { TextField } from '@/components/form/fields/TextField';
 import { NumberField } from '@/components/form/fields/NumberField';
 import { TextareaField } from '@/components/form/fields/TextareaField';
 import { SelectField } from '@/components/form/fields/SelectField';
+import { MultiSelectField } from '@/components/form/fields/MultiSelectField';
 import { Button } from '@/components/ui/button';
 import { useAdminForm } from '@/hooks/useAdminForm';
 import { createHotel, updateHotel } from '@/api/rest/endpoints/catalog';
-import { hotelProfileSchema, HOTEL_CURRENCIES, type HotelProfileFormValues } from '@/schemas/settings';
+import { CountriesDocument } from '@/graphql/generated/graphql';
+import {
+  hotelProfileSchema,
+  HOTEL_CURRENCIES,
+  HOTEL_LANGUAGES,
+  type HotelProfileFormValues,
+} from '@/schemas/settings';
 
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
@@ -17,6 +25,31 @@ const STATUS_OPTIONS = [
 ];
 
 const CURRENCY_OPTIONS = HOTEL_CURRENCIES.map((c) => ({ value: c.value, label: c.label }));
+
+// A handful of common IANA zones as a starting point in the datalist — the
+// full ~400-zone IANA database is offered too via `Intl.supportedValuesOf`
+// (universally supported in the browsers this console targets), so this
+// isn't the ceiling, just what shows before the admin starts typing.
+const COMMON_TIMEZONES = [
+  'Africa/Casablanca',
+  'Europe/Lisbon',
+  'Europe/London',
+  'Europe/Madrid',
+  'Europe/Paris',
+  'Europe/Berlin',
+  'America/New_York',
+  'America/Los_Angeles',
+  'Asia/Dubai',
+  'Asia/Tokyo',
+];
+
+function allTimezones(): string[] {
+  try {
+    return Intl.supportedValuesOf('timeZone');
+  } catch {
+    return COMMON_TIMEZONES;
+  }
+}
 
 export interface HotelProfile {
   id: string;
@@ -32,6 +65,9 @@ export interface HotelProfile {
   longitude?: number | null;
   phone?: string | null;
   email?: string | null;
+  website?: string | null;
+  timezone?: string | null;
+  languages?: string[] | null;
   starRating?: number | null;
   checkInTime?: string | null;
   checkOutTime?: string | null;
@@ -76,6 +112,9 @@ export function HotelProfileForm({
       longitude: hotel?.longitude ?? undefined,
       phone: hotel?.phone ?? '',
       email: hotel?.email ?? '',
+      website: hotel?.website ?? '',
+      timezone: hotel?.timezone ?? '',
+      languages: hotel?.languages ?? [],
       starRating: hotel?.starRating ?? undefined,
       checkInTime: hotel?.checkInTime ?? '',
       checkOutTime: hotel?.checkOutTime ?? '',
@@ -94,22 +133,62 @@ export function HotelProfileForm({
     },
   });
 
+  // Reference data for the two datalist-backed fields below — native
+  // `<datalist>` autocomplete, not a new combobox component (see
+  // `TextField`'s `list` prop doc): a searchable-dropdown UI primitive
+  // doesn't exist in this app yet, and building one for two fields in an
+  // already-large redesign isn't worth it. `countries` is real backend
+  // reference data (the same query `frontend-hotel`'s guest-site
+  // `CountryCombobox` uses); timezones come from the browser's own IANA
+  // database (`Intl.supportedValuesOf`) — no backend query needed for that.
+  const { data: countriesData } = useQuery(CountriesDocument);
+  const countries = countriesData?.countries ?? [];
+
   return (
     <Form form={form} onSubmit={submit} className="space-y-6">
-      <FormRow>
-        <TextField<HotelProfileFormValues> name="name" label="Name" required placeholder="Executive Hotel" />
-        <TextField<HotelProfileFormValues> name="brand" label="Brand" placeholder="Executive Hotel" />
-      </FormRow>
-      <TextareaField<HotelProfileFormValues>
-        name="description"
-        label="Description"
-        rows={4}
-        placeholder="A short, guest-facing description of this hotel."
-      />
-      <FormRow>
-        <TextField<HotelProfileFormValues> name="hotelType" label="Hotel type" placeholder="resort, boutique…" />
-        <NumberField<HotelProfileFormValues> name="starRating" label="Star rating" min={1} max={5} />
-      </FormRow>
+      <datalist id="hotel-profile-countries">
+        {countries.map((c) => (
+          <option key={c.code} value={c.code}>
+            {c.name}
+          </option>
+        ))}
+      </datalist>
+      <datalist id="hotel-profile-timezones">
+        {allTimezones().map((tz) => (
+          <option key={tz} value={tz} />
+        ))}
+      </datalist>
+
+      <FormSection title="General information">
+        <FormRow>
+          <TextField<HotelProfileFormValues> name="name" label="Name" required placeholder="Executive Hotel" />
+          <TextField<HotelProfileFormValues> name="brand" label="Brand" placeholder="Executive Hotel" />
+        </FormRow>
+        <TextareaField<HotelProfileFormValues>
+          name="description"
+          label="Description"
+          rows={4}
+          placeholder="A short, guest-facing description of this hotel."
+        />
+        <FormRow>
+          <TextField<HotelProfileFormValues> name="hotelType" label="Hotel type" placeholder="resort, boutique…" />
+          <NumberField<HotelProfileFormValues> name="starRating" label="Star rating" min={1} max={5} />
+        </FormRow>
+        <SelectField<HotelProfileFormValues> name="status" label="Status" required options={STATUS_OPTIONS} />
+      </FormSection>
+
+      <FormSection title="Contact" description="How guests and staff reach this hotel directly.">
+        <FormRow>
+          <TextField<HotelProfileFormValues> name="phone" label="Phone" type="tel" />
+          <TextField<HotelProfileFormValues> name="email" label="Email" type="email" />
+        </FormRow>
+        <TextField<HotelProfileFormValues>
+          name="website"
+          label="Website"
+          type="url"
+          placeholder="https://example.com"
+        />
+      </FormSection>
 
       <FormSection title="Location">
         <FormRow>
@@ -118,7 +197,12 @@ export function HotelProfileForm({
         </FormRow>
         <FormRow>
           <TextField<HotelProfileFormValues> name="city" label="City" />
-          <TextField<HotelProfileFormValues> name="countryCode" label="Country code" placeholder="MA" />
+          <TextField<HotelProfileFormValues>
+            name="countryCode"
+            label="Country"
+            placeholder="Start typing a country…"
+            list="hotel-profile-countries"
+          />
         </FormRow>
         <FormRow>
           <NumberField<HotelProfileFormValues> name="latitude" label="Latitude" step={0.0001} />
@@ -126,15 +210,7 @@ export function HotelProfileForm({
         </FormRow>
       </FormSection>
 
-      <FormSection title="Contact & operations">
-        <FormRow>
-          <TextField<HotelProfileFormValues> name="phone" label="Phone" type="tel" />
-          <TextField<HotelProfileFormValues> name="email" label="Email" type="email" />
-        </FormRow>
-        <FormRow>
-          <TextField<HotelProfileFormValues> name="checkInTime" label="Check-in time" placeholder="15:00" />
-          <TextField<HotelProfileFormValues> name="checkOutTime" label="Check-out time" placeholder="12:00" />
-        </FormRow>
+      <FormSection title="Localization" description="Currency, timezone, and languages spoken at this hotel.">
         <FormRow>
           <SelectField<HotelProfileFormValues>
             name="defaultCurrency"
@@ -142,7 +218,24 @@ export function HotelProfileForm({
             required
             options={CURRENCY_OPTIONS}
           />
-          <SelectField<HotelProfileFormValues> name="status" label="Status" required options={STATUS_OPTIONS} />
+          <TextField<HotelProfileFormValues>
+            name="timezone"
+            label="Timezone"
+            placeholder="Start typing a timezone…"
+            list="hotel-profile-timezones"
+          />
+        </FormRow>
+        <MultiSelectField<HotelProfileFormValues>
+          name="languages"
+          label="Languages spoken"
+          options={HOTEL_LANGUAGES.map((l) => ({ value: l.value, label: l.label }))}
+        />
+      </FormSection>
+
+      <FormSection title="Operational settings" description="Standard check-in and check-out times.">
+        <FormRow>
+          <TextField<HotelProfileFormValues> name="checkInTime" label="Check-in time" placeholder="15:00" />
+          <TextField<HotelProfileFormValues> name="checkOutTime" label="Check-out time" placeholder="12:00" />
         </FormRow>
       </FormSection>
 

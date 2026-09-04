@@ -12,6 +12,7 @@ export function TextField<TValues extends FieldValues>({
   type = 'text',
   placeholder,
   disabled,
+  list,
 }: {
   name: FieldPath<TValues>;
   label?: string;
@@ -20,6 +21,10 @@ export function TextField<TValues extends FieldValues>({
   type?: 'text' | 'email' | 'tel' | 'url' | 'date';
   placeholder?: string;
   disabled?: boolean;
+  /** Id of a `<datalist>` element to attach — a native, dependency-free
+      autocomplete for a large reference list (countries, timezones) that
+      doesn't warrant a dedicated combobox component. */
+  list?: string;
 }) {
   return (
     <FormField<TValues> name={name} label={label} description={description} required={required}>
@@ -27,6 +32,7 @@ export function TextField<TValues extends FieldValues>({
         <Input
           id={name}
           type={type}
+          list={list}
           placeholder={placeholder}
           disabled={disabled}
           value={(field.value as string | number | undefined) ?? ''}

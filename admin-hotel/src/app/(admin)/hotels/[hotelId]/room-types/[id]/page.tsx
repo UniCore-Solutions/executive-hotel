@@ -23,6 +23,7 @@ import { RoomTypeAvailabilityPanel } from '@/components/modules/room-types/RoomT
 import { buildRoomColumns, type RoomRow } from '@/components/modules/rooms/columns';
 import { ROOM_SORT_OPTIONS, compareRooms } from '@/components/modules/rooms/sort';
 import { RoomFormSheet } from '@/components/modules/rooms/RoomFormSheet';
+import { BulkRoomSheet } from '@/components/modules/rooms/BulkRoomSheet';
 import { useTableState } from '@/hooks/useTableState';
 
 export default function RoomTypeEditPage({ params }: { params: Promise<{ hotelId: string; id: string }> }) {
@@ -47,6 +48,7 @@ export default function RoomTypeEditPage({ params }: { params: Promise<{ hotelId
 
   const [editingRoom, setEditingRoom] = useState<RoomRow | null | undefined>(undefined);
   const [roomSheetOpen, setRoomSheetOpen] = useState(false);
+  const [bulkSheetOpen, setBulkSheetOpen] = useState(false);
   const { search, setSearch, sort, setSort } = useTableState();
   const roomSort = ROOM_SORT_OPTIONS.some((o) => o.value === sort) ? sort : 'roomNumber-asc';
 
@@ -123,10 +125,16 @@ export default function RoomTypeEditPage({ params }: { params: Promise<{ hotelId
                 Every physical room of this type. Room numbers and floors are whatever this hotel actually uses —
                 there&apos;s no fixed numbering scheme.
               </p>
-              <Button size="sm" onClick={openCreateRoom}>
-                <Plus className="size-4" />
-                Add room
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" variant="secondary" onClick={() => setBulkSheetOpen(true)}>
+                  <Plus className="size-4" />
+                  Add rooms in bulk
+                </Button>
+                <Button size="sm" onClick={openCreateRoom}>
+                  <Plus className="size-4" />
+                  Add room
+                </Button>
+              </div>
             </div>
             <DataTableToolbar
               searchValue={search}
@@ -200,6 +208,16 @@ export default function RoomTypeEditPage({ params }: { params: Promise<{ hotelId
           room={editingRoom}
           open={roomSheetOpen}
           onOpenChange={setRoomSheetOpen}
+          onSaved={() => void refetch()}
+        />
+      ) : null}
+
+      {roomType ? (
+        <BulkRoomSheet
+          hotelId={hotelId}
+          roomTypeId={roomType.id}
+          open={bulkSheetOpen}
+          onOpenChange={setBulkSheetOpen}
           onSaved={() => void refetch()}
         />
       ) : null}

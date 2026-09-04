@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isStaff, isSuperAdmin, SUPER_ADMIN, STAFF_ROLES } from './roles';
+import { isStaff, isSuperAdmin, isHotelAdminOfAnyHotel, SUPER_ADMIN, STAFF_ROLES } from './roles';
 
 describe('isStaff', () => {
   it('is true for a super_admin', () => {
@@ -36,5 +36,23 @@ describe('isSuperAdmin', () => {
 
   it('is false for an empty role list', () => {
     expect(isSuperAdmin([])).toBe(false);
+  });
+});
+
+describe('isHotelAdminOfAnyHotel', () => {
+  it('is true for super_admin regardless of hotelIds', () => {
+    expect(isHotelAdminOfAnyHotel([SUPER_ADMIN], [])).toBe(true);
+  });
+
+  it('is true for hotel_admin with at least one hotel', () => {
+    expect(isHotelAdminOfAnyHotel(['hotel_admin'], ['h1'])).toBe(true);
+  });
+
+  it('is false for hotel_admin with no hotel membership', () => {
+    expect(isHotelAdminOfAnyHotel(['hotel_admin'], [])).toBe(false);
+  });
+
+  it('is false for a different staff role, even with hotels', () => {
+    expect(isHotelAdminOfAnyHotel(['reception_staff'], ['h1'])).toBe(false);
   });
 });

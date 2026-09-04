@@ -26,6 +26,12 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
 
 	boolean existsByHotelIdAndRoomNumber(UUID hotelId, String roomNumber);
 
+	/** Pre-flight collision check for bulk creation — which of these
+	 * candidate numbers already exist in this hotel, if any. */
+	@Query("select r.roomNumber from Room r where r.hotelId = :hotelId and r.roomNumber in :roomNumbers")
+	List<String> findExistingRoomNumbers(@Param("hotelId") UUID hotelId,
+			@Param("roomNumbers") Collection<String> roomNumbers);
+
 	@Query("select count(r) from Room r where r.roomTypeId = :roomTypeId and r.status = 'active'")
 	long countActiveByRoomTypeId(@Param("roomTypeId") UUID roomTypeId);
 

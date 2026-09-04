@@ -16,7 +16,10 @@ extend type Query {
 	countries: [Country!]!
 	adminHotel(hotelId: ID!): AdminHotel
 	adminHotels(page: PageInput): AdminHotelPage!
-	adminAmenities: [Amenity!]!
+	# includeInactive: false (default) = only assignable amenities, for
+	# hotel/room-type pickers; true = the full catalog, for the Amenities
+	# management page (needs to see and reactivate inactive ones too).
+	adminAmenities(includeInactive: Boolean): [Amenity!]!
 }
 
 input HotelSearchInput {
@@ -52,6 +55,9 @@ type Hotel {
 	longitude: Float
 	phone: String
 	email: String
+	website: String
+	timezone: String
+	languages: [String!]
 	starRating: Int
 	checkInTime: String
 	checkOutTime: String
@@ -86,6 +92,7 @@ type Amenity {
 	name: String!
 	icon: String
 	category: String
+	isActive: Boolean!
 }
 
 type RoomType {

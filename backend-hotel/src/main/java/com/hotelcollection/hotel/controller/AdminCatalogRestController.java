@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.hotelcollection.hotel.dto.catalog.AdminBulkRoomInput;
 import com.hotelcollection.hotel.dto.catalog.AdminHotelInput;
 import com.hotelcollection.hotel.dto.catalog.AdminRoomInput;
 import com.hotelcollection.hotel.dto.catalog.AdminRoomTypeInput;
@@ -116,6 +117,16 @@ public class AdminCatalogRestController {
 	@PutMapping("/rooms/{id}")
 	public Room updateRoom(@PathVariable UUID id, @RequestBody AdminRoomInput in) {
 		return catalog.updateRoom(id, in);
+	}
+
+	/** Manual-list or pattern-generated batch of rooms for one room type —
+	 * all-or-nothing (see {@link com.hotelcollection.hotel.service.impl.CatalogAdminServiceImpl
+	 * #bulkCreateRooms}). */
+	@PostMapping("/hotels/{hotelId}/room-types/{roomTypeId}/rooms/bulk")
+	public ResponseEntity<List<Room>> bulkCreateRooms(@PathVariable UUID hotelId,
+			@PathVariable UUID roomTypeId, @RequestBody AdminBulkRoomInput in) {
+		return ResponseEntity.status(HttpStatus.CREATED)
+				.body(catalog.bulkCreateRooms(hotelId, roomTypeId, in));
 	}
 
 	/** Active rooms of this room type with no conflicting occupancy over

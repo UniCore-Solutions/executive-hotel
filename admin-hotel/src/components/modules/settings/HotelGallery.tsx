@@ -6,7 +6,13 @@ import { useMutation } from '@tanstack/react-query';
 import { useApollo } from '@/api/apollo/provider';
 import { invalidateGraphql } from '@/api/invalidation';
 import { useToast } from '@/context/ToastContext';
-import { uploadHotelImage, deleteMedia, setHotelMedia, type MediaInput } from '@/api/rest/endpoints/catalog';
+import {
+  uploadHotelImage,
+  deleteMedia,
+  setHotelMedia,
+  MEDIA_CATEGORY_LOGO,
+  type MediaInput,
+} from '@/api/rest/endpoints/catalog';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/shared/EmptyState';
 
@@ -26,10 +32,18 @@ interface MediaItem {
  * J-6 for why room types need one). The replace-list PUT (`setHotelMedia`)
  * is still used here for "set as cover", since there is no PATCH endpoint
  * to toggle `isPrimary` on an existing row without resending the whole list.
+ *
+ * The logo is deliberately not part of this gallery grid — it has its own
+ * ownership/role and dedicated home (`LogoUploadField`, on the Settings
+ * page's Branding tab, `category="logo"`) and is excluded from both the
+ * display and the `setHotelMedia` payload built here. The backend
+ * independently guarantees this replace-all write can neither drop nor
+ * duplicate the logo either way (`MediaAdminServiceImpl`), so this
+ * exclusion is a display/scope choice, not a correctness requirement.
  */
 export function HotelGallery({
   hotelId,
-  media,
+  media: allMedia,
   onChanged,
 }: {
   hotelId: string;
@@ -45,6 +59,8 @@ export function HotelGallery({
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+
+  const media = allMedia.filter((m) => m.category !== MEDIA_CATEGORY_LOGO);
 
   const asInput = (list: MediaItem[]): MediaInput[] =>
     list.map((m) => ({
@@ -120,12 +136,19 @@ export function HotelGallery({
               <div key={item.id} className="group relative overflow-hidden rounded-lg border border-border bg-muted">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={item.url} alt={item.altText ?? ''} className="aspect-[4/3] w-full object-cover" />
-                {item.isPrimary ? (
-                  <span className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded-full bg-gold px-2 py-0.5 text-[10px] font-semibold text-navy-dark shadow">
-                    <Star className="size-2.5 fill-current" />
-                    Cover
-                  </span>
-                ) : null}
+                <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1">
+                  {item.isPrimary ? (
+                    <span className="flex items-center gap-1 rounded-full bg-gold px-2 py-0.5 text-[10px] font-semibold text-navy-dark shadow">
+                      <Star className="size-2.5 fill-current" />
+                      Cover
+                    </span>
+                  ) : null}
+                  {item.category ? (
+                    <span className="rounded-full bg-navy-dark/80 px-2 py-0.5 text-[10px] font-medium text-white capitalize shadow">
+                      {item.category}
+                    </span>
+                  ) : null}
+                </div>
                 <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-1 bg-gradient-to-t from-navy-dark/70 to-transparent p-1.5 opacity-0 transition-opacity group-hover:opacity-100">
                   {!item.isPrimary ? (
                     <Button

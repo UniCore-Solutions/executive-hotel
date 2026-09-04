@@ -37,3 +37,13 @@ query AdminAmenities {
     category
   }
 }
+
+query AdminAmenityCatalog {
+  adminAmenities(includeInactive: true) {
+    id
+    name
+    icon
+    category
+    isActive
+  }
+}

@@ -94,11 +94,19 @@ class MediaUploadIntegrationTest {
 
 	private UUID upload(String ownerType, UUID ownerId, byte[] bytes, String fileName,
 			String contentType, String bearer, boolean isPrimary) throws Exception {
+		return upload(ownerType, ownerId, bytes, fileName, contentType, bearer, isPrimary, null);
+	}
+
+	private UUID upload(String ownerType, UUID ownerId, byte[] bytes, String fileName,
+			String contentType, String bearer, boolean isPrimary, String category) throws Exception {
 		var builder = multipart("/api/v1/media/upload")
 				.file(new MockMultipartFile("file", fileName, contentType, bytes))
 				.param("ownerType", ownerType)
 				.param("ownerId", String.valueOf(ownerId))
 				.param("isPrimary", String.valueOf(isPrimary));
+		if (category != null) {
+			builder = builder.param("category", category);
+		}
 		if (bearer != null) {
 			builder = builder.header("Authorization", "Bearer " + bearer);
 		}
@@ -212,6 +220,41 @@ class MediaUploadIntegrationTest {
 		assertThat(storage.exists(secondRow.getStorageKey())).isTrue();
 		assertThat(media.findByPlatformId(p.getId()).stream().filter(Media::isPrimary))
 				.hasSize(1);
+	}
+
+	@Test
+	void logoUploadReplacesPreviousLogoWithoutLeftovers() throws Exception {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+
+		UUID first = upload("hotel", fx.hotelId(), PNG_1PX, "logo1.png", "image/png",
+				token(), false, "logo");
+		String firstKey = media.findById(first).orElseThrow().getStorageKey();
+		UUID second = upload("hotel", fx.hotelId(), JPEG_HEAD, "logo2.jpg", "image/jpeg",
+				token(), false, "logo");
+		Media secondRow = media.findById(second).orElseThrow();
+
+		assertThat(storage.exists(firstKey)).isFalse();
+		assertThat(storage.exists(secondRow.getStorageKey())).isTrue();
+		assertThat(media.findByHotelId(fx.hotelId()).stream()
+				.filter(m -> "logo".equals(m.getCategory())))
+				.hasSize(1);
+	}
+
+	@Test
+	void logoAndGalleryPhotoCoexistAsSeparateRoles() throws Exception {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+
+		UUID logo = upload("hotel", fx.hotelId(), PNG_1PX, "logo.png", "image/png",
+				token(), false, "logo");
+		UUID gallery = upload("hotel", fx.hotelId(), JPEG_HEAD, "room.jpg", "image/jpeg",
+				token(), true, "gallery");
+
+		List<Media> hotelMedia = media.findByHotelId(fx.hotelId());
+		assertThat(hotelMedia).hasSize(2);
+		assertThat(hotelMedia.stream().filter(m -> m.getId().equals(logo)).findFirst().orElseThrow()
+				.getCategory()).isEqualTo("logo");
+		assertThat(hotelMedia.stream().filter(m -> m.getId().equals(gallery)).findFirst().orElseThrow()
+				.isPrimary()).isTrue();
 	}
 
 	@Test

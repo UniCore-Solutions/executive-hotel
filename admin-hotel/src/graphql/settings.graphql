@@ -17,6 +17,9 @@ query AdminHotelSettings($hotelId: ID!) {
       longitude
       phone
       email
+      website
+      timezone
+      languages
       starRating
       checkInTime
       checkOutTime

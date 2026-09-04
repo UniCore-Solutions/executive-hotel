@@ -7,7 +7,7 @@ import { useApollo } from '@/api/apollo/provider';
 import { invalidateGraphql } from '@/api/invalidation';
 import { useToast } from '@/context/ToastContext';
 import { uploadPlatformImage, setPlatformMedia } from '@/api/rest/endpoints/platform';
-import { deleteMedia, type MediaInput } from '@/api/rest/endpoints/catalog';
+import { deleteMedia, MEDIA_CATEGORY_LOGO, type MediaInput } from '@/api/rest/endpoints/catalog';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/shared/EmptyState';
 
@@ -21,16 +21,22 @@ interface MediaItem {
 }
 
 /**
- * Platform-level media library (logo/hero) — same shape as `HotelGallery`:
- * a single-call upload (`uploadPlatformImage`, ownerType "platform" is
- * natively accepted, same as "hotel" — see the comment on
+ * Platform-level media library (hero/brand imagery) — same shape as
+ * `HotelGallery`: a single-call upload (`uploadPlatformImage`, ownerType
+ * "platform" is natively accepted, same as "hotel" — see the comment on
  * `uploadPlatformImage`) plus the replace-list PUT (`setPlatformMedia`) for
  * "set as cover", since there is no PATCH endpoint to toggle `isPrimary` on
  * an existing row without resending the whole list.
+ *
+ * The logo is deliberately not part of this gallery grid — see the same
+ * note on `HotelGallery`; it has its own dedicated home (`LogoUploadField`,
+ * on the Platform Settings page's Branding tab, `category="logo"`), and
+ * `MediaAdminServiceImpl`'s replace-all write can neither drop nor
+ * duplicate it regardless of what this component submits.
  */
 export function PlatformGallery({
   platformId,
-  media,
+  media: allMedia,
   onChanged,
 }: {
   platformId: string;
@@ -41,6 +47,8 @@ export function PlatformGallery({
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+
+  const media = allMedia.filter((m) => m.category !== MEDIA_CATEGORY_LOGO);
 
   const asInput = (list: MediaItem[]): MediaInput[] =>
     list.map((m) => ({
@@ -97,7 +105,7 @@ export function PlatformGallery({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
-          {media.length} photo{media.length === 1 ? '' : 's'} — logo, hero, or brand imagery.
+          {media.length} photo{media.length === 1 ? '' : 's'} — hero or brand imagery.
         </p>
         <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(e) => void onFileSelected(e)} />
         <Button size="sm" variant="secondary" loading={uploading} onClick={() => fileInputRef.current?.click()}>
@@ -116,12 +124,19 @@ export function PlatformGallery({
               <div key={item.id} className="group relative overflow-hidden rounded-lg border border-border bg-muted">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={item.url} alt={item.altText ?? ''} className="aspect-[4/3] w-full object-cover" />
-                {item.isPrimary ? (
-                  <span className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded-full bg-gold px-2 py-0.5 text-[10px] font-semibold text-navy-dark shadow">
-                    <Star className="size-2.5 fill-current" />
-                    Cover
-                  </span>
-                ) : null}
+                <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1">
+                  {item.isPrimary ? (
+                    <span className="flex items-center gap-1 rounded-full bg-gold px-2 py-0.5 text-[10px] font-semibold text-navy-dark shadow">
+                      <Star className="size-2.5 fill-current" />
+                      Cover
+                    </span>
+                  ) : null}
+                  {item.category ? (
+                    <span className="rounded-full bg-navy-dark/80 px-2 py-0.5 text-[10px] font-medium text-white capitalize shadow">
+                      {item.category}
+                    </span>
+                  ) : null}
+                </div>
                 <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-1 bg-gradient-to-t from-navy-dark/70 to-transparent p-1.5 opacity-0 transition-opacity group-hover:opacity-100">
                   {!item.isPrimary ? (
                     <Button

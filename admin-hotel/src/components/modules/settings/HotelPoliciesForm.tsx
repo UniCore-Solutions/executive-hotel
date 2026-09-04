@@ -19,6 +19,27 @@ export interface HotelPolicyRow {
   sortOrder: number;
 }
 
+/**
+ * Common policy types as quick-add chips, so admins aren't typing every row
+ * from scratch. `icon` values match `frontend-hotel`'s real
+ * `ICON`/`POLICY_ICON_ALIAS` keys (`components/hotel/HotelDetail.tsx`) —
+ * picking an unrecognized key silently falls back to a generic checkmark on
+ * the guest site, so these are the actual renderable set, not invented ones.
+ * Purely a starting point: the row underneath is still the same free
+ * name/value/icon this form always had — no schema change, no new "type"
+ * field (see the note below).
+ */
+const POLICY_TEMPLATES: { name: string; icon: string }[] = [
+  { name: 'Cancellation', icon: 'clock' },
+  { name: 'Check-in', icon: 'bell' },
+  { name: 'Check-out', icon: 'clock' },
+  { name: 'Children', icon: 'kids' },
+  { name: 'Pets', icon: 'paw' },
+  { name: 'Smoking', icon: 'fire' },
+  { name: 'Payment', icon: 'tag' },
+  { name: 'Reservation', icon: 'pin' },
+];
+
 export function HotelPoliciesForm({
   hotelId,
   policies,
@@ -58,6 +79,25 @@ export function HotelPoliciesForm({
         page in this order. There is no separate &quot;type&quot; field — the name is whatever label makes sense
         (e.g. &quot;Cancellation&quot;).
       </p>
+      <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+        Cancellation and payment <em>terms for a specific rate plan</em> are set on that rate plan (Rate Plans →
+        edit → Details), not here — these are general house-rule statements shown on the hotel page.
+      </p>
+
+      <div className="flex flex-wrap gap-1.5">
+        {POLICY_TEMPLATES.map((t) => (
+          <Button
+            key={t.name}
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => fields.append({ name: t.name, value: '', icon: t.icon })}
+          >
+            <Plus className="size-3" />
+            {t.name}
+          </Button>
+        ))}
+      </div>
 
       {fields.fields.length === 0 ? (
         <EmptyState icon={ScrollText} title="No policies yet" description="Add the first policy statement." />

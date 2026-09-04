@@ -19,7 +19,9 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.ContextConfiguration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hotelcollection.hotel.entity.Media;
 import com.hotelcollection.hotel.entity.Platform;
+import com.hotelcollection.hotel.repository.MediaRepository;
 import com.hotelcollection.hotel.repository.PlatformRepository;
 import com.hotelcollection.hotel.security.CurrentUser;
 import com.hotelcollection.hotel.security.JwtService;
@@ -45,6 +47,8 @@ class AdminPlatformRestApiIntegrationTest {
 	JwtService jwtService;
 	@Autowired
 	org.springframework.jdbc.core.JdbcTemplate jdbc;
+	@Autowired
+	MediaRepository mediaRepository;
 
 	private final ObjectMapper objectMapper = new ObjectMapper();
 	private final HttpClient http = HttpClient.newBuilder()
@@ -204,13 +208,16 @@ class AdminPlatformRestApiIntegrationTest {
 		Platform p = newPlatform("media-" + System.nanoTime());
 		String token = tokenWithRoles(List.of("super_admin"));
 
+		// "hero" here, not "logo" — the logo has its own dedicated ownership
+		// path (see galleryReplaceAllDropsStrayLogoInputAndPreservesRealLogo
+		// below) and is deliberately excluded from this replace-all write.
 		HttpResponse<String> media = send("PUT", "/api/v1/admin/platform/" + p.getId() + "/media",
-				List.of(Map.of("url", "https://example.com/logo.png", "isPrimary", true,
-						"category", "logo")),
+				List.of(Map.of("url", "https://example.com/hero.png", "isPrimary", true,
+						"category", "hero")),
 				token);
 		assertThat(media.statusCode()).isEqualTo(200);
 		var json = objectMapper.readTree(media.body());
-		assertThat(json.get(0).get("url").asText()).isEqualTo("https://example.com/logo.png");
+		assertThat(json.get(0).get("url").asText()).isEqualTo("https://example.com/hero.png");
 		// Media.isPrimary() serializes as "primary" (Jackson strips the "is" prefix
 		// for boolean getters), same as every other Media JSON response in this suite.
 		assertThat(json.get(0).get("primary").asBoolean()).isTrue();
@@ -224,7 +231,45 @@ class AdminPlatformRestApiIntegrationTest {
 		@SuppressWarnings("unchecked")
 		List<Map<String, Object>> mediaList = (List<Map<String, Object>>) platform.get("media");
 		assertThat(mediaList).hasSize(1);
-		assertThat(mediaList.get(0).get("url")).isEqualTo("https://example.com/logo.png");
+		assertThat(mediaList.get(0).get("url")).isEqualTo("https://example.com/hero.png");
+	}
+
+	/**
+	 * The platform logo has its own dedicated upload path
+	 * ({@code /api/v1/media/upload}, category="logo") specifically so this
+	 * gallery-style replace-all write can neither drop it (by omission) nor
+	 * duplicate it (a stray logo-category entry in the input is dropped, not
+	 * inserted) — see {@code MediaAdminServiceImpl}'s class javadoc.
+	 */
+	@Test
+	void galleryReplaceAllDropsStrayLogoInputAndPreservesRealLogo() throws Exception {
+		Platform p = newPlatform("media-logo-" + System.nanoTime());
+		String token = tokenWithRoles(List.of("super_admin"));
+
+		Media logo = new Media();
+		logo.setUrl("https://example.com/logo.png");
+		logo.setStorageKey("logo-" + System.nanoTime());
+		logo.setCategory("logo");
+		logo.setPlatformId(p.getId());
+		logo.setPrimary(false);
+		logo.setSortOrder((short) 0);
+		logo.setCreatedAt(Instant.now());
+		UUID logoId = mediaRepository.saveAndFlush(logo).getId();
+
+		HttpResponse<String> replaced = send("PUT", "/api/v1/admin/platform/" + p.getId() + "/media",
+				List.of(
+						Map.of("url", "https://example.com/hero.png", "isPrimary", true, "category", "hero"),
+						Map.of("url", "https://example.com/sneaky-logo.png", "isPrimary", false, "category", "logo")),
+				token);
+		assertThat(replaced.statusCode()).isEqualTo(200);
+		assertThat(objectMapper.readTree(replaced.body())).hasSize(1);
+
+		List<Media> platformMedia = mediaRepository.findByPlatformId(p.getId());
+		assertThat(platformMedia.stream().filter(m -> "logo".equals(m.getCategory())))
+				.hasSize(1)
+				.allSatisfy(m -> assertThat(m.getId()).isEqualTo(logoId));
+		assertThat(platformMedia.stream().filter(m -> "hero".equals(m.getCategory())))
+				.hasSize(1);
 	}
 
 	@Test

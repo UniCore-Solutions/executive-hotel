@@ -24,6 +24,7 @@ import com.hotelcollection.hotel.dto.review.ReviewPage;
 import com.hotelcollection.hotel.entity.Amenity;
 import com.hotelcollection.hotel.entity.Review;
 import com.hotelcollection.hotel.entity.ReviewModerationStatus;
+import com.hotelcollection.hotel.entity.Season;
 import com.hotelcollection.hotel.service.AdminDashboardService;
 import com.hotelcollection.hotel.service.AuditService;
 import com.hotelcollection.hotel.service.BillingAdminService;
@@ -33,6 +34,7 @@ import com.hotelcollection.hotel.service.NotificationQueryService;
 import com.hotelcollection.hotel.service.RateQueryService;
 import com.hotelcollection.hotel.service.ReservationAdminService;
 import com.hotelcollection.hotel.service.ReviewService;
+import com.hotelcollection.hotel.service.SeasonService;
 
 /**
  * Back-office GraphQL root — READ side only (API rule: GraphQL = READ,
@@ -52,12 +54,13 @@ public class AdminGraphQLController {
 	private final IdentityAdminService identity;
 	private final NotificationQueryService notifications;
 	private final AuditService audit;
+	private final SeasonService seasons;
 
 	public AdminGraphQLController(AdminDashboardService dashboard, CatalogAdminService catalogAdmin,
 			RateQueryService rateQuery, ReservationAdminService reservations,
 			BillingAdminService billing,
 			ReviewService review, IdentityAdminService identity,
-			NotificationQueryService notifications, AuditService audit) {
+			NotificationQueryService notifications, AuditService audit, SeasonService seasons) {
 		this.dashboard = dashboard;
 		this.catalogAdmin = catalogAdmin;
 		this.rateQuery = rateQuery;
@@ -67,13 +70,14 @@ public class AdminGraphQLController {
 		this.identity = identity;
 		this.notifications = notifications;
 		this.audit = audit;
+		this.seasons = seasons;
 	}
 
 	// ---------------------------------------------------------------- queries
 
 	@QueryMapping
-	public List<Amenity> adminAmenities() {
-		return catalogAdmin.amenityCatalog();
+	public List<Amenity> adminAmenities(@Argument Boolean includeInactive) {
+		return catalogAdmin.amenityCatalog(Boolean.TRUE.equals(includeInactive));
 	}
 
 	@QueryMapping
@@ -106,6 +110,11 @@ public class AdminGraphQLController {
 	@QueryMapping
 	public List<AdminPromotionView> adminPromotions(@Argument UUID hotelId) {
 		return rateQuery.promotions(hotelId);
+	}
+
+	@QueryMapping
+	public List<Season> adminSeasons(@Argument UUID hotelId) {
+		return seasons.listSeasons(hotelId);
 	}
 
 	@QueryMapping

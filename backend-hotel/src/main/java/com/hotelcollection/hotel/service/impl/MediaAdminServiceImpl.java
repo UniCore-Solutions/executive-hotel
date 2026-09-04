@@ -17,6 +17,14 @@ import com.hotelcollection.hotel.exception.DomainException;
 /**
  * Back-office media writes: replace the media set of a hotel / room type
  * (delete-then-insert, per-owner primary uniqueness enforced).
+ *
+ * <p>The hotel/platform logo ({@link Media#CATEGORY_LOGO}) is deliberately
+ * excluded from this replace-all: it has its own dedicated single-item
+ * upload/delete path ({@code MediaStorageService}, {@code category="logo"}),
+ * so a gallery save here can neither wipe it (by omission from the
+ * submitted list) nor duplicate it (a stray logo-category row in the
+ * input is dropped, not inserted) — the logo keeps real, single-owner
+ * identity independent of whatever the gallery UI happens to submit.
  */
 @Service
 public class MediaAdminServiceImpl implements MediaAdminService {
@@ -30,7 +38,7 @@ public class MediaAdminServiceImpl implements MediaAdminService {
 	@Override
 	@Transactional
 	public List<Media> replaceHotelMedia(UUID hotelId, List<MediaInput> inputs) {
-		mediaRepository.deleteByHotelId(hotelId);
+		mediaRepository.deleteByHotelIdExceptCategory(hotelId, Media.CATEGORY_LOGO);
 		return replaceMedia(inputs, m -> m.setHotelId(hotelId));
 	}
 
@@ -44,7 +52,7 @@ public class MediaAdminServiceImpl implements MediaAdminService {
 	@Override
 	@Transactional
 	public List<Media> replacePlatformMedia(UUID platformId, List<MediaInput> inputs) {
-		mediaRepository.deleteByPlatformId(platformId);
+		mediaRepository.deleteByPlatformIdExceptCategory(platformId, Media.CATEGORY_LOGO);
 		return replaceMedia(inputs, m -> m.setPlatformId(platformId));
 	}
 
@@ -53,6 +61,7 @@ public class MediaAdminServiceImpl implements MediaAdminService {
 		if (inputs == null) {
 			inputs = List.of();
 		}
+		inputs = inputs.stream().filter(in -> !Media.CATEGORY_LOGO.equals(in.category())).toList();
 		List<Media> created = new ArrayList<>();
 		Instant now = Instant.now();
 		Media primary = null;

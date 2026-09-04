@@ -9,6 +9,7 @@ import com.hotelcollection.hotel.entity.Room;
 import com.hotelcollection.hotel.entity.RoomType;
 import com.hotelcollection.hotel.dto.media.MediaInput;
 import com.hotelcollection.hotel.entity.Media;
+import com.hotelcollection.hotel.dto.catalog.AdminBulkRoomInput;
 import com.hotelcollection.hotel.dto.catalog.AdminHotelInput;
 import com.hotelcollection.hotel.dto.catalog.AdminRoomInput;
 import com.hotelcollection.hotel.dto.catalog.AdminRoomTypeInput;
@@ -43,7 +44,14 @@ public interface CatalogAdminService {
 
 	Room updateRoom(UUID id, AdminRoomInput in);
 
-	List<Amenity> amenityCatalog();
+	/** Manual-list or pattern-generated batch of rooms for one room type —
+	 * all-or-nothing (a pre-flight collision check rejects the whole batch
+	 * before any insert, never a partial write). */
+	List<Room> bulkCreateRooms(UUID hotelId, UUID roomTypeId, AdminBulkRoomInput in);
+
+	/** @param includeInactive false = only assignable (active) amenities, the
+	 * picker default; true = the full catalog, for the management view. */
+	List<Amenity> amenityCatalog(boolean includeInactive);
 
 	/** Inventory write for availability management. */
 	RoomType setRoomTypeInventory(UUID roomTypeId, int totalInventory);

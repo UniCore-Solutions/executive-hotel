@@ -28,8 +28,16 @@ import com.hotelcollection.hotel.entity.Platform;
  * metadata row (url, storage_key, owner) lives in PostgreSQL. Uploads are
  * owner-typed (platform | hotel this phase) and respect the per-owner primary
  * uniqueness rule: uploading a new primary replaces the previous one (file +
- * row), mirroring the setHotelMedia semantics. Owner existence checks go
- * through the catalog/platform services.
+ * row), mirroring the setHotelMedia semantics. The same replace semantics apply
+ * to category="logo": uploading a new logo for an owner that already has one
+ * replaces it (file + row) rather than erroring or silently duplicating —
+ * this is what gives the hotel/platform logo real ownership instead of
+ * being an anonymous gallery photo (task-driven, see
+ * docs/ADMIN_REBUILD_PROGRESS.md Epic E-REDESIGN). Enforced twice: here
+ * (normal single-request flow) and by a DB partial unique index
+ * (V39__media_logo_uniqueness.sql, same belt-and-suspenders pattern the
+ * primary-uniqueness rule already uses) for the concurrent-upload race.
+ * Owner existence checks go through the catalog/platform services.
  *
  * <p>Authorization: uploads and deletes are owner-scoped writes. Platform
  * media requires super_admin; hotel media requires a staff member of that
@@ -72,6 +80,9 @@ public class MediaStorageServiceImpl implements MediaStorageService {
 		try {
 			if (isPrimary) {
 				owner.deleteExistingPrimary();
+			}
+			if (Media.CATEGORY_LOGO.equals(category)) {
+				owner.deleteExistingCategory(category);
 			}
 			Media media = new Media();
 			media.setUrl(baseUrl + "/media/" + storageKey);
@@ -193,6 +204,21 @@ public class MediaStorageServiceImpl implements MediaStorageService {
 
 		Media primary() {
 			return media().stream().filter(Media::isPrimary).findFirst().orElse(null);
+		}
+
+		void deleteExistingCategory(String category) {
+			Media existing = media().stream()
+					.filter(m -> category.equals(m.getCategory()))
+					.findFirst()
+					.orElse(null);
+			if (existing != null) {
+				if ("platform".equals(type)) {
+					service.mediaRepository.deleteByPlatformIdAndCategory(id, category);
+				} else {
+					service.mediaRepository.deleteByHotelIdAndCategory(id, category);
+				}
+				service.storage.delete(existing.getStorageKey());
+			}
 		}
 
 		List<Media> media() {

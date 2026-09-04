@@ -51,7 +51,7 @@ export function RoomTypeAmenitiesForm({
   const options = (data?.adminAmenities ?? []).map((a) => ({
     value: a.id,
     label: a.name,
-    hint: a.category ? `· ${a.category}` : undefined,
+    group: a.category ?? undefined,
   }));
 
   return (

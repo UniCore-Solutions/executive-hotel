@@ -1,0 +1,18 @@
+extend type Query {
+	# Hotel-scoped, ordered by start date. Writes are REST
+	# (POST/PUT/DELETE /api/v1/admin/(hotels/{hotelId}/)seasons[/{id}]) per
+	# this platform's GraphQL=read/REST=write split.
+	adminSeasons(hotelId: ID!): [Season!]!
+}
+
+type Season {
+	id: ID!
+	hotelId: ID!
+	name: String!
+	seasonType: String!
+	startDate: LocalDate!
+	endDate: LocalDate!
+	isActive: Boolean!
+	color: String
+	notes: String
+}
