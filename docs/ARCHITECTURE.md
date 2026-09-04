@@ -204,6 +204,13 @@ anonymous caller.
 
 Auth itself is a REST write (API rule) — there are no GraphQL auth mutations.
 
+**Google OAuth2/OIDC SSO (frontend-hotel only, since 2026-09-04)** is a second
+way to reach the same session mechanism above — it ends at the identical
+httpOnly `guest_session` cookie, minted through a one-time login-grant handoff
+rather than a direct token. See [AUTHENTICATION.md](AUTHENTICATION.md) for the
+full flow, the account-linking policy, and how to add another provider
+(Apple, Microsoft, GitHub, …) — it's one new adapter class, not a rewrite.
+
 ## 5. Eventing — outbox, Kafka, and (since 2026-09-03) a real consumer
 
 Textbook transactional outbox, correctly built:

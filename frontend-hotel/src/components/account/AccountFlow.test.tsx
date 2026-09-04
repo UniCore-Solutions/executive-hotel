@@ -68,4 +68,12 @@ describe('AccountFlow (signed out)', () => {
     expect(await screen.findByText('Enter a valid email address.')).toBeInTheDocument();
     expect(screen.getByText('Enter your password.')).toBeInTheDocument();
   });
+
+  it('offers Google sign-in on both the login and register tabs', async () => {
+    render(wrap());
+    expect(screen.getByRole('link', { name: 'Continue with Google' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Create account' }));
+    expect(screen.getByRole('link', { name: 'Continue with Google' })).toBeInTheDocument();
+  });
 });

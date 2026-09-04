@@ -110,6 +110,21 @@ app:
     # stays usable — longer than code-ttl-minutes on purpose: entering the
     # code is the hard part, browsing afterward shouldn't need re-verifying.
     lookup-grant-minutes: ${OTP_LOOKUP_GRANT_MINUTES:30}
+  oauth:
+    google:
+      # Blank (the default) disables Google sign-in entirely:
+      # GoogleIdentityProvider's bean never registers (@ConditionalOnProperty),
+      # so IdentityProviderRegistry has no GOOGLE entry and
+      # GET /api/v1/auth/google 404s cleanly — no other code branches on this.
+      client-id: ${GOOGLE_CLIENT_ID:}
+      client-secret: ${GOOGLE_CLIENT_SECRET:}
+      redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:8180/api/auth/google/callback}
+    # How long an authorization attempt's CSRF state/nonce stays valid.
+    state-ttl-minutes: ${OAUTH_STATE_TTL_MINUTES:10}
+    # How long the post-callback login grant (the backend->frontend BFF
+    # handoff) stays redeemable — short: the frontend redeems it immediately.
+    grant-ttl-minutes: ${OAUTH_GRANT_TTL_MINUTES:2}
+    cleanup-interval-ms: ${OAUTH_CLEANUP_INTERVAL_MS:300000}
   outbox:
     relay-interval-ms: ${OUTBOX_RELAY_INTERVAL_MS:1000}
     batch-size: 50

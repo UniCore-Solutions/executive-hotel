@@ -20,7 +20,10 @@ import com.hotelcollection.hotel.service.AuthService;
 
 /** Public identity endpoints. Rate-limited (see RateLimitFilter — the
  * register/verify/resend trio share the "/api/v1/auth/register" budget by
- * nesting under that path prefix). */
+ * nesting under that path prefix). Google/future-provider SSO lives at
+ * {@code /api/auth/**} instead — see {@link ExternalAuthRestController} — its
+ * redirect_uri is registered with the provider and must be a fixed,
+ * versionless URL. */
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthRestController {

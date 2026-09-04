@@ -98,6 +98,15 @@ public class SecurityConfig {
 						.requestMatchers("/media/**").permitAll()
 						.requestMatchers("/api/v1/auth/login", "/api/v1/auth/register",
 								"/api/v1/auth/register/verify", "/api/v1/auth/register/resend").permitAll()
+						// Google/future-provider SSO (ExternalAuthRestController, /api/auth/**
+						// — versionless on purpose, its redirect_uri is registered with the
+						// provider). Starting the flow and the provider's callback are both
+						// GET (the callback can't require a bearer token — the browser
+						// arrives via the provider's own redirect); the grant-exchange step
+						// has no session yet either — it's what mints one. See
+						// docs/AUTHENTICATION.md.
+						.requestMatchers("/api/auth/*/callback", "/api/auth/oauth/session").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/auth/*").permitAll()
 						.requestMatchers("/api/v1/reservations",
 								"/api/v1/reservations/*/cancel",
 								"/api/v1/reservations/*/invoice",

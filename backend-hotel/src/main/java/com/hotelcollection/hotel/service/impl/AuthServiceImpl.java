@@ -1,8 +1,6 @@
 package com.hotelcollection.hotel.service.impl;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -30,7 +28,6 @@ import com.hotelcollection.hotel.repository.RoleRepository;
 import com.hotelcollection.hotel.repository.UserRepository;
 import com.hotelcollection.hotel.repository.UserRoleRepository;
 import com.hotelcollection.hotel.security.CurrentUser;
-import com.hotelcollection.hotel.security.JwtService;
 import com.hotelcollection.hotel.util.Validation;
 
 @Service
@@ -43,22 +40,22 @@ public class AuthServiceImpl implements AuthService {
 	private final RoleRepository roleRepository;
 	private final GuestProvisioningService guestProvisioning;
 	private final PasswordEncoder passwordEncoder;
-	private final JwtService jwtService;
 	private final EventPublisher eventPublisher;
 	private final OtpService otpService;
+	private final AuthTokenIssuer tokenIssuer;
 
 	public AuthServiceImpl(UserRepository userRepository, UserRoleRepository userRoleRepository,
 			RoleRepository roleRepository, GuestProvisioningService guestProvisioning,
-			PasswordEncoder passwordEncoder, JwtService jwtService, EventPublisher eventPublisher,
-			OtpService otpService) {
+			PasswordEncoder passwordEncoder, EventPublisher eventPublisher,
+			OtpService otpService, AuthTokenIssuer tokenIssuer) {
 		this.userRepository = userRepository;
 		this.userRoleRepository = userRoleRepository;
 		this.roleRepository = roleRepository;
 		this.guestProvisioning = guestProvisioning;
 		this.passwordEncoder = passwordEncoder;
-		this.jwtService = jwtService;
 		this.eventPublisher = eventPublisher;
 		this.otpService = otpService;
+		this.tokenIssuer = tokenIssuer;
 	}
 
 	@Override
@@ -78,14 +75,15 @@ public class AuthServiceImpl implements AuthService {
 		// Account completion: an accountless booking provisioned a passwordless
 		// 'provisioned' user for this email — registration completes it (sets
 		// the password, refreshes the profile) instead of creating a
-		// duplicate. Any other existing account keeps the generic
-		// no-enumeration error. A 'pending_verification' account re-registering
-		// (e.g. they lost the code) is allowed too — it just resets the
-		// password and issues a fresh code, same as a brand-new attempt.
+		// duplicate. A 'pending_verification' account re-registering (e.g.
+		// they lost the code) is allowed too — it just resets the password
+		// and issues a fresh code, same as a brand-new attempt. Any other
+		// (i.e. active) existing account is a genuine duplicate — reported
+		// plainly so the guest knows to log in instead.
 		User existing = userRepository.findByEmailIgnoreCase(normalizedEmail).orElse(null);
 		if (existing != null && !"provisioned".equals(existing.getStatus())
 				&& !"pending_verification".equals(existing.getStatus())) {
-			throw DomainException.validation("registration failed — please check your details");
+			throw DomainException.conflict("an account with this email already exists — please sign in instead");
 		}
 
 		User user = existing != null ? existing : new User();
@@ -163,7 +161,7 @@ public class AuthServiceImpl implements AuthService {
 		// request) just issues a fresh token below.
 
 		User withRoles = userRepository.findByIdWithRoles(user.getId()).orElse(user);
-		return new AuthPayload(issueToken(withRoles), currentUserOf(withRoles));
+		return new AuthPayload(tokenIssuer.issueToken(withRoles), tokenIssuer.currentUserOf(withRoles));
 	}
 
 	@Override
@@ -195,7 +193,7 @@ public class AuthServiceImpl implements AuthService {
 		}
 		user.setLastLoginAt(Instant.now());
 		user.setUpdatedAt(Instant.now());
-		return new AuthPayload(issueToken(user), currentUserOf(user));
+		return new AuthPayload(tokenIssuer.issueToken(user), tokenIssuer.currentUserOf(user));
 	}
 
 	@Override
@@ -203,7 +201,7 @@ public class AuthServiceImpl implements AuthService {
 	public CurrentUser me(UUID userId) {
 		User user = userRepository.findByIdWithRoles(userId)
 				.orElseThrow(() -> DomainException.notFound("user not found"));
-		return currentUserOf(user);
+		return tokenIssuer.currentUserOf(user);
 	}
 
 	@Override
@@ -233,21 +231,5 @@ public class AuthServiceImpl implements AuthService {
 		userRepository.save(user);
 
 		guestProvisioning.updateContactInfo(userId, in.firstName(), in.lastName(), in.phone());
-	}
-
-	private String issueToken(User user) {
-		return jwtService.issue(currentUserOf(user));
-	}
-
-	private CurrentUser currentUserOf(User user) {
-		List<String> roles = new ArrayList<>();
-		List<UUID> hotels = new ArrayList<>();
-		for (UserRole ur : user.getUserRoles()) {
-			roles.add(ur.getRole().getName());
-			if (ur.getHotelId() != null) {
-				hotels.add(ur.getHotelId());
-			}
-		}
-		return new CurrentUser(user.getId(), user.getEmail(), roles, hotels, Instant.now());
 	}
 }

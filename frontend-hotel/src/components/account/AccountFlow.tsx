@@ -3,6 +3,7 @@
 /** Guest account — port of account.html + account.js (ACC-1/3 · ANA-1). */
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from '@/context/SessionContext';
 import { useToast } from '@/context/ToastContext';
 import { useModal } from '@/context/ModalContext';
@@ -17,6 +18,17 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { PhoneField } from '@/components/ui/PhoneField';
 import { validPhone } from '@/lib/validation';
+import GoogleButton from '@/components/account/GoogleButton';
+import OrDivider from '@/components/account/OrDivider';
+
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  access_denied: 'Google sign-in was cancelled.',
+  state_invalid: 'That Google sign-in link expired or was already used — please try again.',
+  provider_error: 'We could not reach Google right now — please try again in a moment.',
+  account_conflict:
+    'That Google account cannot be used to sign in here — try signing in with your password instead.',
+  session_failed: 'Something went wrong finishing your Google sign-in — please try again.',
+};
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const NAME_RE = /^[A-Za-zÀ-ÿ' -]+$/;
@@ -27,11 +39,32 @@ export default function AccountFlow() {
   const { toast } = useToast();
   const { open } = useModal();
   const { fmt } = useCurrency();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [tab, setTab] = useState<'login' | 'register'>('login');
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginLabel, setLoginLabel] = useState('Sign in');
   const [authMsg, setAuthMsg] = useState<{ text: string; cls: string }>({ text: '', cls: '' });
+
+  // Surfaces a failed Google sign-in redirected back from
+  // /account/oauth-callback (?error=<code>) — see AuthRestController's
+  // closed OAuthErrorCode set. Derived directly from the URL each render
+  // (no state needed); the effect below only strips the param afterward so
+  // a refresh doesn't re-show it.
+  const oauthErrorParam = searchParams.get('error');
+  const oauthMsg = oauthErrorParam
+    ? {
+        text: OAUTH_ERROR_MESSAGES[oauthErrorParam] ?? 'Something went wrong signing you in with Google.',
+        cls: 'text-clay',
+      }
+    : null;
+
+  useEffect(() => {
+    if (oauthErrorParam) {
+      router.replace('/account');
+    }
+  }, [oauthErrorParam, router]);
 
   const [loginFields, setLoginFields] = useState({ email: '', password: '' });
   const [loginErrs, setLoginErrs] = useState({ email: '', password: '' });
@@ -499,6 +532,11 @@ export default function AccountFlow() {
         Manage your bookings, check in online and keep your preferences — no obligation, guest
         checkout works without an account too.
       </p>
+      {oauthMsg ? (
+        <p role="alert" className={`mt-4 text-sm font-medium ${oauthMsg.cls}`}>
+          {oauthMsg.text}
+        </p>
+      ) : null}
 
       <div className="border-navy/10 mt-8 rounded-3xl border bg-white p-5 shadow-sm sm:p-8">
         <Tabs value={tab} onValueChange={(v) => switchTab(v as 'login' | 'register')}>
@@ -579,6 +617,8 @@ export default function AccountFlow() {
                 >
                   {loginLabel}
                 </Button>
+                <OrDivider />
+                <GoogleButton redirect="/account" />
                 <p className="text-navy/50 -mt-2 text-xs">
                   New here?{' '}
                   <Button
@@ -792,6 +832,12 @@ export default function AccountFlow() {
                 >
                   {regLabel}
                 </Button>
+                <div className="sm:col-span-2">
+                  <OrDivider />
+                </div>
+                <div className="sm:col-span-2">
+                  <GoogleButton redirect="/account" />
+                </div>
                 <p className="text-navy/50 -mt-2 text-xs sm:col-span-2">
                   Your name and email only — used to recognise your stays.{' '}
                   <Link href="/privacy" className="underline">

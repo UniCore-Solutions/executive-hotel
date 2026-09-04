@@ -155,6 +155,30 @@ export async function resendRegistrationOtp(email: string): Promise<AuthResult> 
   }
 }
 
+/**
+ * Redeems the one-time grant the backend's OAuth callback redirected here
+ * with, establishing the real session — the Google-SSO analog of
+ * {@link verifyRegistration}.
+ */
+export async function completeGoogleLogin(grant: string): Promise<AuthResult> {
+  try {
+    const res = await fetch('/api/auth/google/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ grant }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      return { ok: false, message: body?.error ?? 'Could not complete Google sign-in.' };
+    }
+    const session = await fetchSession();
+    if (!session) return { ok: false, message: 'Signed in, but could not load your profile.' };
+    return { ok: true, user: { email: session.email, name: session.name }, session };
+  } catch {
+    return { ok: false, message: 'Network error. Please try again.' };
+  }
+}
+
 export async function reset(email: string): Promise<AuthResult> {
   if (!email || !String(email).includes('@'))
     return { ok: false, message: 'Enter a valid email address.' };

@@ -67,6 +67,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
 	private static final List<Policy> POLICIES = List.of(
 			new Policy("/api/v1/auth/login", 20),
 			new Policy("/api/v1/auth/register", 20),
+			// POST /api/auth/oauth/session (grant redemption) — same budget as
+			// login/register; the GET start/callback legs are safe methods and
+			// are never rate-limited here (see SAFE_METHODS below).
+			new Policy("/api/auth/oauth", 20),
 			new Policy("/api/v1/reservations", 5),
 			new Policy("/api/v1/payments", 10));
 

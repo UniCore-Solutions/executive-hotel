@@ -31,6 +31,15 @@ app:
     resend-cooldown-seconds: 0
     max-attempts: 5
     lookup-grant-minutes: 30
+  oauth:
+    # Google left unconfigured by default (no client-id) — GoogleIdentityProvider's
+    # bean never registers, matching the "feature off" state most tests run
+    # against. OAuthLoginIntegrationTest supplies its own fake provider bean
+    # instead of setting real credentials here.
+    state-ttl-minutes: 10
+    grant-ttl-minutes: 2
+    cleanup-interval-ms: 600000
+  frontend-base-url: http://localhost:3000
   outbox:
     relay-interval-ms: 600000
     batch-size: 50

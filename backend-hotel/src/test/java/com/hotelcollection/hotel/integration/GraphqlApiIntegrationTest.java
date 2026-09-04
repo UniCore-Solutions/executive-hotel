@@ -368,17 +368,17 @@ class GraphqlApiIntegrationTest {
 	}
 
 	@Test
-	void registerDuplicateEmailDoesNotEnumerate() throws Exception {
+	void registerDuplicateActiveEmailReportsConflict() throws Exception {
 		String email = "dup-" + System.nanoTime() + "@example.com";
 		register(email);
 		Map<String, Object> body = rest("POST", "/api/v1/auth/register",
 				Map.of("firstName", "Zahra", "lastName", "Bennani",
 						"email", email, "password", "secret123"),
 				null);
-		assertThat(body.get("__status")).isEqualTo(400);
+		assertThat(body.get("__status")).isEqualTo(409);
 		assertThat((String) body.get("message"))
-				.contains("registration failed").doesNotContain(email);
-		assertThat(body.get("code")).isEqualTo("VALIDATION");
+				.contains("already exists").doesNotContain(email);
+		assertThat(body.get("code")).isEqualTo("CONFLICT");
 	}
 
 	@Test

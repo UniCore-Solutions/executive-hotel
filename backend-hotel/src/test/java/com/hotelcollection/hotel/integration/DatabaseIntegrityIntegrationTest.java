@@ -47,8 +47,8 @@ class DatabaseIntegrityIntegrationTest {
 	void flywayAppliedAllMigrations() {
 		Integer applied = jdbc.queryForObject(
 				"SELECT count(*) FROM flyway_schema_history WHERE success = TRUE", Integer.class);
-		// V37 (otp_verification) is the current head.
-		assertThat(applied).isEqualTo(37);
+		// V38 (google_oauth_sso) is the current head.
+		assertThat(applied).isEqualTo(38);
 	}
 
 	@Test
@@ -57,8 +57,8 @@ class DatabaseIntegrityIntegrationTest {
 				"SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"
 						+ " AND table_name <> 'flyway_schema_history'",
 				Integer.class);
-		// 55 + otp_codes (V37).
-		assertThat(tables).isEqualTo(56);
+		// 56 + user_external_identities/oauth_states/login_grants (V38).
+		assertThat(tables).isEqualTo(59);
 
 		assertThat(extensionInstalled("btree_gist")).isTrue();
 		assertThat(extensionInstalled("pgcrypto")).isTrue();

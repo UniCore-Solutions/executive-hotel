@@ -202,6 +202,18 @@ Toolchain note: **`mvn` is not on PATH** — use `./mvnw`. JDK 21 and Node 24 ar
 
 **Backend**
 - Auth: register/login, bcrypt(12), HS256 JWT with fail-fast secret validation, rate limiting.
+- **Google OAuth2/OIDC SSO (V38, 2026-09-04)**: a provider-agnostic `identity/` abstraction
+  (`ExternalIdentityProvider`/`IdentityProviderRegistry`) with Google as its first
+  implementation — `GoogleIdentityProvider` is absent from the registry (feature off) when
+  `GOOGLE_CLIENT_ID` is blank. Backend-managed authorization-code flow with a single-use
+  `state`/`nonce` (`oauth_states`) and a single-use post-callback login grant (`login_grants`)
+  that hands off to the frontend's existing httpOnly-cookie session mechanism — the raw JWT
+  never appears in a URL. Account linking (`user_external_identities`, unique on
+  `(provider, provider_subject)`) auto-links to an existing account only when the provider
+  itself reports the email as verified; new users are created `active` with no password.
+  Full design, flow diagram and the account-linking table: `docs/AUTHENTICATION.md`. Verified:
+  314/314 backend tests (up from 273), all 7 ArchUnit rules; guest frontend `tsc`/`eslint`
+  clean, 130/130 vitest (up from 120), `next build` clean.
 - **Mandatory OTP verification (V37)**: registration is blocking — `register()` sends a
   code and returns no session until `POST /api/v1/auth/register/verify` confirms it
   (account stays `pending_verification` until then); guest reservation lookup

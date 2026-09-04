@@ -110,6 +110,17 @@
 			<groupId>org.flywaydb</groupId>
 			<artifactId>flyway-database-postgresql</artifactId>
 		</dependency>
+		<dependency>
+			<!-- OpenID Connect client for Google SSO (identity/GoogleIdentityProvider):
+			     authorization-URL building, code exchange, and ID-token validation
+			     (signature/issuer/audience/expiry/nonce) against Google's published
+			     JWK set. Google's own recommended library for server-side Java —
+			     not hand-rolled crypto, not the session-based spring-boot-starter-
+			     oauth2-client (this app is stateless bearer-JWT only). -->
+			<groupId>com.nimbusds</groupId>
+			<artifactId>oauth2-oidc-sdk</artifactId>
+			<version>11.20.1</version>
+		</dependency>
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

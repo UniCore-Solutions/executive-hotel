@@ -15,6 +15,8 @@ export interface SessionContextValue {
   register: (input: { name: string; email: string; password: string }) => Promise<auth.RegisterResult>;
   verifyRegistration: (email: string, code: string) => Promise<auth.AuthResult>;
   resendRegistrationOtp: (email: string) => Promise<auth.AuthResult>;
+  /** Redeems a Google-SSO login grant — see services/auth.ts. */
+  completeGoogleLogin: (grant: string) => Promise<auth.AuthResult>;
   updateProfile: (input: { firstName?: string; lastName?: string; phone?: string }) => Promise<auth.AuthResult>;
   logout: () => Promise<void>;
 }
@@ -56,6 +58,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return r;
   }, []);
   const resendRegistrationOtp = useCallback((email: string) => auth.resendRegistrationOtp(email), []);
+  const completeGoogleLogin = useCallback(async (grant: string) => {
+    const r = await auth.completeGoogleLogin(grant);
+    if (r.ok && r.session) setSessionState(r.session);
+    return r;
+  }, []);
   const updateProfile = useCallback(
     async (input: { firstName?: string; lastName?: string; phone?: string }) => {
       const r = await auth.updateProfile(input);
@@ -78,6 +85,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       register,
       verifyRegistration,
       resendRegistrationOtp,
+      completeGoogleLogin,
       updateProfile,
       logout,
     }),
@@ -89,6 +97,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       register,
       verifyRegistration,
       resendRegistrationOtp,
+      completeGoogleLogin,
       updateProfile,
       logout,
     ]

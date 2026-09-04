@@ -18,9 +18,13 @@ Three deployables: a Spring Boot backend, a Next.js guest site, a Next.js back-o
      feature-by-feature real/mock matrix, traced user flows, 28 evidenced defects
      (F-1…F-28) with a prioritised fix plan, and the API work each mocked feature needs.
      **Read this before touching `frontend-hotel/`.**
+   - [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) — email/password + Google OAuth2/OIDC
+     SSO: the login-grant handoff, the provider abstraction, the account-linking policy, and
+     how to add another provider. Read before touching auth in either `backend-hotel/` or
+     `frontend-hotel/`.
 
-These seven files exist so you do **not** need to re-audit the repository. If they answer
-your question, trust them and go straight to the relevant source.
+These files exist so you do **not** need to re-audit the repository. If they answer your
+question, trust them and go straight to the relevant source.
 
 ## Skills
 

@@ -106,6 +106,10 @@ services:
       MAIL_USERNAME: ${MAIL_USERNAME:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
+      # Google OAuth2/OIDC SSO — blank GOOGLE_CLIENT_ID disables it entirely.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:8180/api/auth/google/callback}
       JAVA_TOOL_OPTIONS: ${JVM_OPTS:-}
     ports:
       - "${BACKEND_PORT:-8180}:8180"
@@ -147,6 +151,12 @@ services:
       HOSTNAME: 0.0.0.0
       # Server-side fetches (RSC/BFF) go straight to the backend over the internal network.
       API_INTERNAL_URL: http://backend:8180/graphql
+      # Unlike API_INTERNAL_URL above, this one is handed to the BROWSER (a
+      # 302 Location header) for the single leg of the Google OAuth flow that
+      # must be a real top-level navigation to the backend — the Docker-internal
+      # "backend" hostname doesn't resolve outside this network, so it must be
+      # the backend's actual host-reachable address instead.
+      BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-http://localhost:8180}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     healthcheck:
