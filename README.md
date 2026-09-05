@@ -44,22 +44,34 @@ Stop everything with `./scripts/stop.sh` — data persists in named volumes.
 On the prod server (not this dev machine — `.env` is per-machine and gitignored):
 
 ```bash
-cp .env.prod.example .env
-openssl rand -hex 32     # → JWT_SECRET
-openssl rand -hex 24     # → POSTGRES_PASSWORD
+./scripts/setup.sh --prod    # creates .env from .env.prod.example, generates
+                              # JWT_SECRET/POSTGRES_PASSWORD, preps directories
 ./scripts/start.sh --prod --build
 ```
 
 `.env.prod.example` is pre-filled for an IP-only deployment (no domain/TLS yet) —
 every `localhost` default becomes the server's public IP, `CORS_ALLOWED_ORIGINS`
 is set explicitly (required under `--prod`), `PAYMENT_AUTO_SETTLE_ENABLED=false`,
-and `SEED_ON_START=false`. It leaves `JWT_SECRET`/`POSTGRES_PASSWORD`/`MAIL_*`
-blank for you to fill with real values — **never reuse a dev `.env`'s secrets**.
+and `SEED_ON_START=false`. `setup.sh --prod` fills `JWT_SECRET`/`POSTGRES_PASSWORD`
+for you; `MAIL_*`/`GOOGLE_*` are left blank on purpose (see below) — **never reuse
+a dev `.env`'s secrets**.
 
 Google sign-in is left disabled in that template: Google's OAuth console
 rejects raw IP addresses in "Authorized redirect URIs" for web clients, so it
 can't work until this deployment has a real domain name over HTTPS in front
 of it. Email/password login is unaffected.
+
+`--prod` mode never auto-seeds (unlike dev), so there are zero users until you
+bootstrap one:
+
+```bash
+docker compose exec -T postgres psql -U hotel_app -d hotel_platform \
+  -v ON_ERROR_STOP=1 -q < backend-hotel/scripts/seed.sql
+```
+
+This creates `admin@hotelcollection.test` / `admin123` (super_admin) plus 3
+demo hotels — log in and rotate that password immediately, it's a publicly
+documented default credential.
 
 ## Database
 
