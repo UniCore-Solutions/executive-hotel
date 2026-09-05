@@ -50,7 +50,7 @@ else
 fi
 
 # --- Frontend -------------------------------------------------------------------
-code="$(http_status "http://localhost:${FRONTEND_PORT:-3000}/" 15)"
+code="$(http_status "http://localhost:${FRONTEND_PORT:-3100}/" 15)"
 case "$code" in 2*|3*) record ok "frontend" "HTTP ${code}" ;; *) record fail "frontend" "HTTP ${code}" ;; esac
 
 if (( failures > 0 )); then

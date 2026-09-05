@@ -35,4 +35,4 @@ check() {   # check <label> <container> [url]
 check postgres hotel-platform-postgres
 check kafka    hotel-platform-kafka
 check backend  hotel-backend           "http://localhost:${BACKEND_PORT:-8180}/actuator/health/readiness"
-check frontend hotel-frontend          "http://localhost:${FRONTEND_PORT:-3000}/"
+check frontend hotel-frontend          "http://localhost:${FRONTEND_PORT:-3100}/"

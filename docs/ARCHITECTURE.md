@@ -10,7 +10,7 @@
 ```
 ┌─────────────────────┐        ┌──────────────────────┐
 │  frontend-hotel     │        │  backoffice-hotel    │
-│  Next 16 :3000      │        │  Next 16 :3101       │
+│  Next 16 :3100      │        │  Next 16 :3101       │
 │  Apollo (reads)     │        │  Apollo (reads)      │
 │  Axios (writes)     │        │  Axios + TanStack    │
 │  guests, public     │        │  staff, auth-walled  │

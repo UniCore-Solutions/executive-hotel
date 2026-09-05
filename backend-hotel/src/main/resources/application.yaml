@@ -96,7 +96,7 @@ app:
   # Base URL of the guest site, used only to build links inside emails
   # (manage-booking, retry-payment, account) — the backend never serves these
   # pages itself.
-  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:3100}
   otp:
     # How long a code stays enterable (registration verification and guest
     # reservation lookup both use this).

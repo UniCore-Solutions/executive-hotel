@@ -71,7 +71,7 @@ else
   info "Database already contains data — seeding skipped"
 fi
 
-frontend_port="${FRONTEND_PORT:-3000}"
+frontend_port="${FRONTEND_PORT:-3100}"
 backend_port="${BACKEND_PORT:-8180}"
 
 cat <<EOF

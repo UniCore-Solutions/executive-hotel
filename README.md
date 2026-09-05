@@ -4,7 +4,7 @@ One-command Dockerization of the full platform:
 
 | Service | Source | URL | Container |
 |---|---|---|---|
-| Guest frontend (Next.js) | `frontend-hotel/` | http://localhost:3000 | `hotel-frontend` |
+| Guest frontend (Next.js) | `frontend-hotel/` | http://localhost:3100 | `hotel-frontend` |
 | Back-office (Next.js) | `backoffice-hotel/` | http://localhost:3101/login · **profile-gated: start with `docker compose --profile backoffice up -d backoffice`** | `hotel-backoffice` |
 | Backend API (Spring Boot) | `backend-hotel/` | GraphQL reads at http://localhost:8180/graphql · REST writes at `/api/v1/**` · GraphiQL at `/graphiql` | `hotel-backend` |
 | PostgreSQL 16 | — | localhost:5433 (`POSTGRES_USER/PASSWORD/DB` from `.env`) | `hotel-platform-postgres` |
@@ -23,7 +23,7 @@ One-command Dockerization of the full platform:
 ./scripts/status.sh       # container + HTTP health matrix
 ```
 
-Open http://localhost:3000 (guest site) and http://localhost:3101/login (back-office).
+Open http://localhost:3100 (guest site) and http://localhost:3101/login (back-office).
 
 Stop everything with `./scripts/stop.sh` — data persists in named volumes.
 
@@ -38,6 +38,28 @@ Stop everything with `./scripts/stop.sh` — data persists in named volumes.
 | `--prod` | `docker-compose.prod.yml` | Postgres/Kafka ports unbound; log rotation; requires `CORS_ALLOWED_ORIGINS` |
 
 `./scripts/clean.sh` removes containers/images (never volumes). Add `--all` for networks+volumes too — **destructive**.
+
+### Production deployment
+
+On the prod server (not this dev machine — `.env` is per-machine and gitignored):
+
+```bash
+cp .env.prod.example .env
+openssl rand -hex 32     # → JWT_SECRET
+openssl rand -hex 24     # → POSTGRES_PASSWORD
+./scripts/start.sh --prod --build
+```
+
+`.env.prod.example` is pre-filled for an IP-only deployment (no domain/TLS yet) —
+every `localhost` default becomes the server's public IP, `CORS_ALLOWED_ORIGINS`
+is set explicitly (required under `--prod`), `PAYMENT_AUTO_SETTLE_ENABLED=false`,
+and `SEED_ON_START=false`. It leaves `JWT_SECRET`/`POSTGRES_PASSWORD`/`MAIL_*`
+blank for you to fill with real values — **never reuse a dev `.env`'s secrets**.
+
+Google sign-in is left disabled in that template: Google's OAuth console
+rejects raw IP addresses in "Authorized redirect URIs" for web clients, so it
+can't work until this deployment has a real domain name over HTTPS in front
+of it. Email/password login is unaffected.
 
 ## Database
 
@@ -65,7 +87,7 @@ forward to `API_INTERNAL_URL` (**baked at build time** — set as build arg when
 deploying elsewhere). Server-side rendering talks straight to `http://backend:8180/graphql`
 inside the network.
 
-Cross-machine: everything binds `0.0.0.0`; access other PCs via `http://<LAN-IP>:3000` etc. For browser access from other machines, add their origin to `CORS_ALLOWED_ORIGINS` or serve through a reverse proxy.
+Cross-machine: everything binds `0.0.0.0`; access other PCs via `http://<LAN-IP>:3100` etc. For browser access from other machines, add their origin to `CORS_ALLOWED_ORIGINS` or serve through a reverse proxy.
 
 ## Tests & quality
 

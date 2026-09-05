@@ -34,7 +34,7 @@ own lockfile and is built independently; the root only holds Docker Compose + sc
 ```
 /
 ├── backend-hotel/      Spring Boot 4.1.0 / Java 21 — the only backend, owns the DB
-├── frontend-hotel/     Next.js 16 (App Router) — guest site        :3000
+├── frontend-hotel/     Next.js 16 (App Router) — guest site        :3100
 ├── backoffice-hotel/   Next.js 16 (App Router) — staff console (legacy)     :3101
 ├── admin-hotel/        Next.js 16 (App Router) — new staff console          :3102
 │                       (docs/ADMIN_REBUILD_PROGRESS.md tracks build-out; backoffice-hotel
@@ -125,7 +125,7 @@ Full traces in [DATA_FLOW.md](DATA_FLOW.md).
 
 `docker compose` with three overlays driven by `scripts/start.sh`
 (`--dev` bind-mounts + hot reload · base = locally built prod images · `--prod` hardened).
-Ports are host-side only and come from `.env`: frontend 3000, back-office 3101,
+Ports are host-side only and come from `.env`: frontend 3100, back-office 3101,
 backend **8180**, Postgres **5433**, Kafka 9092.
 
 The **`backoffice` service is profile-gated** (`profiles: ["backoffice"]`, commit

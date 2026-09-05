@@ -39,7 +39,7 @@ Three deployables, then the backend's internal application services.
 
 ---
 
-## Deployable: `frontend-hotel` (guest site, :3000)
+## Deployable: `frontend-hotel` (guest site, :3100)
 
 - **Purpose** — public marketing + booking funnel.
 - **Technology** — Next.js 16 App Router, React 19, TS strict, Tailwind v4, Radix.

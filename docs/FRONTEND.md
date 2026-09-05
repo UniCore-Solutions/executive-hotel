@@ -2,7 +2,7 @@
 
 **App:** `frontend-hotel/` · Next.js 16 App Router · 125 TS/TSX files · ~19 300 lines
 **Audited:** 2026-08-27, against the on-disk working tree, the running backend on :8180,
-the seeded database, and a live dev server on :3000.
+the seeded database, and a live dev server on :3100.
 
 > **Update (hotel identity + gallery, 2026-08-28).** The single-property identity is
 > now ONE hotel entity: **Executive Hotel** (backend V30 renamed the canonical hotel
