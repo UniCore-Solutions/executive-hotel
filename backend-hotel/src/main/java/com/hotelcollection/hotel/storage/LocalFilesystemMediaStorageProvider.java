@@ -149,8 +149,11 @@ public class LocalFilesystemMediaStorageProvider implements MediaStorageProvider
 		if (startsWith(content, 0x47, 0x49, 0x46, 0x38)) {
 			return new Detected("image/gif", "gif");
 		}
+		// RIFF container layout: "RIFF" (0-3), 4-byte chunk size (4-7), form
+		// type "WEBP" (8-11), then the first sub-chunk (e.g. "VP8 "/"VP8L"/
+		// "VP8X" at 12-15) — the FourCC to match against is at offset 8, not 12.
 		if (content.length >= 12 && startsWith(content, 0x52, 0x49, 0x46, 0x46)
-				&& matchesAt(content, 12, 0x57, 0x45, 0x42, 0x50)) {
+				&& matchesAt(content, 8, 0x57, 0x45, 0x42, 0x50)) {
 			return new Detected("image/webp", "webp");
 		}
 		return null;

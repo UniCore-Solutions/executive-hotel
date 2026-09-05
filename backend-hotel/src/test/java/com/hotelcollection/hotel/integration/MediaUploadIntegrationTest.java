@@ -55,6 +55,12 @@ class MediaUploadIntegrationTest {
 	private static final byte[] JPEG_HEAD = { (byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0,
 			0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01,
 			0x00, 0x00, (byte) 0xFF, (byte) 0xD9 };
+	/** 1x1 lossless VP8L WebP — a real RIFF/WEBP container, not just a magic
+	 * prefix, since the sniffer reads the "WEBP" FourCC at a fixed offset
+	 * into the RIFF header (offset 8, after the 4-byte chunk size) rather
+	 * than matching a short byte prefix. */
+	private static final byte[] WEBP_1PX = Base64.getDecoder().decode(
+			"UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAEAcRkQRjAAD+//5PAAA=");
 	private static final byte[] EXE_HEAD = { 0x4D, 0x5A, 0x00, 0x00, 0x00, 0x00 };
 
 	@LocalServerPort
@@ -142,6 +148,20 @@ class MediaUploadIntegrationTest {
 		List<Map<String, Object>> mediaList = (List<Map<String, Object>>) ((Map<String, Object>)
 				((Map<String, Object>) body.get("data")).get("hotel")).get("media");
 		assertThat(mediaList).anyMatch(m -> m.get("id").equals(mediaId.toString()));
+	}
+
+	/** Regression: the WEBP sniffer once matched the "WEBP" FourCC at the
+	 * wrong offset (12, the first sub-chunk's position) instead of 8 (the
+	 * RIFF form type), so every well-formed WEBP failed with "unrecognized
+	 * file signature". */
+	@Test
+	void uploadAcceptsWebp() throws Exception {
+		TestFixtures.HotelFixture fx = fixtures.newBookableHotel();
+		UUID mediaId = upload("hotel", fx.hotelId(), WEBP_1PX, "logo.webp", "image/webp",
+				token(), false);
+		Media row = media.findById(mediaId).orElseThrow();
+		assertThat(row.getMimeType()).isEqualTo("image/webp");
+		assertThat(storage.exists(row.getStorageKey())).isTrue();
 	}
 
 	@Test
