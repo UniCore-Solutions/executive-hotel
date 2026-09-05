@@ -4,4 +4,3 @@ out
 build
 *.tsbuildinfo
 .env.local
-src/graphql/generated
